@@ -22,7 +22,7 @@ ENV_FILE=config/translation.yml
 
 module load anaconda
 if conda env list | grep -q "^${ENV_NAME} "; then
-    conda env update -n "$ENV_NAME" -f "$ENV_FILE" --prune
+    conda env update -n "$ENV_NAME" -f "$ENV_FILE"  # no --prune: keep packages not in the yml
 else
     conda env create -f "$ENV_FILE"
 fi

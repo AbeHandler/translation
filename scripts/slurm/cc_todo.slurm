@@ -27,7 +27,11 @@ fi
 module load anaconda
 conda activate translation
 
-ARGS=(-step todo -start-date "$START_DATE" -end-date "$END_DATE" -aws "$AWS" -work-dir "$TMP/warcs")
-[ -n "${MAX_N:-}" ] && ARGS+=(-max-n "$MAX_N")
-
-python src/cc.py "${ARGS[@]}"
+# MAX_N may be empty; src/cc.py treats empty as "no limit".
+python src/cc.py \
+    -step todo \
+    -start-date "$START_DATE" \
+    -end-date "$END_DATE" \
+    -aws "$AWS" \
+    -work-dir "$TMP/warcs" \
+    -max-n "$MAX_N"

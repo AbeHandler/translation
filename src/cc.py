@@ -189,17 +189,25 @@ class CCNewsIndex:
             year, month = (year + 1, 1) if month == 12 else (year, month + 1)
 
 
+DEFAULT_OUTPUT_DIR = './data/interim/cc_links/'
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Find the links in each article of CC-NEWS WARCs for a date range")
     parser.add_argument("-step", required=True, choices=['todo', 'work'])
     parser.add_argument("-start-date", type=parse_date, help="todo step: YYYYMMDD, inclusive")
     parser.add_argument("-end-date", type=parse_date, help="todo step: YYYYMMDD, inclusive")
-    parser.add_argument("-output-dir", default='./data/interim/cc_links/')
+    parser.add_argument("-output-dir", default='', help=f"default {DEFAULT_OUTPUT_DIR}")
     parser.add_argument("-aws", default='aws', help="path to the aws CLI")
     parser.add_argument("-work-dir", default=None, help="downloads and .lock/.done files (default $TMP/warcs)")
-    parser.add_argument("-max-n", type=int, default=None, help="stop after N rows per WARC (testing)")
-    parser.add_argument("-max-warcs", type=int, default=None, help="stop after N WARCs (testing)")
+    # optional_int: SLURM passes unset options as '', which means no limit
+    parser.add_argument("-max-n", type=optional_int, default=None, help="stop after N rows per WARC (testing)")
+    parser.add_argument("-max-warcs", type=optional_int, default=None, help="stop after N WARCs (testing)")
     return parser.parse_args()
+
+
+def optional_int(text):
+    return int(text) if text else None
 
 
 def parse_date(text):
@@ -305,8 +313,9 @@ def main():
     logging.basicConfig(level=logging.INFO)
     logging.getLogger('readability').setLevel(logging.ERROR)  # noisy on malformed pages
     work_dir = args.work_dir or default_work_dir()
+    output_dir = args.output_dir or DEFAULT_OUTPUT_DIR
     os.makedirs(work_dir, exist_ok=True)
-    os.makedirs(args.output_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
 
     index = CCNewsIndex(aws=args.aws)
     if args.step == 'todo':
@@ -319,10 +328,10 @@ def main():
 
     warc_paths = read_todo(work_dir)
     logger.info('%d WARCs in TODO list', len(warc_paths))
-    n = run_worker(warc_paths, index, CCLinkExtractor(max_n=args.max_n), work_dir, args.output_dir,
+    n = run_worker(warc_paths, index, CCLinkExtractor(max_n=args.max_n), work_dir, output_dir,
                    args.max_n, args.max_warcs)
     print(f'Worker processed {n} WARCs')
-    print_spot_checks(work_dir, args.output_dir, len(warc_paths))
+    print_spot_checks(work_dir, output_dir, len(warc_paths))
 
 
 if __name__ == "__main__":

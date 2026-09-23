@@ -28,9 +28,11 @@ fi
 module load anaconda
 conda activate translation
 
-ARGS=(-step work -aws "$AWS" -work-dir "$TMP/warcs")
-[ -n "${MAX_N:-}" ] && ARGS+=(-max-n "$MAX_N")
-[ -n "${MAX_WARCS:-}" ] && ARGS+=(-max-warcs "$MAX_WARCS")
-[ -n "${OUTPUT_DIR:-}" ] && ARGS+=(-output-dir "$OUTPUT_DIR")
-
-python src/cc.py "${ARGS[@]}"
+# Optional vars may be empty; src/cc.py treats empty as "use the default".
+python src/cc.py \
+    -step work \
+    -aws "$AWS" \
+    -work-dir "$TMP/warcs" \
+    -max-n "$MAX_N" \
+    -max-warcs "$MAX_WARCS" \
+    -output-dir "$OUTPUT_DIR"

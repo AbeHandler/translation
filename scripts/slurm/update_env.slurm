@@ -1,5 +1,6 @@
 #!/bin/bash
-# Create or update the translation conda env from config/translation.yml. Submitted by scripts/go.sh.
+# Create the translation conda env (Python only, so conda has almost nothing to solve) and
+# pip install config/requirements.txt into it. Fast to rerun. Submitted by scripts/go.sh.
 #
 # Usage (from the repo root):
 #   sbatch scripts/slurm/update_env.slurm
@@ -19,11 +20,12 @@ set -eo pipefail  # no -u: ~/.myrc and conda activate reference unset vars
 source ~/.myrc
 
 ENV_NAME=translation
-ENV_FILE=config/translation.yml
+PYTHON_VERSION=3.11.14  # matches the local env the code was tested with
 
 module load anaconda
-if conda env list | grep -q "^${ENV_NAME} "; then
-    conda env update -n "$ENV_NAME" -f "$ENV_FILE"  # no --prune: keep packages not in the yml
-else
-    conda env create -f "$ENV_FILE"
+if ! conda env list | grep -q "^${ENV_NAME} "; then
+    conda create -y -n "$ENV_NAME" "python=$PYTHON_VERSION" pip
 fi
+conda activate "$ENV_NAME"
+pip install -r config/requirements.txt
+python -c "import newsplease, warcio, readability, lxml, tqdm; print('env ok')"

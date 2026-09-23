@@ -1,0 +1,8 @@
+# pip packages for the translation conda env (scripts/slurm/update_env.slurm installs them).
+# Versions pinned to the local env that was tested.
+news-please==1.6.16
+warcio==1.8.1
+readability-lxml==0.9
+lxml==6.0.2
+lxml_html_clean==0.4.3
+tqdm==4.67.1

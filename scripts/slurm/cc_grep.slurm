@@ -1,5 +1,5 @@
 #!/bin/bash
-# Scan the links jsonl (src/cc.py -step grep) for the substrings in config/cc_link_patterns.txt
+# Scan the links jsonl (src/cc.py -step grep) for the substrings in config/seed_patterns.txt
 # and write data/processed/cc_link_matches.jsonl. Submitted by scripts/cc_go.sh after the workers.
 # Rebuilds the matches file each run, so rerun it any time (e.g. after editing the patterns).
 #
@@ -26,6 +26,6 @@ conda activate translation
 # Optional vars may be empty; src/cc.py treats empty as "use the default".
 python src/cc.py \
     -step grep \
-    -patterns config/cc_link_patterns.txt \
+    -patterns config/seed_patterns.txt \
     -max-n "$MAX_N" \
     -output-dir "$OUTPUT_DIR"

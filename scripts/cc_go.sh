@@ -3,7 +3,7 @@
 #   cc_env   create/update the translation conda env from config/translation.yml
 #   cc_todo  write $TMP/warcs/todo.txt (WARCs in range without a .done file)   [after cc_env]
 #   cc_work  N_WORKERS workers that process todo.txt                            [after cc_todo]
-#   cc_grep  grep the links for config/cc_link_patterns.txt                     [after all cc_work end]
+#   cc_grep  grep the links for config/seed_patterns.txt                     [after all cc_work end]
 # If a step fails, the jobs after it are cancelled. Safe to rerun: done WARCs are skipped.
 # Run from the repo root.
 #

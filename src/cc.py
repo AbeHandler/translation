@@ -202,7 +202,7 @@ def parse_args():
     parser.add_argument("-start-date", type=parse_date, help="todo step: YYYYMMDD, inclusive")
     parser.add_argument("-end-date", type=parse_date, help="todo step: YYYYMMDD, inclusive")
     parser.add_argument("-output-dir", default='', help=f"default {DEFAULT_OUTPUT_DIR}")
-    parser.add_argument("-patterns", default='config/cc_link_patterns.txt', help="grep step: one substring per line")
+    parser.add_argument("-patterns", default='config/seed_patterns.txt', help="grep step: one substring per line")
     parser.add_argument("-matches-path", default='', help=f"grep step: default {DEFAULT_MATCHES_PATH}")
     parser.add_argument("-aws", default='aws', help="path to the aws CLI")
     parser.add_argument("-work-dir", default=None, help="downloads and .lock/.done files (default $TMP/warcs)")

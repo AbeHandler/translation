@@ -8,16 +8,16 @@
 # Run from the repo root.
 #
 # Usage:
-#   START_DATE=20260901 END_DATE=20260923 bash scripts/cc_go.sh
-#   START_DATE=20260901 END_DATE=20260923 N_WORKERS=20 bash scripts/cc_go.sh
-#   START_DATE=20260923 END_DATE=20260923 N_WORKERS=1 MAX_WARCS=1 MAX_N=100 bash scripts/cc_go.sh  # test
+#   START_DATE=20260901 END_DATE=20260923 bash scripts/find_seed_links_go.sh
+#   START_DATE=20260901 END_DATE=20260923 N_WORKERS=20 bash scripts/find_seed_links_go.sh
+#   START_DATE=20260923 END_DATE=20260923 N_WORKERS=1 MAX_WARCS=1 MAX_N=100 bash scripts/find_seed_links_go.sh  # test
 
 set -eo pipefail  # no -u: ~/.myrc references unset vars
 source ~/.myrc  # first, so $TMP etc. from ~/.myrc are set before the checks below
 
 if [ -z "${START_DATE:-}" ] || [ -z "${END_DATE:-}" ]; then
     echo "ERROR: START_DATE and END_DATE (YYYYMMDD) are required"
-    echo "Usage: START_DATE=20260901 END_DATE=20260923 bash scripts/cc_go.sh"
+    echo "Usage: START_DATE=20260901 END_DATE=20260923 bash scripts/find_seed_links_go.sh"
     exit 1
 fi
 if [ -z "${TMP:-}" ]; then

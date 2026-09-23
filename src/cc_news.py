@@ -10,20 +10,20 @@ sidebars), and yields one row per page:
 CCNewsIndex lists the WARCs for a date range and downloads them with the aws CLI
 (s3://commoncrawl; needs AWS credentials).
 
-Steps (scripts/cc_go.sh submits todo, the workers, then grep, as SLURM jobs):
-    todo  write <work-dir>/todo.txt: WARCs in the date range that don't have a .done file yet
-    work  shuffle todo.txt and, for each WARC not done or locked by another worker, download it
-          to -work-dir, write the links jsonl to -output-dir, write <work-dir>/<warc>.done, and
-          delete the WARC. Workers coordinate through the .lock/.done files, so -work-dir must
-          be on a shared filesystem.
-    grep  scan the links jsonl in -output-dir for the substrings in -patterns and write one row
-          per matching link to -matches-path
+Steps (scripts/find_seed_links_go.sh submits them in this order as SLURM jobs):
+    write_warc_todo        write <work-dir>/todo.txt: WARCs in the date range without a .done file
+    extract_article_links  shuffle todo.txt and, for each WARC not done or locked by another
+                           worker, download it to -work-dir, write the links jsonl to -output-dir,
+                           write <work-dir>/<warc>.done, and delete the WARC. Workers coordinate
+                           through the .lock/.done files, so -work-dir must be on a shared filesystem.
+    grep_seed_patterns     scan the links jsonl in -output-dir for the substrings in -patterns and
+                           write one row per matching link to -matches-path
 
 Usage:
-    python src/cc.py -step todo -start-date 20260901 -end-date 20260923
-    python src/cc.py -step work
-    python src/cc.py -step work -max-warcs 1 -max-n 100
-    python src/cc.py -step grep
+    python src/cc_news.py -step write_warc_todo -start-date 20260901 -end-date 20260923
+    python src/cc_news.py -step extract_article_links
+    python src/cc_news.py -step extract_article_links -max-warcs 1 -max-n 100
+    python src/cc_news.py -step grep_seed_patterns
 """
 import argparse
 import datetime
@@ -198,12 +198,14 @@ DEFAULT_MATCHES_PATH = './data/processed/cc_link_matches.jsonl'
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Find the links in each article of CC-NEWS WARCs for a date range")
-    parser.add_argument("-step", required=True, choices=['todo', 'work', 'grep'])
-    parser.add_argument("-start-date", type=parse_date, help="todo step: YYYYMMDD, inclusive")
-    parser.add_argument("-end-date", type=parse_date, help="todo step: YYYYMMDD, inclusive")
+    parser.add_argument("-step", required=True,
+                        choices=['write_warc_todo', 'extract_article_links', 'grep_seed_patterns'])
+    parser.add_argument("-start-date", type=parse_date, help="write_warc_todo: YYYYMMDD, inclusive")
+    parser.add_argument("-end-date", type=parse_date, help="write_warc_todo: YYYYMMDD, inclusive")
     parser.add_argument("-output-dir", default='', help=f"default {DEFAULT_OUTPUT_DIR}")
-    parser.add_argument("-patterns", default='config/seed_patterns.txt', help="grep step: one substring per line")
-    parser.add_argument("-matches-path", default='', help=f"grep step: default {DEFAULT_MATCHES_PATH}")
+    parser.add_argument("-patterns", default='config/seed_patterns.txt',
+                        help="grep_seed_patterns: one substring per line")
+    parser.add_argument("-matches-path", default='', help=f"grep_seed_patterns: default {DEFAULT_MATCHES_PATH}")
     parser.add_argument("-aws", default='aws', help="path to the aws CLI")
     parser.add_argument("-work-dir", default=None, help="downloads and .lock/.done files (default $TMP/warcs)")
     # optional_int: SLURM passes unset options as '', which means no limit
@@ -246,7 +248,8 @@ def write_todo(index, start_date, end_date, work_dir, max_n):
 def read_todo(work_dir):
     todo_path = os.path.join(work_dir, 'todo.txt')
     if not os.path.exists(todo_path):
-        raise FileNotFoundError(f'{todo_path} missing; run -step todo first (scripts/cc_go.sh does)')
+        raise FileNotFoundError(f'{todo_path} missing; run -step write_warc_todo first '
+                                '(scripts/find_seed_links_go.sh does)')
     with open(todo_path) as f:
         return f.read().split()
 
@@ -382,7 +385,7 @@ def main():
     logging.basicConfig(level=logging.INFO)
     logging.getLogger('readability').setLevel(logging.ERROR)  # noisy on malformed pages
     output_dir = args.output_dir or DEFAULT_OUTPUT_DIR
-    if args.step == 'grep':
+    if args.step == 'grep_seed_patterns':
         run_grep_step(args, output_dir)
         return
 
@@ -391,9 +394,9 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
 
     index = CCNewsIndex(aws=args.aws)
-    if args.step == 'todo':
+    if args.step == 'write_warc_todo':
         if not (args.start_date and args.end_date):
-            raise ValueError('-step todo needs -start-date and -end-date')
+            raise ValueError('-step write_warc_todo needs -start-date and -end-date')
         n_range, n_todo = write_todo(index, args.start_date, args.end_date, work_dir, args.max_n)
         print(f'{n_range} WARCs between {args.start_date} and {args.end_date}; '
               f'{n_todo} still to do -> {work_dir}/todo.txt')

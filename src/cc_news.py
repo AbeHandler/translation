@@ -91,10 +91,11 @@ def warc_date(key):
 
 def months_between(start_date, end_date):
     """Yield (year, month) for every month from start_date to end_date, inclusive."""
-    year, month = start_date.year, start_date.month
-    while (year, month) <= (end_date.year, end_date.month):
-        yield year, month
-        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    first_of_month = start_date.replace(day=1)
+    while first_of_month <= end_date:
+        yield first_of_month.year, first_of_month.month
+        next_month = first_of_month + datetime.timedelta(days=32)  # always lands in the next month
+        first_of_month = next_month.replace(day=1)
 
 
 # ---------------------------------------------------------------- extracting article links

@@ -4,7 +4,7 @@
 # Usage (from the repo root):
 #   sbatch scripts/slurm/cc_env.slurm
 
-#SBATCH --partition=amilan
+#SBATCH --partition=acpu
 #SBATCH --time=24:00:00
 #SBATCH --job-name=cc_env
 #SBATCH --mem=8G

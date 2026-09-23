@@ -6,7 +6,7 @@
 #   sbatch --export=START_DATE=20260901,END_DATE=20260923,AWS=/home/abha4861/bin/v2/2.5.4/bin/aws,TMP=$TMP scripts/slurm/cc_todo.slurm
 #   optional: MAX_N=100 (test runs track their own .done files)
 
-#SBATCH --partition=amilan
+#SBATCH --partition=acpu
 #SBATCH --time=00:30:00
 #SBATCH --job-name=cc_todo
 #SBATCH --mem=2G

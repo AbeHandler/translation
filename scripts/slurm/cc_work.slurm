@@ -6,7 +6,7 @@
 #   sbatch --export=AWS=/home/abha4861/bin/v2/2.5.4/bin/aws,TMP=$TMP scripts/slurm/cc_work.slurm
 #   optional: MAX_N=100, MAX_WARCS=1, OUTPUT_DIR=data/interim/cc_links
 
-#SBATCH --partition=amilan
+#SBATCH --partition=acpu
 #SBATCH --time=24:00:00
 #SBATCH --job-name=cc_work
 #SBATCH --mem=8G

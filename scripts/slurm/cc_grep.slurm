@@ -7,7 +7,7 @@
 #   sbatch scripts/slurm/cc_grep.slurm
 #   optional: MAX_N=100 (grep that test run's files), OUTPUT_DIR=data/interim/cc_links
 
-#SBATCH --partition=amilan
+#SBATCH --partition=acpu
 #SBATCH --time=24:00:00
 #SBATCH --job-name=cc_grep
 #SBATCH --mem=4G

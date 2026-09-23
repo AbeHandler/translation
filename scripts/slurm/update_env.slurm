@@ -9,7 +9,7 @@
 #SBATCH --job-name=update_env
 #SBATCH --output=logs/scripts/slurm/%x_%j.out
 #SBATCH --mem=8G
-#SBATCH --qos=normal
+#SBATCH --qos=cpu-normal
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --mail-type=FAIL

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Go: submit the whole pipeline to SLURM and return right away.
-#   cc_env   create/update the cc conda env from config/cc.yml
+#   cc_env   create/update the translation conda env from config/translation.yml
 #   cc_todo  write $TMP/warcs/todo.txt (WARCs in range without a .done file)   [after cc_env]
 #   cc_work  N_WORKERS workers that process todo.txt                            [after cc_todo]
 # If a step fails, the jobs after it are cancelled. Safe to rerun: done WARCs are skipped.

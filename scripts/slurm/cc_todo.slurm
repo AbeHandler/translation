@@ -25,7 +25,7 @@ if [ -z "${START_DATE:-}" ] || [ -z "${END_DATE:-}" ] || [ -z "${AWS:-}" ] || [ 
 fi
 
 module load anaconda
-conda activate cc
+conda activate translation
 
 ARGS=(-step todo -start-date "$START_DATE" -end-date "$END_DATE" -aws "$AWS" -work-dir "$TMP/warcs")
 [ -n "${MAX_N:-}" ] && ARGS+=(-max-n "$MAX_N")

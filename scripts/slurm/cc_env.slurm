@@ -1,5 +1,5 @@
 #!/bin/bash
-# Create or update the cc conda env from config/cc.yml. Submitted by scripts/cc_go.sh.
+# Create or update the translation conda env from config/translation.yml. Submitted by scripts/cc_go.sh.
 #
 # Usage (from the repo root):
 #   sbatch scripts/slurm/cc_env.slurm
@@ -17,8 +17,8 @@
 set -eo pipefail  # no -u: ~/.myrc and conda activate reference unset vars
 source ~/.myrc
 
-ENV_NAME=cc
-ENV_FILE=config/cc.yml
+ENV_NAME=translation
+ENV_FILE=config/translation.yml
 
 module load anaconda
 if conda env list | grep -q "^${ENV_NAME} "; then

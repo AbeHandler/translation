@@ -26,7 +26,7 @@ if [ -z "${AWS:-}" ] || [ -z "${TMP:-}" ]; then
 fi
 
 module load anaconda
-conda activate cc
+conda activate translation
 
 ARGS=(-step work -aws "$AWS" -work-dir "$TMP/warcs")
 [ -n "${MAX_N:-}" ] && ARGS+=(-max-n "$MAX_N")

@@ -3,6 +3,7 @@
 #   cc_env   create/update the translation conda env from config/translation.yml
 #   cc_todo  write $TMP/warcs/todo.txt (WARCs in range without a .done file)   [after cc_env]
 #   cc_work  N_WORKERS workers that process todo.txt                            [after cc_todo]
+#   cc_grep  grep the links for config/cc_link_patterns.txt                     [after all cc_work end]
 # If a step fails, the jobs after it are cancelled. Safe to rerun: done WARCs are skipped.
 # Run from the repo root.
 #
@@ -38,15 +39,21 @@ TODO_JOB=$(sbatch --parsable --dependency=afterok:"$ENV_JOB" --kill-on-invalid-d
     --export="${EXPORTS},START_DATE=${START_DATE},END_DATE=${END_DATE}" "$SLURM_DIR/cc_todo.slurm")
 echo "cc_todo  $TODO_JOB (after $ENV_JOB)"
 
+WORK_JOBS=""
 for i in $(seq 1 "$N_WORKERS"); do
     WORK_JOB=$(sbatch --parsable --dependency=afterok:"$TODO_JOB" --kill-on-invalid-dep=yes \
         --export="$EXPORTS" "$SLURM_DIR/cc_work.slurm")
     echo "cc_work  $WORK_JOB (after $TODO_JOB)"
+    WORK_JOBS+=":$WORK_JOB"
 done
+
+# afterany: grep whatever finished even if a worker failed (e.g. hit the time limit)
+GREP_JOB=$(sbatch --parsable --dependency=afterany"$WORK_JOBS" --export="$EXPORTS" "$SLURM_DIR/cc_grep.slurm")
+echo "cc_grep  $GREP_JOB (after all cc_work)"
 
 echo
 echo "Spot checks:"
-echo "  squeue -u \$USER --name=cc_env,cc_todo,cc_work"
+echo "  squeue -u \$USER --name=cc_env,cc_todo,cc_work,cc_grep"
 echo "  wc -l $WORK_DIR/todo.txt           # WARCs to do (after cc_todo runs)"
 echo "  ls $WORK_DIR/*.done | wc -l         # finished"
 echo "  ls $WORK_DIR/*.lock                 # in progress (stale if no job is running)"

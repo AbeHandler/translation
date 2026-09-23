@@ -10,17 +10,20 @@ sidebars), and yields one row per page:
 CCNewsIndex lists the WARCs for a date range and downloads them with the aws CLI
 (s3://commoncrawl; needs AWS credentials).
 
-Steps (scripts/cc_go.sh submits todo, then the workers, as SLURM jobs):
+Steps (scripts/cc_go.sh submits todo, the workers, then grep, as SLURM jobs):
     todo  write <work-dir>/todo.txt: WARCs in the date range that don't have a .done file yet
     work  shuffle todo.txt and, for each WARC not done or locked by another worker, download it
           to -work-dir, write the links jsonl to -output-dir, write <work-dir>/<warc>.done, and
           delete the WARC. Workers coordinate through the .lock/.done files, so -work-dir must
           be on a shared filesystem.
+    grep  scan the links jsonl in -output-dir for the substrings in -patterns and write one row
+          per matching link to -matches-path
 
 Usage:
     python src/cc.py -step todo -start-date 20260901 -end-date 20260923
     python src/cc.py -step work
     python src/cc.py -step work -max-warcs 1 -max-n 100
+    python src/cc.py -step grep
 """
 import argparse
 import datetime
@@ -190,14 +193,17 @@ class CCNewsIndex:
 
 
 DEFAULT_OUTPUT_DIR = './data/interim/cc_links/'
+DEFAULT_MATCHES_PATH = './data/processed/cc_link_matches.jsonl'
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Find the links in each article of CC-NEWS WARCs for a date range")
-    parser.add_argument("-step", required=True, choices=['todo', 'work'])
+    parser.add_argument("-step", required=True, choices=['todo', 'work', 'grep'])
     parser.add_argument("-start-date", type=parse_date, help="todo step: YYYYMMDD, inclusive")
     parser.add_argument("-end-date", type=parse_date, help="todo step: YYYYMMDD, inclusive")
     parser.add_argument("-output-dir", default='', help=f"default {DEFAULT_OUTPUT_DIR}")
+    parser.add_argument("-patterns", default='config/cc_link_patterns.txt', help="grep step: one substring per line")
+    parser.add_argument("-matches-path", default='', help=f"grep step: default {DEFAULT_MATCHES_PATH}")
     parser.add_argument("-aws", default='aws', help="path to the aws CLI")
     parser.add_argument("-work-dir", default=None, help="downloads and .lock/.done files (default $TMP/warcs)")
     # optional_int: SLURM passes unset options as '', which means no limit
@@ -300,6 +306,51 @@ def run_worker(warc_paths, index, extractor, work_dir, output_dir, max_n, max_wa
     return n_processed
 
 
+def read_patterns(path):
+    """One substring per line; blank lines and # comments are ignored."""
+    with open(path) as f:
+        patterns = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+    if not patterns:
+        raise ValueError(f'no patterns in {path}')
+    return patterns
+
+
+def links_files(output_dir, max_n):
+    """The links jsonl files for this run type: *.max<N>.jsonl for tests, the rest otherwise."""
+    names = sorted(os.listdir(output_dir))
+    if max_n:
+        return [os.path.join(output_dir, n) for n in names if n.endswith(f'.max{max_n}.jsonl')]
+    return [os.path.join(output_dir, n) for n in names if n.endswith('.jsonl') and '.max' not in n]
+
+
+def grep_links(paths, patterns):
+    """Yield one row per (article link, pattern) where the pattern is a substring of the href."""
+    for path in paths:
+        with open(path, encoding='utf-8') as f:
+            for line in f:
+                if not any(p in line for p in patterns):  # cheap check before parsing json
+                    continue
+                article = json.loads(line)
+                for link in article['links']:
+                    for pattern in patterns:
+                        if pattern in link['href']:
+                            yield {'pattern': pattern, 'href': link['href'], 'link_text': link['text'],
+                                   'url': article['url'], 'title': article['title'],
+                                   'language': article['language'], 'links_file': os.path.basename(path)}
+
+
+def write_matches(paths, patterns, matches_path):
+    """Write all matches to matches_path (rebuilt each run, via .part); returns count per pattern."""
+    counts = {p: 0 for p in patterns}
+    os.makedirs(os.path.dirname(matches_path), exist_ok=True)
+    with open(matches_path + '.part', 'w', encoding='utf-8') as out:
+        for row in grep_links(paths, patterns):
+            out.write(json.dumps(row, ensure_ascii=False) + '\n')
+            counts[row['pattern']] += 1
+    os.rename(matches_path + '.part', matches_path)
+    return counts
+
+
 def print_spot_checks(work_dir, output_dir, n_todo):
     print('\nSpot checks:')
     print(f'  ls {work_dir}/*.done | wc -l   # of {n_todo} WARCs')
@@ -308,12 +359,34 @@ def print_spot_checks(work_dir, output_dir, n_todo):
     print(f'  cat {output_dir}/*.jsonl | jq -r .language | sort | uniq -c')
 
 
+def run_grep_step(args, output_dir):
+    patterns = read_patterns(args.patterns)
+    paths = links_files(output_dir, args.max_n)
+    if not paths:
+        raise FileNotFoundError(f'no links jsonl files in {output_dir}')
+    default_path = DEFAULT_MATCHES_PATH.replace('.jsonl', f'.max{args.max_n}.jsonl') if args.max_n \
+        else DEFAULT_MATCHES_PATH
+    matches_path = args.matches_path or default_path
+    counts = write_matches(paths, patterns, matches_path)
+    print(f'Grepped {len(paths)} links files -> {matches_path}')
+    for pattern, n in counts.items():
+        print(f'  {n:6d}  {pattern}')
+    print('\nSpot checks:')
+    print(f"  jq -r .pattern {matches_path} | sort | uniq -c")
+    print(f"  jq -c '{{href, url, language}}' {matches_path} | head")
+    print(f"  jq -r .url {matches_path} | awk -F/ '{{print $3}}' | sort | uniq -c | sort -rn | head")
+
+
 def main():
     args = parse_args()
     logging.basicConfig(level=logging.INFO)
     logging.getLogger('readability').setLevel(logging.ERROR)  # noisy on malformed pages
-    work_dir = args.work_dir or default_work_dir()
     output_dir = args.output_dir or DEFAULT_OUTPUT_DIR
+    if args.step == 'grep':
+        run_grep_step(args, output_dir)
+        return
+
+    work_dir = args.work_dir or default_work_dir()
     os.makedirs(work_dir, exist_ok=True)
     os.makedirs(output_dir, exist_ok=True)
 

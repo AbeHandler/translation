@@ -1,4 +1,4 @@
-# Env for the translation project (src/cc_news.py: CC-NEWS WARC link extraction)
+# Env for the translation project (scripts/find_seed_links.py: CC-NEWS seed links)
 # Create: conda env create -f config/translation.yml
 name: translation
 channels:

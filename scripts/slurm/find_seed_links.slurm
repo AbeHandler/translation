@@ -1,5 +1,5 @@
 #!/bin/bash
-# One worker of src/cc_news.py: runs every step for the date range, skipping WARCs that are done
+# One worker of scripts/find_seed_links.py: runs every step for the date range, skipping WARCs that are done
 # or claimed by another worker. scripts/go.sh submits N of these after update_env.
 #
 # Usage (from the repo root; normally via scripts/go.sh):
@@ -28,8 +28,8 @@ fi
 module load anaconda
 conda activate translation
 
-# MAX_N and MAX_WARCS may be empty; src/cc_news.py treats empty as "no limit".
-python -m src.cc_news \
+# MAX_N and MAX_WARCS may be empty; the script treats empty as "no limit".
+python -m scripts.find_seed_links \
     -start-date "$START_DATE" \
     -end-date "$END_DATE" \
     -aws "$AWS" \

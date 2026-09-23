@@ -1,7 +1,7 @@
 #!/bin/bash
 # Driver for the whole pipeline: submits it to SLURM and returns right away.
 #   update_env       create/update the translation conda env from config/translation.yml
-#   find_seed_links  N_WORKERS copies of src/cc_news.py, after update_env succeeds. Each lists the
+#   find_seed_links  N_WORKERS copies of scripts/find_seed_links.py, after update_env succeeds. Each lists the
 #                    WARCs, processes the ones not done or claimed, and the last one to finish
 #                    greps the links for config/seed_patterns.txt.
 # Safe to rerun: done WARCs are skipped. Clean slate: bash scripts/flush.sh

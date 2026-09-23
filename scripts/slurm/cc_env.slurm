@@ -1,0 +1,28 @@
+#!/bin/bash
+# Create or update the cc conda env from config/cc.yml. Submitted by scripts/cc_go.sh.
+#
+# Usage (from the repo root):
+#   sbatch scripts/slurm/cc_env.slurm
+
+#SBATCH --partition=amilan
+#SBATCH --time=01:00:00
+#SBATCH --job-name=cc_env
+#SBATCH --mem=8G
+#SBATCH --qos=normal
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mail-type=FAIL
+#SBATCH --mail-user=abha4861@colorado.edu
+
+set -eo pipefail  # no -u: ~/.myrc and conda activate reference unset vars
+source ~/.myrc
+
+ENV_NAME=cc
+ENV_FILE=config/cc.yml
+
+module load anaconda
+if conda env list | grep -q "^${ENV_NAME} "; then
+    conda env update -n "$ENV_NAME" -f "$ENV_FILE" --prune
+else
+    conda env create -f "$ENV_FILE"
+fi

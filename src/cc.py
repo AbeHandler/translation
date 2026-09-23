@@ -10,7 +10,7 @@ sidebars), and yields one row per page:
 CCNewsIndex lists the WARCs for a date range and downloads them with the aws CLI
 (s3://commoncrawl; needs AWS credentials).
 
-Steps (scripts/cc_go.sh runs todo, then launches the workers):
+Steps (scripts/cc_go.sh submits todo, then the workers, as SLURM jobs):
     todo  write <work-dir>/todo.txt: WARCs in the date range that don't have a .done file yet
     work  shuffle todo.txt and, for each WARC not done or locked by another worker, download it
           to -work-dir, write the links jsonl to -output-dir, write <work-dir>/<warc>.done, and

@@ -1,14 +1,17 @@
 #!/bin/bash
-# Go: update the cc conda env, write the TODO list of CC-NEWS WARCs, launch the workers.
-# Safe to rerun: done WARCs (.done files in $TMP/warcs) are left out of the TODO list.
-# Run from the repo root on a login node.
+# Go: submit the whole pipeline to SLURM and return right away.
+#   cc_env   create/update the cc conda env from config/cc.yml
+#   cc_todo  write $TMP/warcs/todo.txt (WARCs in range without a .done file)   [after cc_env]
+#   cc_work  N_WORKERS workers that process todo.txt                            [after cc_todo]
+# If a step fails, the jobs after it are cancelled. Safe to rerun: done WARCs are skipped.
+# Run from the repo root.
 #
 # Usage:
 #   START_DATE=20260901 END_DATE=20260923 bash scripts/cc_go.sh
 #   START_DATE=20260901 END_DATE=20260923 N_WORKERS=20 bash scripts/cc_go.sh
 #   START_DATE=20260923 END_DATE=20260923 N_WORKERS=1 MAX_WARCS=1 MAX_N=100 bash scripts/cc_go.sh  # test
 
-set -eo pipefail  # no -u: ~/.myrc and conda activate reference unset vars
+set -eo pipefail  # no -u: ~/.myrc references unset vars
 source ~/.myrc  # first, so $TMP etc. from ~/.myrc are set before the checks below
 
 if [ -z "${START_DATE:-}" ] || [ -z "${END_DATE:-}" ]; then
@@ -16,48 +19,36 @@ if [ -z "${START_DATE:-}" ] || [ -z "${END_DATE:-}" ]; then
     echo "Usage: START_DATE=20260901 END_DATE=20260923 bash scripts/cc_go.sh"
     exit 1
 fi
-N_WORKERS=${N_WORKERS:-10}
-ENV_NAME=cc
-ENV_FILE=config/cc.yml
-AWS=/home/abha4861/bin/v2/2.5.4/bin/aws  # aws CLI v2 on Alpine (an alias there, so not on PATH in jobs)
-
-module load anaconda
 if [ -z "${TMP:-}" ]; then
     echo "ERROR: \$TMP is not set; .lock/.done files go in \$TMP/warcs"
     exit 1
 fi
+N_WORKERS=${N_WORKERS:-10}
+AWS=/home/abha4861/bin/v2/2.5.4/bin/aws  # aws CLI v2 on Alpine (an alias there, so not on PATH in jobs)
+SLURM_DIR=scripts/slurm
 WORK_DIR=$TMP/warcs
 
-echo "== env: ${ENV_NAME} from ${ENV_FILE}"
-if conda env list | grep -q "^${ENV_NAME} "; then
-    conda env update -n "$ENV_NAME" -f "$ENV_FILE" --prune
-else
-    conda env create -f "$ENV_FILE"
-fi
-conda activate "$ENV_NAME"
-
-echo "== todo"
-TODO_ARGS=(-step todo -start-date "$START_DATE" -end-date "$END_DATE" -aws "$AWS" -work-dir "$WORK_DIR")
-[ -n "${MAX_N:-}" ] && TODO_ARGS+=(-max-n "$MAX_N")
-python src/cc.py "${TODO_ARGS[@]}"
-N_TODO=$(wc -l < "$WORK_DIR/todo.txt")
-if [ "$N_TODO" -eq 0 ]; then
-    echo "Nothing to do: every WARC in range has a .done file"
-    exit 0
-fi
-
-N_LAUNCH=$(( N_TODO < N_WORKERS ? N_TODO : N_WORKERS ))
-echo "== launch ${N_LAUNCH} workers for ${N_TODO} WARCs"
 EXPORTS="AWS=${AWS},TMP=${TMP}"
 [ -n "${MAX_N:-}" ] && EXPORTS+=",MAX_N=${MAX_N}"
 [ -n "${MAX_WARCS:-}" ] && EXPORTS+=",MAX_WARCS=${MAX_WARCS}"
 [ -n "${OUTPUT_DIR:-}" ] && EXPORTS+=",OUTPUT_DIR=${OUTPUT_DIR}"
-for i in $(seq 1 "$N_LAUNCH"); do
-    sbatch --parsable --export="$EXPORTS" scripts/slurm/cc.slurm
+
+ENV_JOB=$(sbatch --parsable "$SLURM_DIR/cc_env.slurm")
+echo "cc_env   $ENV_JOB"
+
+TODO_JOB=$(sbatch --parsable --dependency=afterok:"$ENV_JOB" --kill-on-invalid-dep=yes \
+    --export="${EXPORTS},START_DATE=${START_DATE},END_DATE=${END_DATE}" "$SLURM_DIR/cc_todo.slurm")
+echo "cc_todo  $TODO_JOB (after $ENV_JOB)"
+
+for i in $(seq 1 "$N_WORKERS"); do
+    WORK_JOB=$(sbatch --parsable --dependency=afterok:"$TODO_JOB" --kill-on-invalid-dep=yes \
+        --export="$EXPORTS" "$SLURM_DIR/cc_work.slurm")
+    echo "cc_work  $WORK_JOB (after $TODO_JOB)"
 done
 
 echo
 echo "Spot checks:"
-echo "  squeue -u \$USER -n cc"
-echo "  ls $WORK_DIR/*.done | wc -l      # vs $(wc -l < "$WORK_DIR/todo.txt" | tr -d ' ') todo at launch"
-echo "  ls $WORK_DIR/*.lock              # in progress (stale if no job is running)"
+echo "  squeue -u \$USER --name=cc_env,cc_todo,cc_work"
+echo "  wc -l $WORK_DIR/todo.txt           # WARCs to do (after cc_todo runs)"
+echo "  ls $WORK_DIR/*.done | wc -l         # finished"
+echo "  ls $WORK_DIR/*.lock                 # in progress (stale if no job is running)"

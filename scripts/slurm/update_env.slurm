@@ -2,11 +2,11 @@
 # Create or update the translation conda env from config/translation.yml. Submitted by scripts/cc_go.sh.
 #
 # Usage (from the repo root):
-#   sbatch scripts/slurm/cc_env.slurm
+#   sbatch scripts/slurm/update_env.slurm
 
 #SBATCH --partition=acpu
 #SBATCH --time=24:00:00
-#SBATCH --job-name=cc_env
+#SBATCH --job-name=update_env
 #SBATCH --mem=8G
 #SBATCH --qos=normal
 #SBATCH --nodes=1

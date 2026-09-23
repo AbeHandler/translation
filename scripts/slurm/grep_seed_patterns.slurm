@@ -4,12 +4,12 @@
 # Rebuilds the matches file each run, so rerun it any time (e.g. after editing the patterns).
 #
 # Usage (from the repo root):
-#   sbatch scripts/slurm/cc_grep.slurm
+#   sbatch scripts/slurm/grep_seed_patterns.slurm
 #   optional: MAX_N=100 (grep that test run's files), OUTPUT_DIR=data/interim/cc_links
 
 #SBATCH --partition=acpu
 #SBATCH --time=24:00:00
-#SBATCH --job-name=cc_grep
+#SBATCH --job-name=grep_seed_patterns
 #SBATCH --mem=4G
 #SBATCH --qos=normal
 #SBATCH --nodes=1

@@ -1,14 +1,14 @@
 #!/bin/bash
 # Worker for src/cc.py -step work: shuffles $TMP/warcs/todo.txt and processes each WARC not
-# done or locked by another worker. scripts/cc_go.sh submits N of these after cc_env and cc_todo.
+# done or locked by another worker. scripts/cc_go.sh submits N of these after update_env and write_warc_todo.
 #
 # Usage (from the repo root; normally via scripts/cc_go.sh):
-#   sbatch --export=AWS=/home/abha4861/bin/v2/2.5.4/bin/aws,TMP=$TMP scripts/slurm/cc_work.slurm
+#   sbatch --export=AWS=/home/abha4861/bin/v2/2.5.4/bin/aws,TMP=$TMP scripts/slurm/extract_article_links.slurm
 #   optional: MAX_N=100, MAX_WARCS=1, OUTPUT_DIR=data/interim/cc_links
 
 #SBATCH --partition=acpu
 #SBATCH --time=24:00:00
-#SBATCH --job-name=cc_work
+#SBATCH --job-name=extract_article_links
 #SBATCH --mem=8G
 #SBATCH --qos=normal
 #SBATCH --nodes=1
@@ -21,7 +21,7 @@ source ~/.myrc  # first, so $TMP etc. from ~/.myrc are set before the checks bel
 
 if [ -z "${AWS:-}" ] || [ -z "${TMP:-}" ]; then
     echo "ERROR: AWS (path to aws CLI) and TMP (.lock/.done files go in \$TMP/warcs) are required"
-    echo "Usage: sbatch --export=AWS=/home/abha4861/bin/v2/2.5.4/bin/aws,TMP=\$TMP scripts/slurm/cc_work.slurm"
+    echo "Usage: sbatch --export=AWS=/home/abha4861/bin/v2/2.5.4/bin/aws,TMP=\$TMP scripts/slurm/extract_article_links.slurm"
     exit 1
 fi
 

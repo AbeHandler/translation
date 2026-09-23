@@ -1,9 +1,9 @@
 #!/bin/bash
 # Go: submit the whole pipeline to SLURM and return right away.
-#   cc_env   create/update the translation conda env from config/translation.yml
-#   cc_todo  write $TMP/warcs/todo.txt (WARCs in range without a .done file)   [after cc_env]
-#   cc_work  N_WORKERS workers that process todo.txt                            [after cc_todo]
-#   cc_grep  grep the links for config/seed_patterns.txt                     [after all cc_work end]
+#   update_env             create/update the translation conda env from config/translation.yml
+#   write_warc_todo        write $TMP/warcs/todo.txt: WARCs in range without a .done file  [after update_env]
+#   extract_article_links  N_WORKERS workers that process todo.txt                         [after write_warc_todo]
+#   grep_seed_patterns     grep the links for config/seed_patterns.txt                     [after all workers end]
 # If a step fails, the jobs after it are cancelled. Safe to rerun: done WARCs are skipped.
 # Run from the repo root.
 #
@@ -32,28 +32,28 @@ WORK_DIR=$TMP/warcs
 # Passed to every job. Unset optional vars go through empty, and the jobs ignore empty ones.
 EXPORTS="AWS=$AWS,TMP=$TMP,MAX_N=$MAX_N,MAX_WARCS=$MAX_WARCS,OUTPUT_DIR=$OUTPUT_DIR"
 
-ENV_JOB=$(sbatch --parsable "$SLURM_DIR/cc_env.slurm")
-echo "cc_env   $ENV_JOB"
+ENV_JOB=$(sbatch --parsable "$SLURM_DIR/update_env.slurm")
+echo "update_env             $ENV_JOB"
 
 TODO_JOB=$(sbatch --parsable --dependency=afterok:"$ENV_JOB" --kill-on-invalid-dep=yes \
-    --export="${EXPORTS},START_DATE=${START_DATE},END_DATE=${END_DATE}" "$SLURM_DIR/cc_todo.slurm")
-echo "cc_todo  $TODO_JOB (after $ENV_JOB)"
+    --export="${EXPORTS},START_DATE=${START_DATE},END_DATE=${END_DATE}" "$SLURM_DIR/write_warc_todo.slurm")
+echo "write_warc_todo        $TODO_JOB (after $ENV_JOB)"
 
 WORK_JOBS=""
 for i in $(seq 1 "$N_WORKERS"); do
     WORK_JOB=$(sbatch --parsable --dependency=afterok:"$TODO_JOB" --kill-on-invalid-dep=yes \
-        --export="$EXPORTS" "$SLURM_DIR/cc_work.slurm")
-    echo "cc_work  $WORK_JOB (after $TODO_JOB)"
+        --export="$EXPORTS" "$SLURM_DIR/extract_article_links.slurm")
+    echo "extract_article_links  $WORK_JOB (after $TODO_JOB)"
     WORK_JOBS+=":$WORK_JOB"
 done
 
 # afterany: grep whatever finished even if a worker failed (e.g. hit the time limit)
-GREP_JOB=$(sbatch --parsable --dependency=afterany"$WORK_JOBS" --export="$EXPORTS" "$SLURM_DIR/cc_grep.slurm")
-echo "cc_grep  $GREP_JOB (after all cc_work)"
+GREP_JOB=$(sbatch --parsable --dependency=afterany"$WORK_JOBS" --export="$EXPORTS" "$SLURM_DIR/grep_seed_patterns.slurm")
+echo "grep_seed_patterns     $GREP_JOB (after all extract_article_links)"
 
 echo
 echo "Spot checks:"
-echo "  squeue -u \$USER --name=cc_env,cc_todo,cc_work,cc_grep"
-echo "  wc -l $WORK_DIR/todo.txt           # WARCs to do (after cc_todo runs)"
+echo "  squeue -u \$USER --name=update_env,write_warc_todo,extract_article_links,grep_seed_patterns"
+echo "  wc -l $WORK_DIR/todo.txt           # WARCs to do (after write_warc_todo runs)"
 echo "  ls $WORK_DIR/*.done | wc -l         # finished"
 echo "  ls $WORK_DIR/*.lock                 # in progress (stale if no job is running)"

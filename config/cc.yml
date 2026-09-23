@@ -1,0 +1,15 @@
+# Env for src/cc.py (CC-NEWS WARC link extraction)
+# Create: conda env create -f config/cc.yml
+name: cc
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - news-please==1.6.16
+      - warcio==1.8.1
+      - readability-lxml==0.9
+      - lxml==6.0.2
+      - lxml_html_clean==0.4.3
+      - tqdm==4.67.1

@@ -18,6 +18,7 @@
 #SBATCH --mail-user=abha4861@colorado.edu
 
 set -eo pipefail  # no -u: ~/.myrc and conda activate reference unset vars
+source ~/.myrc  # first, so $TMP etc. from ~/.myrc are set before the checks below
 
 if [ -z "${AWS:-}" ] || [ -z "${TMP:-}" ]; then
     echo "ERROR: AWS (path to aws CLI) and TMP (.lock/.done files go in \$TMP/warcs) are required"
@@ -25,7 +26,6 @@ if [ -z "${AWS:-}" ] || [ -z "${TMP:-}" ]; then
     exit 1
 fi
 
-source ~/.myrc
 module load anaconda
 conda activate cc
 

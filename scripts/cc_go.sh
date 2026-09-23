@@ -9,6 +9,7 @@
 #   START_DATE=20260923 END_DATE=20260923 N_WORKERS=1 MAX_WARCS=1 MAX_N=100 bash scripts/cc_go.sh  # test
 
 set -eo pipefail  # no -u: ~/.myrc and conda activate reference unset vars
+source ~/.myrc  # first, so $TMP etc. from ~/.myrc are set before the checks below
 
 if [ -z "${START_DATE:-}" ] || [ -z "${END_DATE:-}" ]; then
     echo "ERROR: START_DATE and END_DATE (YYYYMMDD) are required"
@@ -20,7 +21,6 @@ ENV_NAME=cc
 ENV_FILE=config/cc.yml
 AWS=/home/abha4861/bin/v2/2.5.4/bin/aws  # aws CLI v2 on Alpine (an alias there, so not on PATH in jobs)
 
-source ~/.myrc
 module load anaconda
 if [ -z "${TMP:-}" ]; then
     echo "ERROR: \$TMP is not set; .lock/.done files go in \$TMP/warcs"

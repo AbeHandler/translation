@@ -1,29 +1,25 @@
 #!/usr/bin/env python
 """
-Find the links in each article of CC-NEWS WARC files for a date range.
+Find which CC-NEWS articles link to a set of seed URLs.
 
-CCLinkExtractor loops over the HTML responses in a WARC, keeps articles in the wanted languages
-(language from news-please), uses readability to keep only the article body (no nav/footer/
-sidebars), and yields one row per page:
-    {url, title, language, n_links, links: [{href, text, internal}]}
+SeedLinkPipeline.run(start_date, end_date) runs every step; each one skips work already done,
+so a rerun picks up where the last one stopped:
+    1. list the WARCs crawled in [start_date, end_date] that have no .done file yet
+    2. for each of them (shuffled) that no other worker has claimed: download it, write one row
+       per en/zh article with the links in its body -> <output-dir>/<warc>.jsonl, mark it done,
+       delete the WARC
+    3. once every WARC in the range is done, find article links containing a line of
+       config/seed_patterns.txt -> data/processed/cc_link_matches.jsonl
 
-CCNewsIndex lists the WARCs for a date range and downloads them with the aws CLI
-(s3://commoncrawl; needs AWS credentials).
-
-Steps (scripts/find_seed_links_go.sh submits them in this order as SLURM jobs):
-    write_warc_todo        write <work-dir>/todo.txt: WARCs in the date range without a .done file
-    extract_article_links  shuffle todo.txt and, for each WARC not done or locked by another
-                           worker, download it to -work-dir, write the links jsonl to -output-dir,
-                           write <work-dir>/<warc>.done, and delete the WARC. Workers coordinate
-                           through the .lock/.done files, so -work-dir must be on a shared filesystem.
-    grep_seed_patterns     scan the links jsonl in -output-dir for the substrings in -patterns and
-                           write one row per matching link to -matches-path
+Run many copies at once (scripts/go.sh does): they coordinate through
+<work-dir>/<warc>.lock and <warc>.done files, so -work-dir must be on a filesystem every node
+can see. Whichever copy finishes last writes the matches. -max-n (rows per WARC, for tests)
+adds .max<N> to every file name, so test runs never mix with real ones.
+scripts/flush.sh deletes everything this writes, for a clean rerun.
 
 Usage:
-    python src/cc_news.py -step write_warc_todo -start-date 20260901 -end-date 20260923
-    python src/cc_news.py -step extract_article_links
-    python src/cc_news.py -step extract_article_links -max-warcs 1 -max-n 100
-    python src/cc_news.py -step grep_seed_patterns
+    python src/cc_news.py -start-date 20260901 -end-date 20260923
+    python src/cc_news.py -start-date 20260923 -end-date 20260923 -max-warcs 1 -max-n 100
 """
 import argparse
 import datetime
@@ -33,6 +29,8 @@ import os
 import random
 import socket
 import subprocess
+from collections import Counter
+from contextlib import contextmanager
 from types import SimpleNamespace
 from urllib.parse import urljoin, urlparse
 
@@ -43,95 +41,129 @@ from tqdm import tqdm
 from tqdm.utils import CallbackIOWrapper
 from warcio.archiveiterator import ArchiveIterator
 
+DEFAULT_OUTPUT_DIR = 'data/interim/cc_links'
+DEFAULT_MATCHES_PATH = 'data/processed/cc_link_matches.jsonl'
+DEFAULT_PATTERNS = 'config/seed_patterns.txt'
+S3_BUCKET = 's3://commoncrawl/'
+
 logger = logging.getLogger(__name__)
 
 
-class CCLinkExtractor:
-    """Extracts article-body links from CC-NEWS WARC files."""
+# ---------------------------------------------------------------- listing and downloading WARCs
 
-    # news-please two-letter codes (zh covers zh-cn, zh-tw, zh-hk, ...)
-    DEFAULT_LANGUAGES = ('en', 'zh')
+class CCNewsIndex:
+    """Lists and downloads CC-NEWS WARCs from s3://commoncrawl with the aws CLI.
+
+    A WARC is named by its S3 key: crawl-data/CC-NEWS/2026/09/CC-NEWS-20260923153007-00006.warc.gz
+    """
+
+    def __init__(self, aws='aws', bucket=S3_BUCKET):
+        self.aws = aws
+        self.bucket = bucket
+
+    def list_warcs(self, start_date, end_date):
+        """Keys of the WARCs crawled on days in [start_date, end_date]."""
+        keys = []
+        for year, month in months_between(start_date, end_date):
+            keys += self._list_month(year, month)
+        return [key for key in keys if start_date <= warc_date(key) <= end_date]
+
+    def download(self, key, dest):
+        """Download via a .part file, so a killed download never looks complete."""
+        self._aws('s3', 'cp', '--only-show-errors', self.bucket + key, dest + '.part')
+        os.rename(dest + '.part', dest)
+
+    def _list_month(self, year, month):
+        # `aws s3 ls` prints lines like: 2026-09-23 16:01:02 1072866466 CC-NEWS-20260923153007-00006.warc.gz
+        prefix = f'crawl-data/CC-NEWS/{year}/{month:02d}/'
+        listing = self._aws('s3', 'ls', self.bucket + prefix)
+        return [prefix + line.split()[-1] for line in listing.splitlines() if line.endswith('.warc.gz')]
+
+    def _aws(self, *args):
+        """Run the aws CLI and return its stdout; raise with its stderr on failure."""
+        result = subprocess.run([self.aws, *args], capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(f'{self.aws} {" ".join(args)} failed:\n{result.stderr}')
+        return result.stdout
+
+
+def warc_name(key):
+    """crawl-data/.../CC-NEWS-20260923153007-00006.warc.gz -> CC-NEWS-20260923153007-00006"""
+    return os.path.basename(key).removesuffix('.warc.gz')
+
+
+def warc_date(key):
+    """crawl-data/.../CC-NEWS-20260923153007-00006.warc.gz -> date(2026, 9, 23)"""
+    timestamp = warc_name(key).split('-')[2]
+    return datetime.datetime.strptime(timestamp[:8], '%Y%m%d').date()
+
+
+def months_between(start_date, end_date):
+    """Yield (year, month) for every month from start_date to end_date, inclusive."""
+    year, month = start_date.year, start_date.month
+    while (year, month) <= (end_date.year, end_date.month):
+        yield year, month
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+
+
+# ---------------------------------------------------------------- extracting article links
+
+class ArticleLinkExtractor:
+    """Turns a WARC into one row per article in the wanted languages:
+        {url, title, language, n_links, links: [{href, text, internal}]}
+
+    The language comes from news-please (<html lang>, then meta tags, then langdetect).
+    readability trims each page to the article body, so nav/footer/sidebar links are dropped.
+    """
+
+    LANGUAGES = ('en', 'zh')  # news-please two-letter codes; zh covers zh-cn, zh-tw, zh-hk, ...
     SKIP_HREF_PREFIXES = ('#', 'javascript:', 'mailto:', 'tel:')
 
-    def __init__(self, languages=DEFAULT_LANGUAGES, max_n=None):
+    def __init__(self, languages=LANGUAGES, max_n=None):
         self.languages = languages
         self.max_n = max_n
-        self.counts = {}
+        self.counts = Counter()
         self._lang_extractor = LangExtractor()
 
-    def iter_rows(self, warc_path):
-        """Yield one row per kept article. Progress bar tracks bytes of the .warc.gz read."""
-        self.counts = {'rows': 0, 'errors': 0, 'other_language': 0, 'links': 0}
-        with open(warc_path, 'rb') as raw, \
-                tqdm(total=os.path.getsize(warc_path), unit='B', unit_scale=True, desc='warc',
-                     disable=None) as bar:  # no bar in SLURM logs
-            stream = CallbackIOWrapper(bar.update, raw, 'read')
-            for page_url, html in self._iter_html_responses(stream):
-                row = self._to_row(page_url, html)
-                if row is None:
-                    continue
-                self.counts['rows'] += 1
-                self.counts['links'] += row['n_links']
-                bar.set_postfix(self.counts, refresh=False)
-                yield row
-                if self.max_n and self.counts['rows'] >= self.max_n:
-                    return
+    def rows(self, warc_stream):
+        """Yield rows from an open .warc.gz stream (at most max_n). Tallies self.counts."""
+        self.counts = Counter(rows=0, links=0, other_language=0, errors=0)
+        for url, html in iter_html_pages(warc_stream):
+            row = self._row(url, html)
+            if row is None:
+                continue
+            self.counts['rows'] += 1
+            self.counts['links'] += row['n_links']
+            yield row
+            if self.max_n and self.counts['rows'] >= self.max_n:
+                return
 
-    def write_jsonl(self, warc_path, out_path):
-        """Write rows to out_path via a .lock file so a partial run never looks finished."""
-        lock_path = out_path + '.lock'
-        with open(lock_path, 'w', encoding='utf-8') as out:
-            for row in self.iter_rows(warc_path):
-                out.write(json.dumps(row, ensure_ascii=False) + '\n')
-        os.rename(lock_path, out_path)
-        return self.counts
-
-    def _to_row(self, page_url, html):
-        """Return a row, or None if the page is in another language or can't be parsed."""
+    def _row(self, url, html):
+        """The row for one page, or None if it is in another language or can't be parsed."""
         try:
-            language = self._get_language(html)
+            language = self._language(html)
             if language not in self.languages:
                 self.counts['other_language'] += 1
                 return None
-            title, body = self._parse_article(html)
+            doc = Document(html)
+            title, body = doc.short_title(), lxml.html.fromstring(doc.summary())
         except Exception as exc:  # empty/garbled pages are common in CC-NEWS
             self.counts['errors'] += 1
-            logger.debug('parse failed for %s: %s', page_url, exc)
+            logger.debug('parse failed for %s: %s', url, exc)
             return None
-        links = self._find_article_links(page_url, body)
-        return {'url': page_url, 'title': title, 'language': language, 'n_links': len(links), 'links': links}
+        links = self._links(url, body)
+        return {'url': url, 'title': title, 'language': language, 'n_links': len(links), 'links': links}
 
-    @staticmethod
-    def _iter_html_responses(stream):
-        """Yield (url, html_bytes) for each HTML response record in an open WARC stream."""
-        for record in ArchiveIterator(stream):
-            if record.rec_type != 'response':
-                continue
-            content_type = record.http_headers.get_header('Content-Type') or ''
-            if 'html' not in content_type:
-                continue
-            yield record.rec_headers.get_header('WARC-Target-URI'), record.content_stream().read()
-
-    def _get_language(self, html):
-        """
-        news-please's article language: <html lang>, then meta tags, then og:locale; langdetect only
-        as a last resort. Calls just its language extractor, not the full (slow) news-please pipeline.
-        """
+    def _language(self, html):
+        # Only news-please's language extractor; its full pipeline is much slower.
         return self._lang_extractor._language({'spider_response': SimpleNamespace(body=html)})
 
-    @staticmethod
-    def _parse_article(html):
-        """Return (title, body) where body is the lxml tree of the article only (readability)."""
-        doc = Document(html)
-        return doc.short_title(), lxml.html.fromstring(doc.summary())
-
-    @classmethod
-    def _find_article_links(cls, page_url, body):
-        """Return links in the article body. Relative hrefs are resolved against page_url."""
+    def _links(self, page_url, body):
+        """Links in the article body, with relative hrefs made absolute."""
         links = []
         for anchor in body.iter('a'):
             href = anchor.get('href', '').strip()
-            if not href or href.startswith(cls.SKIP_HREF_PREFIXES):
+            if not href or href.startswith(self.SKIP_HREF_PREFIXES):
                 continue
             href = urljoin(page_url, href)
             links.append({
@@ -142,175 +174,70 @@ class CCLinkExtractor:
         return links
 
 
-class CCNewsIndex:
-    """Lists and downloads CC-NEWS WARC files from s3://commoncrawl with the aws CLI."""
-
-    BUCKET = 's3://commoncrawl/'
-
-    def __init__(self, aws='aws', bucket=BUCKET):
-        self.aws = aws
-        self.bucket = bucket
-
-    def warc_paths(self, start_date, end_date):
-        """Return WARC paths (crawl-data/CC-NEWS/...) crawled on days in [start_date, end_date]."""
-        paths = []
-        for year, month in self._months(start_date, end_date):
-            paths += self._month_paths(year, month)
-        return [p for p in paths if start_date <= self.warc_date(p) <= end_date]
-
-    def download(self, warc_path, dest):
-        """Download to dest via a .part file, so a killed download never looks complete."""
-        part = dest + '.part'
-        self._run_aws('s3', 'cp', '--only-show-errors', self.bucket + warc_path, part)
-        os.rename(part, dest)
-
-    @staticmethod
-    def warc_date(warc_path):
-        """CC-NEWS-20260923153007-00006.warc.gz -> date(2026, 9, 23)"""
-        stamp = os.path.basename(warc_path).split('-')[2]
-        return datetime.datetime.strptime(stamp[:8], '%Y%m%d').date()
-
-    def _month_paths(self, year, month):
-        """`aws s3 ls` lines look like: 2026-09-23 16:01:02 1072866466 CC-NEWS-20260923153007-00006.warc.gz"""
-        prefix = f'crawl-data/CC-NEWS/{year}/{month:02d}/'
-        listing = self._run_aws('s3', 'ls', self.bucket + prefix)
-        names = [line.split()[-1] for line in listing.splitlines() if line.endswith('.warc.gz')]
-        return [prefix + name for name in names]
-
-    def _run_aws(self, *args):
-        """Run the aws CLI and return stdout; raises with aws's stderr on failure."""
-        result = subprocess.run([self.aws, *args], capture_output=True, text=True)
-        if result.returncode != 0:
-            raise RuntimeError(f'{self.aws} {" ".join(args)} failed:\n{result.stderr}')
-        return result.stdout
-
-    @staticmethod
-    def _months(start_date, end_date):
-        year, month = start_date.year, start_date.month
-        while (year, month) <= (end_date.year, end_date.month):
-            yield year, month
-            year, month = (year + 1, 1) if month == 12 else (year, month + 1)
-
-
-DEFAULT_OUTPUT_DIR = './data/interim/cc_links/'
-DEFAULT_MATCHES_PATH = './data/processed/cc_link_matches.jsonl'
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Find the links in each article of CC-NEWS WARCs for a date range")
-    parser.add_argument("-step", required=True,
-                        choices=['write_warc_todo', 'extract_article_links', 'grep_seed_patterns'])
-    parser.add_argument("-start-date", type=parse_date, help="write_warc_todo: YYYYMMDD, inclusive")
-    parser.add_argument("-end-date", type=parse_date, help="write_warc_todo: YYYYMMDD, inclusive")
-    parser.add_argument("-output-dir", default='', help=f"default {DEFAULT_OUTPUT_DIR}")
-    parser.add_argument("-patterns", default='config/seed_patterns.txt',
-                        help="grep_seed_patterns: one substring per line")
-    parser.add_argument("-matches-path", default='', help=f"grep_seed_patterns: default {DEFAULT_MATCHES_PATH}")
-    parser.add_argument("-aws", default='aws', help="path to the aws CLI")
-    parser.add_argument("-work-dir", default=None, help="downloads and .lock/.done files (default $TMP/warcs)")
-    # optional_int: SLURM passes unset options as '', which means no limit
-    parser.add_argument("-max-n", type=optional_int, default=None, help="stop after N rows per WARC (testing)")
-    parser.add_argument("-max-warcs", type=optional_int, default=None, help="stop after N WARCs (testing)")
-    return parser.parse_args()
-
-
-def optional_int(text):
-    return int(text) if text else None
-
-
-def parse_date(text):
-    return datetime.datetime.strptime(text, '%Y%m%d').date()
-
-
-def default_work_dir():
-    if not os.environ.get('TMP'):
-        raise EnvironmentError('$TMP is not set; set it or pass -work-dir')
-    return os.path.join(os.environ['TMP'], 'warcs')
-
-
-def is_done(work_dir, rid):
-    return os.path.exists(os.path.join(work_dir, f'{rid}.done'))
-
-
-def write_todo(index, start_date, end_date, work_dir, max_n):
-    """Write todo.txt (WARCs in range not done yet) atomically; returns (n_in_range, n_todo)."""
-    warc_paths = index.warc_paths(start_date, end_date)
-    if not warc_paths:
-        raise ValueError(f'no CC-NEWS WARCs between {start_date} and {end_date}')
-    todo = [p for p in warc_paths if not is_done(work_dir, run_id(p, max_n))]
-    todo_path = os.path.join(work_dir, 'todo.txt')
-    with open(todo_path + '.part', 'w') as f:
-        f.write(''.join(p + '\n' for p in todo))
-    os.rename(todo_path + '.part', todo_path)
-    return len(warc_paths), len(todo)
-
-
-def read_todo(work_dir):
-    todo_path = os.path.join(work_dir, 'todo.txt')
-    if not os.path.exists(todo_path):
-        raise FileNotFoundError(f'{todo_path} missing; run -step write_warc_todo first '
-                                '(scripts/find_seed_links_go.sh does)')
-    with open(todo_path) as f:
-        return f.read().split()
-
-
-def claim(lock_path):
-    """Atomically create lock_path. Returns False if another worker already holds it."""
-    try:
-        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError:
-        return False
-    with os.fdopen(fd, 'w') as f:
-        f.write(f'{socket.gethostname()} {os.environ.get("SLURM_JOB_ID", os.getpid())}\n')
-    return True
-
-
-def run_id(warc_path, max_n):
-    """CC-NEWS-...-00006 (full run) or CC-NEWS-...-00006.max100 (test run), so tests never block real runs."""
-    stem = os.path.basename(warc_path).removesuffix('.warc.gz')
-    return f'{stem}.max{max_n}' if max_n else stem
-
-
-def process_warc(warc_path, index, extractor, work_dir, output_dir, max_n):
-    """Download one WARC, write its links jsonl, write its .done file, delete the WARC."""
-    rid = run_id(warc_path, max_n)
-    local_warc = os.path.join(work_dir, os.path.basename(warc_path))
-    out_path = os.path.join(output_dir, f'{rid}.jsonl')
-
-    if not os.path.exists(local_warc):
-        index.download(warc_path, local_warc)
-    counts = extractor.write_jsonl(local_warc, out_path)
-    done = {'warc': warc_path, 'output': out_path, 'finished_at': datetime.datetime.now().isoformat(),
-            'host': socket.gethostname(), 'slurm_job_id': os.environ.get('SLURM_JOB_ID'), **counts}
-    with open(os.path.join(work_dir, f'{rid}.done'), 'w') as f:
-        f.write(json.dumps(done) + '\n')
-    os.remove(local_warc)
-    return counts
-
-
-def run_worker(warc_paths, index, extractor, work_dir, output_dir, max_n, max_warcs):
-    """Loop over the shuffled TODO list, skipping WARCs that are done or locked by another worker."""
-    todo = list(warc_paths)
-    random.shuffle(todo)
-    n_processed = 0
-    for warc_path in todo:
-        rid = run_id(warc_path, max_n)
-        lock_path = os.path.join(work_dir, f'{rid}.lock')
-        if is_done(work_dir, rid) or not claim(lock_path):
+def iter_html_pages(warc_stream):
+    """Yield (url, html_bytes) for each HTML response in an open WARC stream."""
+    for record in ArchiveIterator(warc_stream):
+        if record.rec_type != 'response':
             continue
-        try:
-            counts = process_warc(warc_path, index, extractor, work_dir, output_dir, max_n)
-        finally:
-            os.remove(lock_path)  # on failure, frees the WARC for the next worker/rerun
-        n_processed += 1
-        logger.info('done %s %s', rid, counts)
-        if max_warcs and n_processed >= max_warcs:
-            break
-    return n_processed
+        if 'html' not in (record.http_headers.get_header('Content-Type') or ''):
+            continue
+        yield record.rec_headers.get_header('WARC-Target-URI'), record.content_stream().read()
 
+
+@contextmanager
+def open_with_progress(path):
+    """Open a file for reading with a tqdm bar over its bytes (no bar when not a terminal, e.g. SLURM)."""
+    with open(path, 'rb') as f, \
+            tqdm(total=os.path.getsize(path), unit='B', unit_scale=True, desc=os.path.basename(path),
+                 disable=None) as bar:
+        yield CallbackIOWrapper(bar.update, f, 'read')
+
+
+# ---------------------------------------------------------------- coordinating workers
+
+class WorkDir:
+    """Shared directory where workers coordinate:
+        <warc>.warc.gz        a download in progress
+        <warc>.lock           claimed by a worker (host and job id inside)
+        <warc>.done           finished; one line of JSON with the counts
+    """
+
+    def __init__(self, path, max_n=None):
+        self.path = path
+        self.max_n = max_n
+        os.makedirs(path, exist_ok=True)
+
+    def is_done(self, key):
+        return os.path.exists(self._marker(key, '.done'))
+
+    def claim(self, key):
+        """Create the .lock file; False if another worker already has it (O_EXCL makes this atomic)."""
+        try:
+            fd = os.open(self._marker(key, '.lock'), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            return False
+        with os.fdopen(fd, 'w') as f:
+            f.write(f'{socket.gethostname()} {slurm_job_id()}\n')
+        return True
+
+    def release(self, key):
+        os.remove(self._marker(key, '.lock'))
+
+    def mark_done(self, key, info):
+        with atomic_write(self._marker(key, '.done')) as f:
+            f.write(json.dumps(info) + '\n')
+
+    def local_warc(self, key):
+        return os.path.join(self.path, os.path.basename(key))
+
+    def _marker(self, key, suffix):
+        return os.path.join(self.path, with_max_n(warc_name(key), self.max_n) + suffix)
+
+
+# ---------------------------------------------------------------- grepping for seed links
 
 def read_patterns(path):
-    """One substring per line; blank lines and # comments are ignored."""
+    """One substring per line; blank lines and # comments are skipped."""
     with open(path) as f:
         patterns = [line.strip() for line in f if line.strip() and not line.startswith('#')]
     if not patterns:
@@ -318,97 +245,183 @@ def read_patterns(path):
     return patterns
 
 
-def links_files(output_dir, max_n):
-    """The links jsonl files for this run type: *.max<N>.jsonl for tests, the rest otherwise."""
-    names = sorted(os.listdir(output_dir))
-    if max_n:
-        return [os.path.join(output_dir, n) for n in names if n.endswith(f'.max{max_n}.jsonl')]
-    return [os.path.join(output_dir, n) for n in names if n.endswith('.jsonl') and '.max' not in n]
-
-
 def grep_links(paths, patterns):
     """Yield one row per (article link, pattern) where the pattern is a substring of the href."""
     for path in paths:
         with open(path, encoding='utf-8') as f:
             for line in f:
-                if not any(p in line for p in patterns):  # cheap check before parsing json
+                if not any(p in line for p in patterns):  # skip the json parse for most lines
                     continue
                 article = json.loads(line)
                 for link in article['links']:
-                    for pattern in patterns:
-                        if pattern in link['href']:
-                            yield {'pattern': pattern, 'href': link['href'], 'link_text': link['text'],
-                                   'url': article['url'], 'title': article['title'],
-                                   'language': article['language'], 'links_file': os.path.basename(path)}
+                    for pattern in (p for p in patterns if p in link['href']):
+                        yield {'pattern': pattern, 'href': link['href'], 'link_text': link['text'],
+                               'url': article['url'], 'title': article['title'],
+                               'language': article['language'], 'links_file': os.path.basename(path)}
 
 
-def write_matches(paths, patterns, matches_path):
-    """Write all matches to matches_path (rebuilt each run, via .part); returns count per pattern."""
-    counts = {p: 0 for p in patterns}
-    os.makedirs(os.path.dirname(matches_path), exist_ok=True)
-    with open(matches_path + '.part', 'w', encoding='utf-8') as out:
-        for row in grep_links(paths, patterns):
-            out.write(json.dumps(row, ensure_ascii=False) + '\n')
-            counts[row['pattern']] += 1
-    os.rename(matches_path + '.part', matches_path)
-    return counts
+# ---------------------------------------------------------------- small helpers
+
+@contextmanager
+def atomic_write(path):
+    """Write to path.part and rename it to path only if the block finishes, so a partial file never looks done."""
+    with open(path + '.part', 'w', encoding='utf-8') as f:
+        yield f
+    os.rename(path + '.part', path)
 
 
-def print_spot_checks(work_dir, output_dir, n_todo):
-    print('\nSpot checks:')
-    print(f'  ls {work_dir}/*.done | wc -l   # of {n_todo} WARCs')
-    print(f'  ls {work_dir}/*.lock           # in progress (stale if no job is running)')
-    print(f"  cat {work_dir}/*.done | jq -s 'map(.rows) | add'")
-    print(f'  cat {output_dir}/*.jsonl | jq -r .language | sort | uniq -c')
+def write_jsonl(path, rows):
+    with atomic_write(path) as f:
+        for row in rows:
+            f.write(json.dumps(row, ensure_ascii=False) + '\n')
 
 
-def run_grep_step(args, output_dir):
-    patterns = read_patterns(args.patterns)
-    paths = links_files(output_dir, args.max_n)
-    if not paths:
-        raise FileNotFoundError(f'no links jsonl files in {output_dir}')
-    default_path = DEFAULT_MATCHES_PATH.replace('.jsonl', f'.max{args.max_n}.jsonl') if args.max_n \
-        else DEFAULT_MATCHES_PATH
-    matches_path = args.matches_path or default_path
-    counts = write_matches(paths, patterns, matches_path)
-    print(f'Grepped {len(paths)} links files -> {matches_path}')
-    for pattern, n in counts.items():
-        print(f'  {n:6d}  {pattern}')
-    print('\nSpot checks:')
-    print(f"  jq -r .pattern {matches_path} | sort | uniq -c")
-    print(f"  jq -c '{{href, url, language}}' {matches_path} | head")
-    print(f"  jq -r .url {matches_path} | awk -F/ '{{print $3}}' | sort | uniq -c | sort -rn | head")
+def with_max_n(name, max_n):
+    """'a' -> 'a.max100' and 'a.jsonl' -> 'a.max100.jsonl' for test runs; unchanged when max_n is None."""
+    if not max_n:
+        return name
+    stem, ext = os.path.splitext(name)
+    return f'{stem}.max{max_n}{ext}'
+
+
+def slurm_job_id():
+    return os.environ.get('SLURM_JOB_ID', f'pid{os.getpid()}')
+
+
+# ---------------------------------------------------------------- the pipeline
+
+class SeedLinkPipeline:
+    """Runs every step for a date range; see the module docstring."""
+
+    def __init__(self, index, extractor, work_dir, output_dir, patterns, matches_path, max_warcs=None):
+        self.index = index
+        self.extractor = extractor
+        self.work_dir = work_dir
+        self.output_dir = output_dir
+        self.patterns = patterns
+        self.matches_path = matches_path
+        self.max_warcs = max_warcs
+        os.makedirs(output_dir, exist_ok=True)
+
+    def run(self, start_date, end_date):
+        keys = self.list_warcs(start_date, end_date)
+        self.extract_article_links(keys)
+        self.grep_seed_patterns(keys)
+
+    def list_warcs(self, start_date, end_date):
+        keys = self.index.list_warcs(start_date, end_date)
+        if not keys:
+            raise ValueError(f'no CC-NEWS WARCs between {start_date} and {end_date}')
+        n_todo = sum(not self.work_dir.is_done(key) for key in keys)
+        logger.info('%d WARCs between %s and %s; %d not done yet', len(keys), start_date, end_date, n_todo)
+        return keys
+
+    def extract_article_links(self, keys):
+        """Process each WARC that is not done and not claimed by another worker, in random order."""
+        todo = [key for key in keys if not self.work_dir.is_done(key)]
+        random.shuffle(todo)
+        n_processed = 0
+        for key in todo:
+            if self.work_dir.is_done(key) or not self.work_dir.claim(key):
+                continue
+            try:
+                self.process_warc(key)
+            finally:
+                self.work_dir.release(key)  # also on failure, so a rerun can pick the WARC up
+            n_processed += 1
+            if self.max_warcs and n_processed >= self.max_warcs:
+                break
+        logger.info('this worker processed %d WARCs', n_processed)
+
+    def process_warc(self, key):
+        """Download one WARC, write its links jsonl, mark it done, delete it."""
+        local_warc = self.work_dir.local_warc(key)
+        if not os.path.exists(local_warc):
+            self.index.download(key, local_warc)
+
+        out_path = self.links_path(key)
+        with open_with_progress(local_warc) as stream:
+            write_jsonl(out_path, self.extractor.rows(stream))
+
+        counts = dict(self.extractor.counts)
+        self.work_dir.mark_done(key, {'warc': key, 'output': out_path, **counts,
+                                      'finished_at': datetime.datetime.now().isoformat(),
+                                      'host': socket.gethostname(), 'slurm_job_id': slurm_job_id()})
+        os.remove(local_warc)
+        logger.info('done %s %s', warc_name(key), counts)
+
+    def grep_seed_patterns(self, keys):
+        """Write the matches, but only once every WARC is done (the last worker to finish does it)."""
+        n_not_done = sum(not self.work_dir.is_done(key) for key in keys)
+        if n_not_done:
+            logger.info('%d WARCs not done yet (other workers, or -max-warcs); not grepping', n_not_done)
+            return
+
+        paths = [self.links_path(key) for key in keys]
+        matches = list(grep_links(paths, self.patterns))
+        os.makedirs(os.path.dirname(self.matches_path), exist_ok=True)
+        write_jsonl(self.matches_path, matches)
+
+        counts = Counter(match['pattern'] for match in matches)
+        print(f'Grepped {len(paths)} links files -> {self.matches_path}')
+        for pattern in self.patterns:
+            print(f'  {counts[pattern]:6d}  {pattern}')
+        print('\nSpot checks:')
+        print(f'  ls {self.work_dir.path}/*.done | wc -l   # should be {len(keys)}')
+        print(f"  cat {self.work_dir.path}/*.done | jq -s 'map(.rows) | add'")
+        print(f'  jq -r .pattern {self.matches_path} | sort | uniq -c')
+        print(f"  jq -c '{{href, url, language}}' {self.matches_path} | head")
+
+    def links_path(self, key):
+        return os.path.join(self.output_dir, with_max_n(warc_name(key), self.work_dir.max_n) + '.jsonl')
+
+
+# ---------------------------------------------------------------- command line
+
+def parse_args():
+    """SLURM passes unset optional values as '', so every optional flag treats '' as its default."""
+    parser = argparse.ArgumentParser(description='Find which CC-NEWS articles link to a set of seed URLs')
+    parser.add_argument('-start-date', required=True, type=parse_date, help='YYYYMMDD, inclusive')
+    parser.add_argument('-end-date', required=True, type=parse_date, help='YYYYMMDD, inclusive')
+    parser.add_argument('-aws', default='aws', help='path to the aws CLI')
+    parser.add_argument('-work-dir', default='', help='downloads and .lock/.done files (default $TMP/find_seed_links)')
+    parser.add_argument('-output-dir', default='', help=f'links jsonl files (default {DEFAULT_OUTPUT_DIR})')
+    parser.add_argument('-patterns', default=DEFAULT_PATTERNS, help='one substring per line')
+    parser.add_argument('-matches-path', default='', help=f'default {DEFAULT_MATCHES_PATH}')
+    parser.add_argument('-max-n', type=optional_int, default=None, help='stop after N rows per WARC (testing)')
+    parser.add_argument('-max-warcs', type=optional_int, default=None, help='stop after N WARCs (testing)')
+    return parser.parse_args()
+
+
+def parse_date(text):
+    return datetime.datetime.strptime(text, '%Y%m%d').date()
+
+
+def optional_int(text):
+    return int(text) if text else None
+
+
+def default_work_dir():
+    if not os.environ.get('TMP'):
+        raise EnvironmentError('$TMP is not set; set it or pass -work-dir')
+    return os.path.join(os.environ['TMP'], 'find_seed_links')
 
 
 def main():
     args = parse_args()
     logging.basicConfig(level=logging.INFO)
     logging.getLogger('readability').setLevel(logging.ERROR)  # noisy on malformed pages
-    output_dir = args.output_dir or DEFAULT_OUTPUT_DIR
-    if args.step == 'grep_seed_patterns':
-        run_grep_step(args, output_dir)
-        return
-
-    work_dir = args.work_dir or default_work_dir()
-    os.makedirs(work_dir, exist_ok=True)
-    os.makedirs(output_dir, exist_ok=True)
-
-    index = CCNewsIndex(aws=args.aws)
-    if args.step == 'write_warc_todo':
-        if not (args.start_date and args.end_date):
-            raise ValueError('-step write_warc_todo needs -start-date and -end-date')
-        n_range, n_todo = write_todo(index, args.start_date, args.end_date, work_dir, args.max_n)
-        print(f'{n_range} WARCs between {args.start_date} and {args.end_date}; '
-              f'{n_todo} still to do -> {work_dir}/todo.txt')
-        return
-
-    warc_paths = read_todo(work_dir)
-    logger.info('%d WARCs in TODO list', len(warc_paths))
-    n = run_worker(warc_paths, index, CCLinkExtractor(max_n=args.max_n), work_dir, output_dir,
-                   args.max_n, args.max_warcs)
-    print(f'Worker processed {n} WARCs')
-    print_spot_checks(work_dir, output_dir, len(warc_paths))
+    pipeline = SeedLinkPipeline(
+        index=CCNewsIndex(args.aws),
+        extractor=ArticleLinkExtractor(max_n=args.max_n),
+        work_dir=WorkDir(args.work_dir or default_work_dir(), args.max_n),
+        output_dir=args.output_dir or DEFAULT_OUTPUT_DIR,
+        patterns=read_patterns(args.patterns),
+        matches_path=args.matches_path or with_max_n(DEFAULT_MATCHES_PATH, args.max_n),
+        max_warcs=args.max_warcs,
+    )
+    pipeline.run(args.start_date, args.end_date)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

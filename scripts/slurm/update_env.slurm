@@ -1,5 +1,5 @@
 #!/bin/bash
-# Create or update the translation conda env from config/translation.yml. Submitted by scripts/find_seed_links_go.sh.
+# Create or update the translation conda env from config/translation.yml. Submitted by scripts/go.sh.
 #
 # Usage (from the repo root):
 #   sbatch scripts/slurm/update_env.slurm
@@ -7,6 +7,7 @@
 #SBATCH --partition=acpu
 #SBATCH --time=24:00:00
 #SBATCH --job-name=update_env
+#SBATCH --output=logs/scripts/slurm/%x_%j.out
 #SBATCH --mem=8G
 #SBATCH --qos=normal
 #SBATCH --nodes=1

@@ -2,3 +2,4 @@
 *.warc.gz
 data/
 __pycache__/
+logs/

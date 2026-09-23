@@ -1,0 +1,5 @@
+# big / generated files
+*.warc.gz
+data/
+__pycache__/
+logs/

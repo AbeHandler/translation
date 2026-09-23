@@ -1,0 +1,3 @@
+# Substrings to look for in article-body link hrefs (scripts/find_seed_links.py). One per line.
+openai.com/index/
+darioamodei.com/post/we-must-pace-the-frontier

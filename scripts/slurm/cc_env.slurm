@@ -5,7 +5,7 @@
 #   sbatch scripts/slurm/cc_env.slurm
 
 #SBATCH --partition=amilan
-#SBATCH --time=01:00:00
+#SBATCH --time=24:00:00
 #SBATCH --job-name=cc_env
 #SBATCH --mem=8G
 #SBATCH --qos=normal

@@ -28,10 +28,8 @@ AWS=/home/abha4861/bin/v2/2.5.4/bin/aws  # aws CLI v2 on Alpine (an alias there,
 SLURM_DIR=scripts/slurm
 WORK_DIR=$TMP/warcs
 
-EXPORTS="AWS=${AWS},TMP=${TMP}"
-[ -n "${MAX_N:-}" ] && EXPORTS+=",MAX_N=${MAX_N}"
-[ -n "${MAX_WARCS:-}" ] && EXPORTS+=",MAX_WARCS=${MAX_WARCS}"
-[ -n "${OUTPUT_DIR:-}" ] && EXPORTS+=",OUTPUT_DIR=${OUTPUT_DIR}"
+# Passed to every job. Unset optional vars go through empty, and the jobs ignore empty ones.
+EXPORTS="AWS=$AWS,TMP=$TMP,MAX_N=$MAX_N,MAX_WARCS=$MAX_WARCS,OUTPUT_DIR=$OUTPUT_DIR"
 
 ENV_JOB=$(sbatch --parsable "$SLURM_DIR/cc_env.slurm")
 echo "cc_env   $ENV_JOB"

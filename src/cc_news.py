@@ -17,9 +17,11 @@ can see. Whichever copy finishes last writes the matches. -max-n (rows per WARC,
 adds .max<N> to every file name, so test runs never mix with real ones.
 scripts/flush.sh deletes everything this writes, for a clean rerun.
 
+Default paths are in config/paths.py. Run as a module from the repo root so `config` imports.
+
 Usage:
-    python src/cc_news.py -start-date 20260901 -end-date 20260923
-    python src/cc_news.py -start-date 20260923 -end-date 20260923 -max-warcs 1 -max-n 100
+    python -m src.cc_news -start-date 20260901 -end-date 20260923
+    python -m src.cc_news -start-date 20260923 -end-date 20260923 -max-warcs 1 -max-n 100
 """
 import argparse
 import datetime
@@ -41,9 +43,8 @@ from tqdm import tqdm
 from tqdm.utils import CallbackIOWrapper
 from warcio.archiveiterator import ArchiveIterator
 
-DEFAULT_OUTPUT_DIR = 'data/interim/cc_links'
-DEFAULT_MATCHES_PATH = 'data/processed/cc_link_matches.jsonl'
-DEFAULT_PATTERNS = 'config/seed_patterns.txt'
+from config.paths import CC_LINK_MATCHES_PATH, CC_LINKS_DIR, SEED_PATTERNS_PATH, find_seed_links_work_dir
+
 S3_BUCKET = 's3://commoncrawl/'
 
 logger = logging.getLogger(__name__)
@@ -385,9 +386,9 @@ def parse_args():
     parser.add_argument('-end-date', required=True, type=parse_date, help='YYYYMMDD, inclusive')
     parser.add_argument('-aws', default='aws', help='path to the aws CLI')
     parser.add_argument('-work-dir', default='', help='downloads and .lock/.done files (default $TMP/find_seed_links)')
-    parser.add_argument('-output-dir', default='', help=f'links jsonl files (default {DEFAULT_OUTPUT_DIR})')
-    parser.add_argument('-patterns', default=DEFAULT_PATTERNS, help='one substring per line')
-    parser.add_argument('-matches-path', default='', help=f'default {DEFAULT_MATCHES_PATH}')
+    parser.add_argument('-output-dir', default='', help=f'links jsonl files (default {CC_LINKS_DIR})')
+    parser.add_argument('-patterns', default=str(SEED_PATTERNS_PATH), help='one substring per line')
+    parser.add_argument('-matches-path', default='', help=f'default {CC_LINK_MATCHES_PATH}')
     parser.add_argument('-max-n', type=optional_int, default=None, help='stop after N rows per WARC (testing)')
     parser.add_argument('-max-warcs', type=optional_int, default=None, help='stop after N WARCs (testing)')
     return parser.parse_args()
@@ -401,12 +402,6 @@ def optional_int(text):
     return int(text) if text else None
 
 
-def default_work_dir():
-    if not os.environ.get('TMP'):
-        raise EnvironmentError('$TMP is not set; set it or pass -work-dir')
-    return os.path.join(os.environ['TMP'], 'find_seed_links')
-
-
 def main():
     args = parse_args()
     logging.basicConfig(level=logging.INFO)
@@ -414,10 +409,10 @@ def main():
     pipeline = SeedLinkPipeline(
         index=CCNewsIndex(args.aws),
         extractor=ArticleLinkExtractor(max_n=args.max_n),
-        work_dir=WorkDir(args.work_dir or default_work_dir(), args.max_n),
-        output_dir=args.output_dir or DEFAULT_OUTPUT_DIR,
+        work_dir=WorkDir(args.work_dir or str(find_seed_links_work_dir()), args.max_n),
+        output_dir=args.output_dir or str(CC_LINKS_DIR),
         patterns=read_patterns(args.patterns),
-        matches_path=args.matches_path or with_max_n(DEFAULT_MATCHES_PATH, args.max_n),
+        matches_path=args.matches_path or with_max_n(str(CC_LINK_MATCHES_PATH), args.max_n),
         max_warcs=args.max_warcs,
     )
     pipeline.run(args.start_date, args.end_date)

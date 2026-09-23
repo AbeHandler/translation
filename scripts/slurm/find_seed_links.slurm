@@ -29,7 +29,7 @@ module load anaconda
 conda activate translation
 
 # MAX_N and MAX_WARCS may be empty; src/cc_news.py treats empty as "no limit".
-python src/cc_news.py \
+python -m src.cc_news \
     -start-date "$START_DATE" \
     -end-date "$END_DATE" \
     -aws "$AWS" \

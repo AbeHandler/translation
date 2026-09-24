@@ -17,7 +17,7 @@ Read the result with e.g. duckdb:
 """
 import argparse
 
-from config.paths import CC_HTML_DIR, extract_warc_html_work_dir
+from config.paths import CC_HTML_DIR, extract_warc_html_work_dir, warc_cache_dir
 from src.cc_news import ArticleHtmlArchiver, CCNewsIndex, HtmlArchivePipeline, WarcWorker, WorkDir
 from src.warc_worker_cli import add_warc_worker_args, setup_worker_process
 
@@ -33,7 +33,7 @@ def main():
     setup_worker_process()
     args = parse_args()
     worker = WarcWorker(
-        index=CCNewsIndex(args.aws),
+        index=CCNewsIndex(args.warc_cache_dir or str(warc_cache_dir()), args.aws),
         work_dir=WorkDir(args.work_dir or str(extract_warc_html_work_dir()), args.max_n),
         max_warcs=args.max_warcs,
     )

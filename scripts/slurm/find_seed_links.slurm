@@ -34,5 +34,6 @@ python -m scripts.find_seed_links \
     -end-date "$END_DATE" \
     -aws "$AWS" \
     -work-dir "$TMP/find_seed_links" \
+    -warc-cache-dir "$TMP/cc_news_warcs" \
     -max-n "$MAX_N" \
     -max-warcs "$MAX_WARCS"

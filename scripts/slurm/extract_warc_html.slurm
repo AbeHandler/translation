@@ -35,5 +35,6 @@ python -m scripts.extract_warc_html \
     -end-date "$END_DATE" \
     -aws "$AWS" \
     -work-dir "$TMP/extract_warc_html" \
+    -warc-cache-dir "$TMP/cc_news_warcs" \
     -max-n "$MAX_N" \
     -max-warcs "$MAX_WARCS"

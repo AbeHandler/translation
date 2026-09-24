@@ -35,3 +35,4 @@ else
     echo "Seed-link matches: none written; not every WARC is done (see find_seed_links logs)"
 fi
 echo "HTML Parquet files: $(find data/interim/cc_html -name '*.parquet' ! -name '*.max*' 2>/dev/null | wc -l)"
+echo "Cached WARCs:       $(find "$TMP/cc_news_warcs" -name '*.warc.gz' 2>/dev/null | wc -l)  ($(du -sh "$TMP/cc_news_warcs" 2>/dev/null | cut -f1))"

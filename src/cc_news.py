@@ -1,20 +1,21 @@
 """
 Working with CC-NEWS WARCs. Logic only: no paths, no command line. Two pipelines share the same
-WARC worker (list, claim, download, process, mark done, delete):
+WARC worker (list, claim, fetch, process, mark done) and one WARC cache:
     SeedLinkPipeline    which articles link to a set of seed URLs   (scripts/find_seed_links.py)
     HtmlArchivePipeline raw HTML of every en/zh article, as Parquet  (scripts/extract_warc_html.py)
 
 SeedLinkPipeline.run(start_date, end_date) runs every step; each one skips work already done,
 so a rerun picks up where the last one stopped:
     1. list the WARCs crawled in [start_date, end_date] that have no .done file yet
-    2. for each of them (shuffled) that no other worker has claimed: download it, write one row
-       per en/zh article with the links in its body -> <output_dir>/<warc>.jsonl, mark it done,
-       delete the WARC
+    2. for each of them (shuffled) that no other worker has claimed: fetch it (from the WARC cache,
+       downloading it only if it isn't there), write one row per en/zh article with the links in
+       its body -> <output_dir>/<warc>.jsonl, mark it done
     3. once every WARC in the range is done, find article links containing one of the seed
        patterns -> matches_path
 
 Many copies can run at once: they coordinate through <work_dir>/<warc>.lock and <warc>.done
-files, so work_dir must be on a filesystem every node can see. Whichever copy finishes last
+files, so work_dir and the cache must be on a filesystem every node can see. Cached WARCs are
+kept, so the other pipeline, or a rerun, reads them instead of downloading again. Whichever copy finishes last
 writes the matches. max_n (rows per WARC, for tests) adds .max<N> to every file name, so test
 runs never mix with real ones.
 """
@@ -49,7 +50,8 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------- listing and downloading WARCs
 
 class CCNewsIndex:
-    """Lists and downloads CC-NEWS WARCs from s3://commoncrawl with the aws CLI.
+    """Lists CC-NEWS WARCs on s3://commoncrawl and fetches them into a local cache (aws CLI).
+    Cached WARCs are never deleted here, so any pipeline can reuse them without downloading again.
 
     A WARC is named by its S3 key: crawl-data/CC-NEWS/2026/09/CC-NEWS-20260923153007-00006.warc.gz
     """
@@ -59,11 +61,13 @@ class CCNewsIndex:
     # Inside each aws call: adaptive mode slows down the client itself when it gets throttled.
     AWS_RETRY_ENV = {'AWS_RETRY_MODE': 'adaptive', 'AWS_MAX_ATTEMPTS': '10'}
 
-    def __init__(self, aws='aws', bucket=S3_BUCKET, max_tries=8, max_wait_seconds=600):
+    def __init__(self, cache_dir, aws='aws', bucket=S3_BUCKET, max_tries=8, max_wait_seconds=600):
+        self.cache_dir = cache_dir
         self.aws = aws
         self.bucket = bucket
         self.max_tries = max_tries
         self.max_wait_seconds = max_wait_seconds
+        os.makedirs(cache_dir, exist_ok=True)
 
     def list_warcs(self, start_date, end_date):
         """Keys of the WARCs crawled on days in [start_date, end_date]."""
@@ -72,10 +76,16 @@ class CCNewsIndex:
             keys += self._list_month(year, month)
         return [key for key in keys if start_date <= warc_date(key) <= end_date]
 
-    def download(self, key, dest):
-        """Download via a .part file, so a killed download never looks complete."""
-        self._aws('s3', 'cp', '--only-show-errors', self.bucket + key, dest + '.part')
-        os.rename(dest + '.part', dest)
+    def fetch(self, key):
+        """Local path of the WARC, downloading it into the cache first if it isn't there."""
+        path = os.path.join(self.cache_dir, os.path.basename(key))
+        if not os.path.exists(path):
+            # A .part name unique to this process: if two workers (e.g. both pipelines) fetch the
+            # same WARC at once, each downloads to its own file and the rename is atomic.
+            part = f'{path}.{socket.gethostname()}.{os.getpid()}.part'
+            self._aws('s3', 'cp', '--only-show-errors', self.bucket + key, part)
+            os.rename(part, path)
+        return path
 
     def _list_month(self, year, month):
         # `aws s3 ls` prints lines like: 2026-09-23 16:01:02 1072866466 CC-NEWS-20260923153007-00006.warc.gz
@@ -291,8 +301,7 @@ def open_with_progress(path):
 # ---------------------------------------------------------------- coordinating workers
 
 class WorkDir:
-    """Shared directory where workers coordinate:
-        <warc>.warc.gz        a download in progress
+    """Shared directory where one pipeline's workers coordinate:
         <warc>.lock           claimed by a worker (host and job id inside)
         <warc>.done           finished; one line of JSON with the counts
     """
@@ -321,9 +330,6 @@ class WorkDir:
     def mark_done(self, key, info):
         with atomic_write(self._marker(key, '.done')) as f:
             f.write(json.dumps(info) + '\n')
-
-    def local_warc(self, key):
-        return os.path.join(self.path, os.path.basename(key))
 
     def _marker(self, key, suffix):
         return os.path.join(self.path, with_max_n(warc_name(key), self.max_n) + suffix)
@@ -387,8 +393,8 @@ def slurm_job_id():
 
 class WarcWorker:
     """The loop both pipelines share: for each WARC not done and not claimed by another worker
-    (in random order), download it, run process(key, local_warc) -> info, write info to its .done
-    file, and delete it. Many workers can run at once; they coordinate through work_dir."""
+    (in random order), fetch it (from the cache, or download it), run process(key, local_warc) -> info,
+    and write info to its .done file. Many workers can run at once; they coordinate through work_dir."""
 
     def __init__(self, index, work_dir, max_warcs=None):
         self.index = index
@@ -423,13 +429,10 @@ class WarcWorker:
         logger.info('this worker processed %d WARCs', n_processed)
 
     def _process_one(self, key, process):
-        local_warc = self.work_dir.local_warc(key)
-        if not os.path.exists(local_warc):
-            self.index.download(key, local_warc)
+        local_warc = self.index.fetch(key)
         info = process(key, local_warc)
         self.work_dir.mark_done(key, {'warc': key, **info, 'finished_at': datetime.datetime.now().isoformat(),
                                       'host': socket.gethostname(), 'slurm_job_id': slurm_job_id()})
-        os.remove(local_warc)
         logger.info('done %s %s', warc_name(key), info)
 
 

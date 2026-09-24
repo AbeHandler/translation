@@ -1,6 +1,8 @@
 #!/bin/bash
 # FLUSH: deletes everything the pipeline (scripts/go.sh) writes, for a clean rerun:
-#   $TMP/find_seed_links/, $TMP/extract_warc_html/   downloaded WARCs and .lock/.done files
+#   $TMP/find_seed_links/, $TMP/extract_warc_html/   .lock/.done files
+#   $TMP/cc_news_warcs/                    the WARC cache, ONLY with FLUSH_WARCS=1 (kept by default,
+#                                          since re-downloading is slow; Alpine purges scratch anyway)
 #   data/interim/cc_links/                 links jsonl, one per WARC
 #   data/interim/cc_html/                  raw article HTML Parquet, one per WARC
 #   data/processed/cc_link_matches*.jsonl  seed matches
@@ -10,6 +12,7 @@
 # Usage:
 #   bash scripts/flush.sh          # asks before deleting
 #   FORCE=1 bash scripts/flush.sh  # no prompt
+#   FLUSH_WARCS=1 bash scripts/flush.sh  # also delete the cached WARCs
 
 set -eo pipefail  # no -u: ~/.myrc references unset vars
 source ~/.myrc
@@ -25,6 +28,9 @@ if command -v squeue >/dev/null && [ -n "$(squeue -h -u "$USER" --name=update_en
 fi
 
 DIRS=("$TMP/find_seed_links" "$TMP/extract_warc_html" data/interim/cc_links data/interim/cc_html)
+if [ "${FLUSH_WARCS:-}" = 1 ]; then
+    DIRS+=("$TMP/cc_news_warcs")
+fi
 FILES=(data/processed/cc_link_matches*.jsonl logs/scripts/slurm/update_env_*.out logs/scripts/slurm/find_seed_links_*.out logs/scripts/slurm/extract_warc_html_*.out
        logs/scripts/slurm/report_run_done_*.out)
 

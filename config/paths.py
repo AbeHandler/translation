@@ -10,6 +10,11 @@ CC_LINK_MATCHES_PATH = REPO_ROOT / 'data' / 'processed' / 'cc_link_matches.jsonl
 CC_HTML_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_html'
 
 
+def warc_cache_dir():
+    """Downloaded CC-NEWS WARCs, shared by every pipeline and kept (Alpine scratch purges old files)."""
+    return _tmp_dir('cc_news_warcs')
+
+
 def find_seed_links_work_dir():
     return _tmp_dir('find_seed_links')
 
@@ -19,7 +24,7 @@ def extract_warc_html_work_dir():
 
 
 def _tmp_dir(name):
-    """$TMP/<name>: a worker's downloaded WARCs and .lock/.done files. $TMP must be on shared storage."""
+    """$TMP/<name>. $TMP must be on storage every node can see."""
     if not os.environ.get('TMP'):
-        raise EnvironmentError('$TMP is not set; set it or pass -work-dir')
+        raise EnvironmentError(f'$TMP is not set; set it or pass the directory for {name} explicitly')
     return Path(os.environ['TMP']) / name

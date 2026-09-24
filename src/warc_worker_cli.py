@@ -11,7 +11,8 @@ def add_warc_worker_args(parser, default_work_dir_help):
     parser.add_argument('-start-date', required=True, type=parse_date, help='YYYYMMDD, inclusive')
     parser.add_argument('-end-date', required=True, type=parse_date, help='YYYYMMDD, inclusive')
     parser.add_argument('-aws', default='aws', help='path to the aws CLI')
-    parser.add_argument('-work-dir', default='', help=f'downloads and .lock/.done files ({default_work_dir_help})')
+    parser.add_argument('-work-dir', default='', help=f'.lock/.done files ({default_work_dir_help})')
+    parser.add_argument('-warc-cache-dir', default='', help='downloaded WARCs, kept (default $TMP/cc_news_warcs)')
     parser.add_argument('-max-n', type=optional_int, default=None, help='stop after N rows per WARC (testing)')
     parser.add_argument('-max-warcs', type=optional_int, default=None, help='stop after N WARCs (testing)')
 

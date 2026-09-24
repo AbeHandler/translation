@@ -9,7 +9,7 @@
 #                      .lock/.done files, so it never skips or blocks find_seed_links. 0 = skip it.
 #   report_run_done  after every worker ends: prints a summary and sends the one "done" email.
 #                    Workers and update_env only email on failure.
-# Safe to rerun: done WARCs are skipped. Clean slate: bash scripts/flush.sh
+# Safe to rerun: done WARCs are skipped, and downloaded WARCs are cached in $TMP/cc_news_warcs. Clean slate: bash scripts/flush.sh
 # Logs: logs/scripts/slurm/<job>_<id>.out. Run from the repo root.
 #
 # Usage:
@@ -67,4 +67,5 @@ echo "Spot checks:"
 echo "  squeue -u \$USER --name=update_env,find_seed_links,extract_warc_html,report_run_done"
 echo "  ls $TMP/find_seed_links/*.done $TMP/extract_warc_html/*.done | wc -l   # WARCs finished (both)"
 echo "  ls $TMP/*/*.lock                          # in progress (stale if no job is running)"
+echo "  du -sh $TMP/cc_news_warcs                 # WARC cache, shared by both steps and kept"
 echo "  tail logs/scripts/slurm/{find_seed_links,extract_warc_html}_*.out"

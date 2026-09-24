@@ -1,8 +1,9 @@
 #!/bin/bash
-# FLUSH: deletes everything scrapy/crawl_sites.sh writes, for a clean rerun:
-#   data/interim/site_crawls/   pages, crawl state (jobdir) and done markers, one dir per site
-#   logs/scrapy/                scrapy and SLURM logs
-# Refuses while crawl_site jobs are queued or running. Run from the repo root.
+# FLUSH: deletes everything scripts/site_crawls_go.sh writes, for a clean rerun:
+#   data/interim/site_crawls/          pages, HTML, embeddings, crawl state (jobdir) and done markers, per site
+#   data/processed/site_crawls_annoy/  the Annoy index
+#   logs/scrapy/                       scrapy and crawl SLURM logs
+# Refuses while any of its jobs are queued or running. Run from the repo root.
 #
 # Usage:
 #   bash scrapy/flush_crawls.sh          # asks before deleting
@@ -10,12 +11,13 @@
 
 set -eo pipefail
 
-if command -v squeue >/dev/null && [ -n "$(squeue -h -u "$USER" --name=crawl_site)" ]; then
-    echo "ERROR: crawl_site jobs are still queued/running; scancel them first"
+JOBS=crawl_site,embed_site_crawls,build_annoy_index
+if command -v squeue >/dev/null && [ -n "$(squeue -h -u "$USER" --name=$JOBS)" ]; then
+    echo "ERROR: $JOBS jobs are still queued/running; scancel them first"
     exit 1
 fi
 
-DIRS=(data/interim/site_crawls logs/scrapy)
+DIRS=(data/interim/site_crawls data/processed/site_crawls_annoy logs/scrapy)
 echo "WARNING: this deletes:"
 printf '  %s/\n' "${DIRS[@]}"
 if [ "${FORCE:-}" != 1 ]; then

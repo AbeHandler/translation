@@ -9,6 +9,7 @@ CC_LINKS_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_links'
 CC_LINK_MATCHES_PATH = REPO_ROOT / 'data' / 'processed' / 'cc_link_matches.jsonl'
 CC_HTML_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_html'
 SITE_CRAWLS_DIR = REPO_ROOT / 'data' / 'interim' / 'site_crawls'  # scrapy/: <domain>/html, <domain>/embeddings
+SITE_CRAWLS_ANNOY_DIR = REPO_ROOT / 'data' / 'processed' / 'site_crawls_annoy'
 
 
 def warc_cache_dir():

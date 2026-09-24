@@ -8,6 +8,8 @@
 # Usage (from the repo root):
 #   bash scrapy/crawl_sites.sh
 #   MAX_PAGES=50 bash scrapy/crawl_sites.sh   # test: stop each crawl after 50 pages
+# DEPENDENCY=afterok:<job id> makes the crawls wait on that job instead of a new update_env
+# (scripts/site_crawls_go.sh does this). The last line printed is JOB_IDS=<id>:<id>:... of the crawls.
 
 set -eo pipefail  # no -u: ~/.myrc references unset vars
 source ~/.myrc
@@ -20,10 +22,14 @@ if [ -z "$DOMAINS" ]; then
 fi
 mkdir -p logs/scrapy/slurm logs/scripts/slurm  # SLURM won't create the --output dirs
 
-# --export=NONE: don't inherit the login node's modules (see scripts/go.sh)
-ENV_JOB=$(sbatch --parsable --export=NONE scripts/slurm/update_env.slurm)
-echo "update_env  $ENV_JOB"
+if [ -z "${DEPENDENCY:-}" ]; then
+    # --export=NONE: don't inherit the login node's modules (see scripts/go.sh)
+    ENV_JOB=$(sbatch --parsable --export=NONE scripts/slurm/update_env.slurm)
+    echo "update_env  $ENV_JOB"
+    DEPENDENCY=afterok:$ENV_JOB
+fi
 
+JOB_IDS=""
 n_submitted=0
 n_done=0
 for domain in $DOMAINS; do
@@ -31,8 +37,9 @@ for domain in $DOMAINS; do
         n_done=$((n_done + 1))
         continue
     fi
-    sbatch --parsable --dependency=afterok:"$ENV_JOB" --kill-on-invalid-dep=yes \
-        --export="DOMAIN=$domain,MAX_PAGES=$MAX_PAGES" scrapy/slurm/crawl_site.slurm >/dev/null
+    JOB=$(sbatch --parsable --dependency="$DEPENDENCY" --kill-on-invalid-dep=yes \
+        --export="DOMAIN=$domain,MAX_PAGES=$MAX_PAGES" scrapy/slurm/crawl_site.slurm)
+    JOB_IDS+=":$JOB"
     n_submitted=$((n_submitted + 1))
 done
 echo "crawl_site  $n_submitted submitted, $n_done already done"
@@ -44,3 +51,4 @@ echo "  ls data/interim/site_crawls/*/done | wc -l                  # sites fini
 echo "  wc -l data/interim/site_crawls/*/pages.jsonl                # pages per site"
 echo "  head -c 500 data/interim/site_crawls/<domain>/pages.jsonl"
 echo "  grep -c ERROR logs/scrapy/*.log"
+echo "JOB_IDS=${JOB_IDS#:}"

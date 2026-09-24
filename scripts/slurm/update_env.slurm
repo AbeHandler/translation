@@ -28,4 +28,4 @@ if ! conda env list | grep -q "^${ENV_NAME} "; then
 fi
 conda activate "$ENV_NAME"
 pip install -r config/requirements.txt
-python -c "import newsplease, newspaper, htmldate, warcio, readability, lxml, tqdm, scrapy, torch, sentence_transformers; print('env ok')"
+python -c "import newsplease, newspaper, htmldate, warcio, readability, lxml, tqdm, scrapy, torch, sentence_transformers, annoy; print('env ok')"

@@ -16,3 +16,5 @@ torch==2.8.0+cpu
 transformers==4.57.3
 sentence-transformers==5.2.0
 annoy==1.17.3
+httpx==0.28.1
+tenacity==9.1.2

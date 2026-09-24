@@ -8,4 +8,5 @@ lxml_html_clean==0.4.3
 tqdm==4.67.1
 scrapy==2.19.0
 newspaper4k==0.9.6
+htmldate==1.10.0
 pyarrow==22.0.0

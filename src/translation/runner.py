@@ -80,8 +80,14 @@ def run_translations(calls, store, run_id, temperature, delay_seconds=0.4):
     random.shuffle(todo)
     logger.info('%d calls planned, %d already stored, %d to make', len(calls), len(calls) - len(todo), len(todo))
     counts = {'planned': len(calls), 'cached': len(calls) - len(todo), 'made': 0, 'errors': 0}
-    for call in todo:
-        store.add_call(make_call(call, run_id, temperature))
+    for i, call in enumerate(todo, 1):
+        logger.info('call %d/%d: %s/%s %s %s sample %d (%d chars)...', i, len(todo), call.engine.name,
+                    call.engine.model, call.segment.seg_id, call.context_mode, call.sample_idx, len(call.source_text))
+        row = make_call(call, run_id, temperature)
+        store.add_call(row)
+        if row['error'] is None:
+            logger.info('call %d/%d done in %.1fs: %d chars back', i, len(todo), row['latency_ms'] / 1000,
+                        len(row['translation']))
         counts['made'] += 1
         time.sleep(delay_seconds)
     counts['errors'] = store.db.execute('SELECT COUNT(*) FROM calls WHERE run_id = ? AND error IS NOT NULL',

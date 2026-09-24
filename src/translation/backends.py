@@ -143,7 +143,7 @@ class DeepL(Backend):
 
 class OpenAICompatLLM(Backend):
     """Any OpenAI-shaped chat endpoint: OpenAI, DeepSeek, Qwen (DashScope compatible mode), Moonshot,
-    Zhipu, or a local vLLM server."""
+    Zhipu, xAI (Grok), or a local vLLM server."""
     is_llm = True
     PROMPTS = {
         'isolated': ('Translate the following {src_name} text into {tgt_name}. '
@@ -191,6 +191,7 @@ ENGINES = {
     'moonshot': lambda: OpenAICompatLLM('moonshot', 'moonshot-v1-8k', 'https://api.moonshot.cn/v1',
                                         'MOONSHOT_API_KEY'),
     'zhipu': lambda: OpenAICompatLLM('zhipu', 'glm-4-plus', 'https://open.bigmodel.cn/api/paas/v4', 'ZHIPU_API_KEY'),
+    'grok': lambda: OpenAICompatLLM('grok', 'grok-4.6', 'https://api.x.ai/v1', 'XAI_API_KEY'),
 }
 
 

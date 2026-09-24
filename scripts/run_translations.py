@@ -7,8 +7,9 @@ Start it, stop it (Ctrl-C, scancel) and rerun it at will: calls already stored s
 nothing is paid for twice, and new segments (scripts/enqueue_segments.py) or a new engine are picked up on
 the next run. Calls run in random order. Only one runner can use a database at a time.
 
-API keys come from environment variables (src/translation/backends.py); a missing one stops the runner
-before any call. -engines limits it to some engines.
+API keys come from environment variables (src/translation/backends.py), loaded from the repo's .env file
+(one KEY=value per line; gitignored) unless already set. A missing one stops the runner before any call.
+-engines limits it to some engines.
 
 Run as a module from the repo root:
     python -m scripts.run_translations -dry-run      # what's left to do, per engine; calls nothing
@@ -18,7 +19,9 @@ Run as a module from the repo root:
 import argparse
 from collections import Counter
 
-from config.paths import TRANSLATIONS_DB
+from dotenv import load_dotenv
+
+from config.paths import ENV_PATH, TRANSLATIONS_DB
 from src.translation.backends import ENGINES, build_engines
 from src.translation.runner import plan_calls, run_queue, runner_lock
 from src.translation.segments import CONTEXT_MODES
@@ -56,6 +59,7 @@ def print_todo(store, engines, args):
 def main():
     setup_worker_process()  # logging; a clean exit on SIGTERM (scancel)
     args = parse_args()
+    load_dotenv(ENV_PATH)  # API keys; variables already set in the environment win
     engines = build_engines(args.engines)
     store = TranslationStore(args.db)
     if args.dry_run:

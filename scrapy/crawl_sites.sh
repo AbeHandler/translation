@@ -1,7 +1,8 @@
 #!/bin/bash
 # Submit one scrapy crawl per site in config/sites.txt (scrapy/slurm/crawl_site.slurm), in random order,
 # after update_env. Sites with a done marker are skipped, so rerunning resumes unfinished crawls.
-# Output: data/interim/site_crawls/<domain>/pages.jsonl (one line per page: url, title, pubdate, links).
+# Output: data/interim/site_crawls/<domain>/pages.jsonl (one line per page: url, title, pubdate, links)
+#         and <domain>/html/*.parquet (raw HTML, same format as CC-NEWS data/interim/cc_html).
 # Logs: logs/scrapy/<domain>.log and logs/scrapy/slurm/. Clean slate: bash scrapy/flush_crawls.sh
 #
 # Usage (from the repo root):

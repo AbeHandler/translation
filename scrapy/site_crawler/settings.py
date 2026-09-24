@@ -16,6 +16,8 @@ DEPTH_PRIORITY = 1
 SCHEDULER_DISK_QUEUE = 'scrapy.squeues.PickleFifoDiskQueue'
 SCHEDULER_MEMORY_QUEUE = 'scrapy.squeues.FifoMemoryQueue'
 
+ITEM_PIPELINES = {'site_crawler.pipelines.HtmlParquetPipeline': 300}  # needs -s HTML_DIR=...
+
 TWISTED_REACTOR = 'twisted.internet.asyncioreactor.AsyncioSelectorReactor'
 FEED_EXPORT_ENCODING = 'utf-8'
 LOG_LEVEL = 'INFO'

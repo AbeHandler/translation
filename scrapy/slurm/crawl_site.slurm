@@ -4,6 +4,7 @@
 # Scrapy stops itself at 23.5h (CLOSESPIDER_TIMEOUT), before SLURM's 24h kill, so it can save its state
 # and finish writing pages.jsonl. Touches data/interim/site_crawls/<domain>/done only when scrapy reports
 # the whole site crawled (finish_reason 'finished'), not when it stopped on the timer or MAX_PAGES.
+# Raw HTML goes to data/interim/site_crawls/<domain>/html/*.parquet (same format as CC-NEWS cc_html).
 #
 # Usage (from the repo root; normally via scrapy/crawl_sites.sh):
 #   sbatch --export=DOMAIN=denverpost.com scrapy/slurm/crawl_site.slurm
@@ -47,6 +48,7 @@ PAGES_BEFORE=$(wc -l < "$OUT_DIR/pages.jsonl")
 scrapy crawl site -a domain="$DOMAIN" \
     -o "$OUT_DIR/pages.jsonl" \
     -s JOBDIR="$OUT_DIR/jobdir" \
+    -s HTML_DIR="$OUT_DIR/html" \
     -s LOG_FILE="$LOG_DIR/$DOMAIN.log" \
     -s CLOSESPIDER_TIMEOUT="$STOP_AFTER_SECONDS" \
     "${LIMIT[@]}"

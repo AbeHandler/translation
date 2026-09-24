@@ -1,9 +1,11 @@
 """
 One generic spider for any site: `-a domain=denverpost.com` crawls that domain (and its subdomains),
-writing one item per HTML page with the page's outgoing links and publication date.
+writing one item per HTML page with the page's outgoing links and publication date to pages.jsonl, and its
+raw HTML to Parquet (site_crawler/pipelines.py).
 
 PYTHONPATH=.. so `src` (at the repo root) imports:
-    cd scrapy && PYTHONPATH=.. scrapy crawl site -a domain=denverpost.com -o pages.jsonl -s CLOSESPIDER_PAGECOUNT=20
+    cd scrapy && PYTHONPATH=.. scrapy crawl site -a domain=denverpost.com -o pages.jsonl -s HTML_DIR=html \
+        -s CLOSESPIDER_PAGECOUNT=20
 """
 import datetime
 
@@ -41,6 +43,9 @@ class SiteSpider(scrapy.Spider):
             'pubdate_source': pubdate_source,
             'links': links,
             'crawled_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            # taken off again by HtmlParquetPipeline, so they aren't in pages.jsonl
+            'content_type': response.headers.get('Content-Type', b'').decode('latin-1'),
+            'html': response.body,
         }
         for link in links:
             yield response.follow(link, self.parse)  # OffsiteMiddleware drops other domains

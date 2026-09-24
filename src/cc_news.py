@@ -139,7 +139,7 @@ class ArticleLinkExtractor:
 
     def rows(self, warc_stream):
         """Yield rows from an open .warc.gz stream (at most max_n). Tallies self.counts."""
-        self.counts = Counter(rows=0, links=0, other_language=0, errors=0)
+        self.counts = Counter(rows=0, links=0, other_language=0, errors=0, bad_hrefs=0)
         for url, html in iter_html_pages(warc_stream):
             row = self._row(url, html)
             if row is None:
@@ -171,18 +171,19 @@ class ArticleLinkExtractor:
         return self._lang_extractor._language({'spider_response': SimpleNamespace(body=html)})
 
     def _links(self, page_url, body):
-        """Links in the article body, with relative hrefs made absolute."""
+        """Links in the article body, with relative hrefs made absolute. Unparseable hrefs are skipped."""
         links = []
         for anchor in body.iter('a'):
             href = anchor.get('href', '').strip()
             if not href or href.startswith(self.SKIP_HREF_PREFIXES):
                 continue
-            href = urljoin(page_url, href)
-            links.append({
-                'href': href,
-                'text': anchor.text_content().strip(),
-                'internal': urlparse(href).netloc == urlparse(page_url).netloc,
-            })
+            try:
+                href = urljoin(page_url, href)
+                internal = urlparse(href).netloc == urlparse(page_url).netloc
+            except ValueError:  # malformed hrefs in the wild, e.g. 'http://[broken'
+                self.counts['bad_hrefs'] += 1
+                continue
+            links.append({'href': href, 'text': anchor.text_content().strip(), 'internal': internal})
         return links
 
 

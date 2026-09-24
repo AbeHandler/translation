@@ -14,7 +14,7 @@
 #SBATCH --qos=cpu-normal
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --mail-type=FAIL
+#SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=abha4861@colorado.edu
 
 set -eo pipefail  # no -u: ~/.myrc and conda activate reference unset vars

@@ -14,6 +14,8 @@ Run as a module from the repo root, so `src` and `config` import:
 import argparse
 import datetime
 import logging
+import signal
+import sys
 
 from config.paths import CC_LINK_MATCHES_PATH, CC_LINKS_DIR, SEED_PATTERNS_PATH, find_seed_links_work_dir
 from src.cc_news import (ArticleLinkExtractor, CCNewsIndex, SeedLinkPipeline, WorkDir, read_patterns,
@@ -43,7 +45,14 @@ def optional_int(text):
     return int(text) if text else None
 
 
+def exit_on_sigterm(signum, frame):
+    # scancel and the SLURM time limit send SIGTERM. Exiting normally (instead of being killed)
+    # runs the pipeline's `finally`, which removes this worker's .lock so no WARC gets stuck.
+    sys.exit(f'got signal {signum}; exiting')
+
+
 def main():
+    signal.signal(signal.SIGTERM, exit_on_sigterm)
     args = parse_args()
     logging.basicConfig(level=logging.INFO)
     logging.getLogger('readability').setLevel(logging.ERROR)  # noisy on malformed pages

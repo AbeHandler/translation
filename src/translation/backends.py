@@ -196,13 +196,17 @@ ENGINES = {
 
 
 def build_engines(names):
+    """Backends for the named engines. Raises listing every engine whose API key (env var) is missing."""
     unknown = [name for name in names if name not in ENGINES]
     if unknown:
         raise ValueError(f'unknown engines {unknown}; choices: {", ".join(sorted(ENGINES))}')
-    engines = []
+    engines, missing = [], []
     for name in names:
         try:
             engines.append(ENGINES[name]())
         except KeyError as exc:
-            raise EnvironmentError(f'engine {name} needs the environment variable {exc}') from exc
+            missing.append(f'{name} needs {exc}')
+    if missing:
+        raise EnvironmentError('missing API keys (set them, or leave the engine out with -engines): '
+                               + '; '.join(missing))
     return engines

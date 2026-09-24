@@ -1,10 +1,16 @@
-"""run_translations(): every (segment, context mode, engine, sample) call not already in the store, in random
-order, each stored as it completes (src/translation/store.py). The random order means a run stopped early
-still leaves an unbiased sample across segments and engines."""
+"""
+The MT runner: run_queue() reads every queued segment (src/translation/store.py), plans each
+(segment, context mode, engine, sample) call, and makes the ones not already stored, in random order, each
+stored as it completes. So it can be stopped at any point (Ctrl-C, scancel) and rerun: nothing paid for is
+lost or paid for twice, and a run stopped early still leaves an unbiased sample across segments and engines.
+Only one runner may use a database at a time (runner_lock), or two would make the same calls.
+"""
 import datetime
+import fcntl
 import logging
 import random
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 from src.translation.store import call_key
@@ -43,6 +49,28 @@ def plan_calls(segments, engines, context_modes, n_samples):
                 for sample_idx in range(n_samples if engine.is_llm else 1):
                     calls.append(Call(segment, engine, context_mode, sample_idx))
     return calls
+
+
+def run_queue(store, engines, context_modes, n_samples, temperature, delay_seconds=0.4, settings=None):
+    """Translate every queued segment with every engine. Returns (run_id, counts)."""
+    segments = store.queued_segments()
+    if not segments:
+        raise ValueError('the MT queue is empty; add segments with scripts/enqueue_segments.py')
+    calls = plan_calls(segments, engines, context_modes, n_samples)
+    run_id = store.start_run(settings or {})
+    return run_id, run_translations(calls, store, run_id, temperature, delay_seconds)
+
+
+@contextmanager
+def runner_lock(path):
+    """Hold an exclusive lock on path while the runner runs; raise if another runner has it. The OS releases
+    the lock when the process ends, however it ends, so a killed runner never leaves a stale lock."""
+    with open(path, 'w') as f:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise RuntimeError(f'another MT runner is using this database ({path} is locked)') from None
+        yield
 
 
 def run_translations(calls, store, run_id, temperature, delay_seconds=0.4):

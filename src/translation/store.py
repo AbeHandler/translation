@@ -1,6 +1,9 @@
 """
-TranslationStore: every translation call in one SQLite database.
+TranslationStore: the MT queue and every translation call, in one SQLite database.
 
+    queue   the segments waiting for MT, one row per seg_id: src_lang, tgt_lang, text, context_before,
+            context_after, source (where it came from, e.g. the CSV), added_at. Rows stay after they are
+            translated; "done" is worked out from calls, so adding an engine re-opens every segment for it.
     calls   one row per call, failed ones included: engine, model, context_mode, sample_idx, the segment,
             the text and prompt sent, temperature, translation (NULL on error), raw_response (JSON text, the
             engine's full response, kept so a run can be re-parsed or audited later), error, called_at,
@@ -16,7 +19,19 @@ import hashlib
 import json
 import sqlite3
 
+from src.translation.segments import Segment
+
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS queue (
+    seg_id TEXT PRIMARY KEY,
+    src_lang TEXT NOT NULL,
+    tgt_lang TEXT NOT NULL,
+    text TEXT NOT NULL,
+    context_before TEXT NOT NULL,
+    context_after TEXT NOT NULL,
+    source TEXT NOT NULL,
+    added_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS runs (
     run_id TEXT PRIMARY KEY,
     started_at TEXT NOT NULL,
@@ -56,6 +71,27 @@ class TranslationStore:
     def __init__(self, path):
         self.db = sqlite3.connect(path)
         self.db.executescript(SCHEMA)
+
+    def enqueue(self, segments, source):
+        """Add segments to the queue. A seg_id already queued with the same text is skipped; with different
+        text it is an error (it would silently mix two texts under one id). Returns (added, already queued)."""
+        queued = {row[0]: row[1:] for row in self.db.execute(
+            'SELECT seg_id, src_lang, tgt_lang, text, context_before, context_after FROM queue')}
+        added_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        new = []
+        for s in segments:
+            fields = (s.src_lang, s.tgt_lang, s.text, s.context_before, s.context_after)
+            if s.seg_id not in queued:
+                new.append((s.seg_id, *fields, source, added_at))
+            elif queued[s.seg_id] != fields:
+                raise ValueError(f'seg_id {s.seg_id} is already queued with different text or languages')
+        with self.db:
+            self.db.executemany('INSERT INTO queue VALUES (?, ?, ?, ?, ?, ?, ?, ?)', new)
+        return len(new), len(segments) - len(new)
+
+    def queued_segments(self):
+        return [Segment(*row) for row in self.db.execute(
+            'SELECT seg_id, src_lang, tgt_lang, text, context_before, context_after FROM queue ORDER BY seg_id')]
 
     def start_run(self, settings):
         run_id = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')

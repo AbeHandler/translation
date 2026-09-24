@@ -18,3 +18,4 @@ sentence-transformers==5.2.0
 annoy==1.17.3
 httpx==0.28.1
 tenacity==9.1.2
+google-auth==2.48.0  # the google_llm engine

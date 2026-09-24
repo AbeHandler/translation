@@ -1,70 +1,69 @@
 #!/usr/bin/env python
 """
-Driver: run source segments through several MT engines and store every call in SQLite
-(src/translation; the store's docstring has the tables).
+The MT runner: translates every segment in the MT queue with every registered engine (src/translation;
+the store's docstring has the tables), all in data/processed/translations.sqlite.
 
-    segments CSV (seg_id, src_lang, tgt_lang, text[, context_before, context_after])
-        -> data/processed/translations.sqlite
+Start it, stop it (Ctrl-C, scancel) and rerun it at will: calls already stored successfully are skipped, so
+nothing is paid for twice, and new segments (scripts/enqueue_segments.py) or a new engine are picked up on
+the next run. Calls run in random order. Only one runner can use a database at a time.
 
-Calls already stored successfully are skipped, so a rerun costs nothing and adding an engine only pays for
-that engine. Calls run in random order. API keys come from environment variables (see
-src/translation/backends.py); a missing one stops the run before any call.
+API keys come from environment variables (src/translation/backends.py); a missing one stops the runner
+before any call. -engines limits it to some engines.
 
-Run as a module from the repo root, so `src` and `config` import:
-    python -m scripts.run_translations -segments segments.csv -dry-run
-    python -m scripts.run_translations -segments segments.csv
-    python -m scripts.run_translations -segments segments.csv -engines google_nmt deepseek -n-samples 3
+Run as a module from the repo root:
+    python -m scripts.run_translations -dry-run      # what's left to do, per engine; calls nothing
+    python -m scripts.run_translations
+    python -m scripts.run_translations -engines google_nmt deepseek grok
 """
 import argparse
-import logging
 from collections import Counter
 
 from config.paths import TRANSLATIONS_DB
 from src.translation.backends import ENGINES, build_engines
-from src.translation.runner import plan_calls, run_translations
-from src.translation.segments import CONTEXT_MODES, read_segments
+from src.translation.runner import plan_calls, run_queue, runner_lock
+from src.translation.segments import CONTEXT_MODES
 from src.translation.store import TranslationStore
+from src.warc_worker_cli import setup_worker_process
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Translate segments with several MT engines into SQLite')
-    parser.add_argument('-segments', required=True, help='CSV: seg_id, src_lang, tgt_lang, text[, context_*]')
+    parser = argparse.ArgumentParser(description='Translate the MT queue with every registered engine')
     parser.add_argument('-db', default=str(TRANSLATIONS_DB))
-    parser.add_argument('-engines', nargs='+', default=['google_nmt', 'baidu', 'deepseek', 'openai'],
-                        choices=sorted(ENGINES),
-                        help='default (paper 1): Google NMT, Baidu, one Chinese LLM, one Western LLM')
+    parser.add_argument('-engines', nargs='+', default=sorted(ENGINES), choices=sorted(ENGINES),
+                        help='default: every registered engine')
     parser.add_argument('-context-modes', nargs='+', default=list(CONTEXT_MODES), choices=CONTEXT_MODES)
     parser.add_argument('-n-samples', type=int, default=5, help='samples per LLM engine; NMT engines run once')
     parser.add_argument('-temperature', type=float, default=0.7, help='LLM temperature; 0 collapses the samples')
     parser.add_argument('-delay', type=float, default=0.4, help='seconds between calls')
-    parser.add_argument('-dry-run', action='store_true', help='print the call plan, call nothing')
+    parser.add_argument('-dry-run', action='store_true', help='print the calls left to make, per engine')
     return parser.parse_args()
 
 
-def print_plan(calls):
-    """Planned calls and source characters per engine (dry run)."""
-    n_calls = Counter(f'{c.engine.name}/{c.engine.model}' for c in calls)
-    n_chars = Counter()
-    for call in calls:
+def print_todo(store, engines, args):
+    """Calls left to make and their source characters, per engine (dry run)."""
+    calls = plan_calls(store.queued_segments(), engines, args.context_modes, args.n_samples)
+    done = store.succeeded_keys()
+    todo = [call for call in calls if call.key not in done]
+    n_calls, n_chars = Counter(), Counter()
+    for call in todo:
+        n_calls[f'{call.engine.name}/{call.engine.model}'] += 1
         n_chars[f'{call.engine.name}/{call.engine.model}'] += len(call.source_text)
     for engine, n in sorted(n_calls.items()):
-        print(f'  {engine:32} {n:6} calls  {n_chars[engine]:9} source chars')
-    print(f'  {"total":32} {len(calls):6} calls')
+        print(f'  {engine:32} {n:6} calls to make  {n_chars[engine]:9} source chars')
+    print(f'  {len(todo)} of {len(calls)} planned calls left to make')
 
 
 def main():
-    logging.basicConfig(level=logging.INFO)
+    setup_worker_process()  # logging; a clean exit on SIGTERM (scancel)
     args = parse_args()
-    segments = read_segments(args.segments)
     engines = build_engines(args.engines)
-    calls = plan_calls(segments, engines, args.context_modes, args.n_samples)
-    print(f'{len(segments)} segments, engines {", ".join(args.engines)}, modes {", ".join(args.context_modes)}')
-    if args.dry_run:
-        print_plan(calls)
-        return
     store = TranslationStore(args.db)
-    run_id = store.start_run(vars(args))
-    counts = run_translations(calls, store, run_id, args.temperature, args.delay)
+    if args.dry_run:
+        print_todo(store, engines, args)
+        return
+    with runner_lock(args.db + '.lock'):
+        run_id, counts = run_queue(store, engines, args.context_modes, args.n_samples, args.temperature,
+                                   args.delay, settings=vars(args))
     print(f'\nrun {run_id}: {counts} -> {args.db}')
     print('\nDistinct isolated translations per segment (across engines and samples):')
     for seg_id, n in store.distinct_translations('isolated').items():

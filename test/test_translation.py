@@ -61,3 +61,37 @@ def test_parse_failure_keeps_raw_response_and_is_retried(tmp_path):
     assert json.loads(raw) == {'out': 'nmt:Hello.'} and error.startswith('KeyError')
     run_translations(calls, store, store.start_run({}), temperature=0.7, delay_seconds=0)
     assert engine.n_requests == 2  # a failed call isn't cached
+
+
+def test_queue_skips_requeued_segments_and_rejects_changed_text(tmp_path):
+    import pytest
+    store = TranslationStore(str(tmp_path / 't.sqlite'))
+    assert store.enqueue(SEGMENTS, 'a.csv') == (2, 0)
+    assert store.enqueue(SEGMENTS, 'a.csv') == (0, 2)
+    assert store.queued_segments() == SEGMENTS
+    with pytest.raises(ValueError, match='different text'):
+        store.enqueue([Segment('s1', 'en', 'zh', 'Changed.')], 'b.csv')
+
+
+def test_run_queue_translates_everything_queued_once(tmp_path):
+    from src.translation.runner import run_queue
+    engine = FakeEngine('llm', True)
+    store = TranslationStore(str(tmp_path / 't.sqlite'))
+    store.enqueue(SEGMENTS, 'a.csv')
+    _, counts = run_queue(store, [engine], ['isolated', 'windowed'], 2, 0.7, delay_seconds=0)
+    assert counts['made'] == 2 * 2 + 2  # isolated x2 samples per segment; windowed x2 for s1
+    store.enqueue([Segment('s3', 'en', 'zh', 'New.')], 'b.csv')
+    _, counts = run_queue(store, [engine], ['isolated', 'windowed'], 2, 0.7, delay_seconds=0)
+    assert counts['made'] == 2 and counts['cached'] == 6
+
+
+def test_runner_lock_refuses_a_second_runner(tmp_path):
+    import pytest
+    from src.translation.runner import runner_lock
+    lock = str(tmp_path / 't.sqlite.lock')
+    with runner_lock(lock):
+        with pytest.raises(RuntimeError, match='another MT runner'):
+            with runner_lock(lock):
+                pass
+    with runner_lock(lock):  # released when the first runner ends
+        pass

@@ -36,6 +36,7 @@ mkdir -p "$OUT_DIR" "$LOG_DIR"
 LIMIT=()
 if [ -n "${MAX_PAGES:-}" ]; then LIMIT=(-s "CLOSESPIDER_PAGECOUNT=$MAX_PAGES"); fi
 
+export PYTHONPATH=$PWD  # so the spider can import src
 cd scrapy  # scrapy finds its project through scrapy.cfg in the working directory
 # -o appends, so a resumed crawl adds to the same pages.jsonl
 scrapy crawl site -a domain="$DOMAIN" \

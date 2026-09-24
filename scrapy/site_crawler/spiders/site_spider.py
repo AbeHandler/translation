@@ -1,13 +1,16 @@
 """
 One generic spider for any site: `-a domain=denverpost.com` crawls that domain (and its subdomains),
-writing one item per HTML page with the page's outgoing links.
+writing one item per HTML page with the page's outgoing links and publication date.
 
-    cd scrapy && scrapy crawl site -a domain=denverpost.com -o pages.jsonl -s CLOSESPIDER_PAGECOUNT=20
+PYTHONPATH=.. so `src` (at the repo root) imports:
+    cd scrapy && PYTHONPATH=.. scrapy crawl site -a domain=denverpost.com -o pages.jsonl -s CLOSESPIDER_PAGECOUNT=20
 """
 import datetime
 
 import scrapy
 from scrapy.http import TextResponse
+
+from src.extract_pubdate import extract_pubdate
 
 
 class SiteSpider(scrapy.Spider):
@@ -30,14 +33,25 @@ class SiteSpider(scrapy.Spider):
         if not isinstance(response, TextResponse):  # images, PDFs, ...
             return
         links = absolute_links(response)
+        pubdate, pubdate_source = self.pubdate_of(response)
         yield {
             'url': response.url,
             'title': response.css('title::text').get(default='').strip(),
+            'pubdate': pubdate,
+            'pubdate_source': pubdate_source,
             'links': links,
             'crawled_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
         }
         for link in links:
             yield response.follow(link, self.parse)  # OffsiteMiddleware drops other domains
+
+    def pubdate_of(self, response):
+        """Logged as an ERROR (counted in the crawl stats) rather than raised, so one odd page can't stop a crawl."""
+        try:
+            return extract_pubdate(response.text, response.url)
+        except Exception:
+            self.logger.exception(f'pubdate extraction failed for {response.url}')
+            return None, None
 
 
 def absolute_links(response):

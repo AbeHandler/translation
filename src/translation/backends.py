@@ -16,10 +16,35 @@ import random
 import string
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
-# Transient failures (rate limits, timeouts) get 4 tries; reraise so the store sees the real error.
-retry_calls = retry(stop=stop_after_attempt(4), wait=wait_exponential(min=2, max=30), reraise=True)
+
+class EngineHTTPError(Exception):
+    """An engine answered with an HTTP error. Carries the response body, which says what was wrong
+    (e.g. xAI: 'Incorrect API key provided'), so it ends up in the stored error."""
+
+    def __init__(self, response):
+        self.status_code = response.status_code
+        super().__init__(f'HTTP {response.status_code} from {response.url}: {response.text[:500]}')
+
+
+def checked_json(response):
+    if response.is_error:
+        raise EngineHTTPError(response)
+    return response.json()
+
+
+def is_transient(exc):
+    """Worth retrying: rate limits, server errors, timeouts and dropped connections. Not other 4xx errors
+    (bad key, bad request): they fail the same way every time."""
+    if isinstance(exc, EngineHTTPError):
+        return exc.status_code == 429 or exc.status_code >= 500
+    return isinstance(exc, httpx.TransportError)
+
+
+# Transient failures get 4 tries; reraise so the store sees the real error.
+retry_calls = retry(retry=retry_if_exception(is_transient), stop=stop_after_attempt(4),
+                    wait=wait_exponential(min=2, max=30), reraise=True)
 
 
 class Backend:
@@ -48,8 +73,7 @@ class GoogleV2(Backend):
     def request(self, text, src, tgt, context_mode='isolated', temperature=0.0):
         r = httpx.post('https://translation.googleapis.com/language/translate/v2', params={'key': self.key},
                        json={'q': text, 'source': src, 'target': tgt, 'format': 'text'}, timeout=60)
-        r.raise_for_status()
-        return r.json()
+        return checked_json(r)
 
     def parse(self, raw):
         return raw['data']['translations'][0]['translatedText']
@@ -86,8 +110,7 @@ class GoogleV3LLM(Backend):
                        json={'contents': [text], 'sourceLanguageCode': src, 'targetLanguageCode': tgt,
                              'model': f'{parent}/models/general/translation-llm'},
                        timeout=90)
-        r.raise_for_status()
-        return r.json()
+        return checked_json(r)
 
     def parse(self, raw):
         return raw['translations'][0]['translatedText']
@@ -111,8 +134,7 @@ class Baidu(Backend):
                        data={'q': text, 'from': self.LANGUAGES.get(src, src), 'to': self.LANGUAGES.get(tgt, tgt),
                              'appid': self.appid, 'salt': salt, 'sign': sign},
                        timeout=60)
-        r.raise_for_status()
-        return r.json()
+        return checked_json(r)
 
     def parse(self, raw):
         if 'error_code' in raw:
@@ -134,8 +156,7 @@ class DeepL(Backend):
                        json={'text': [text], 'source_lang': src.split('-')[0].upper(),
                              'target_lang': 'ZH' if tgt.lower().startswith('zh') else tgt.upper()},
                        timeout=60)
-        r.raise_for_status()
-        return r.json()
+        return checked_json(r)
 
     def parse(self, raw):
         return raw['translations'][0]['text']
@@ -171,8 +192,7 @@ class OpenAICompatLLM(Backend):
                        json={'model': self.model, 'temperature': temperature,
                              'messages': [{'role': 'user', 'content': self.prompt(text, src, tgt, context_mode)}]},
                        timeout=180)
-        r.raise_for_status()
-        return r.json()
+        return checked_json(r)
 
     def parse(self, raw):
         return raw['choices'][0]['message']['content'].strip()

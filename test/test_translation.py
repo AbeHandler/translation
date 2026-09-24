@@ -107,3 +107,17 @@ def test_csv_metadata_is_queued(tmp_path):
     (segment,) = store.queued_segments()
     assert segment.source_url == 'https://www.ithome.com/1/006/510.htm'
     assert json.loads(segment.metadata) == {'author': '@TheStalwart'}
+
+
+def test_http_errors_keep_the_body_and_only_transient_ones_retry():
+    import httpx
+    from src.translation.backends import EngineHTTPError, checked_json, is_transient
+    request = httpx.Request('POST', 'https://api.x.ai/v1/chat/completions')
+    bad_key = httpx.Response(400, json={'error': 'Incorrect API key provided.'}, request=request)
+    try:
+        checked_json(bad_key)
+    except EngineHTTPError as exc:
+        assert 'Incorrect API key provided' in str(exc) and not is_transient(exc)
+    assert is_transient(EngineHTTPError(httpx.Response(429, request=request)))
+    assert is_transient(EngineHTTPError(httpx.Response(503, request=request)))
+    assert is_transient(httpx.ConnectTimeout('timed out'))

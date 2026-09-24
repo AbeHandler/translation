@@ -8,6 +8,7 @@ PYTHONPATH=.. so `src` (at the repo root) imports:
         -s CLOSESPIDER_PAGECOUNT=20
 """
 import datetime
+from urllib.parse import urlparse
 
 import scrapy
 from scrapy.http import HtmlResponse, TextResponse
@@ -25,6 +26,10 @@ class SiteSpider(scrapy.Spider):
         self.allowed_domains = [domain]
         # Both, because many sites only resolve at one of them (e.g. huxiu.com has no DNS, www.huxiu.com does).
         self.start_urls = [f'https://{domain}/', f'https://www.{domain}/']
+        # Many sites serve the same pages at both, so the crawl sticks to the first to answer with links (home_host):
+        # links to the other are rewritten to it, so no page is crawled twice.
+        self.host_pair = {domain, f'www.{domain}'}
+        self.home_host = None
 
     async def start(self):
         # Deduplicated (unlike the default start), so homepages aren't refetched via their own links or on resume.
@@ -35,6 +40,11 @@ class SiteSpider(scrapy.Spider):
         if not isinstance(response, TextResponse):  # images, PDFs, ...
             return
         links = absolute_links(response)
+        host = urlparse(response.url).hostname
+        if self.home_host is None and host in self.host_pair and links:  # huxiu.com answers with an empty page
+            self.home_host = host
+        elif response.meta.get('depth', 0) == 0 and host in self.host_pair and host != self.home_host:
+            return  # the other start URL's homepage: a copy of home_host's
         pubdate, pubdate_source = self.pubdate_of(response)
         yield {
             'url': response.url,
@@ -48,8 +58,15 @@ class SiteSpider(scrapy.Spider):
             'html': response.body,
             'is_html': isinstance(response, HtmlResponse),
         }
-        for link in links:
-            yield response.follow(link, self.parse)  # OffsiteMiddleware drops other domains
+        for link in links:  # links keeps the URLs as written; only what is followed is rewritten
+            yield response.follow(self.on_home_host(link), self.parse)  # OffsiteMiddleware drops other domains
+
+    def on_home_host(self, url):
+        """https://www.x.com/a -> https://x.com/a when x.com is home_host (and vice versa); other URLs unchanged."""
+        parsed = urlparse(url)
+        if self.home_host and parsed.hostname in self.host_pair and parsed.hostname != self.home_host:
+            return parsed._replace(netloc=parsed.netloc.replace(parsed.hostname, self.home_host, 1)).geturl()
+        return url
 
     def pubdate_of(self, response):
         """Logged as an ERROR (counted in the crawl stats) rather than raised, so one odd page can't stop a crawl."""

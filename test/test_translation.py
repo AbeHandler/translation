@@ -97,16 +97,26 @@ def test_runner_lock_refuses_a_second_runner(tmp_path):
         pass
 
 
-def test_csv_metadata_is_queued(tmp_path):
-    from src.translation.segments import read_segments
-    csv_path = tmp_path / 's.csv'
-    csv_path.write_text('seg_id,src_lang,tgt_lang,text,source_url,author\n'
-                        't1,en,zh,Once again.,https://www.ithome.com/1/006/510.htm,@TheStalwart\n', encoding='utf-8')
+def test_source_segments_carry_context_url_and_metadata(tmp_path):
+    from src.translation.sources import Source, segments
+    source = Source('essay', 'en', 'zh', url='https://example.com/essay', metadata={'author': 'A'})
+    segs = segments(source, '## Intro\n\nFirst one. Second one, e.g. this.\n\nThird one.')
+    assert [s.text for s in segs] == ['First one.', 'Second one, e.g. this.', 'Third one.']
+    assert [s.seg_id for s in segs] == ['essay_1', 'essay_2', 'essay_3']
+    assert (segs[1].context_before, segs[1].context_after) == ('First one.', 'Third one.')
+    assert segs[0].source_url == 'https://example.com/essay' and json.loads(segs[0].metadata) == {'author': 'A'}
     store = TranslationStore(str(tmp_path / 'new_dir' / 't.sqlite'))  # creates the directory
-    store.enqueue(read_segments(csv_path), 's.csv')
-    (segment,) = store.queued_segments()
-    assert segment.source_url == 'https://www.ithome.com/1/006/510.htm'
-    assert json.loads(segment.metadata) == {'author': '@TheStalwart'}
+    assert store.enqueue(segs, 'mt_sources.yaml:essay') == (3, 0)
+
+
+def test_document_unit_is_one_segment_and_selector_parses_the_container():
+    from src.translation.sources import Source, extract_text, segments
+    tweet = Source('tw', 'en', 'zh', text='Once again. We see.', unit='document')
+    (segment,) = segments(tweet, tweet.text)
+    assert (segment.seg_id, segment.text, segment.context_before) == ('tw_1', 'Once again. We see.', '')
+    html = ('<article><div class="w-richtext"><p>One.</p><h2>Part</h2><ul><li>Item a</li></ul><p>Two.</p>'
+            '<h2>Footnotes</h2><p>note</p></div></article><p>outside</p>')
+    assert extract_text(html, 'https://x', 'article .w-richtext') == 'One.\n\n## Part\n\nItem a\n\nTwo.'
 
 
 def test_http_errors_keep_the_body_and_only_transient_ones_retry():

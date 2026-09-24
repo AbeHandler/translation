@@ -55,7 +55,7 @@ def run_queue(store, engines, context_modes, n_samples, temperature, delay_secon
     """Translate every queued segment with every engine. Returns (run_id, counts)."""
     segments = store.queued_segments()
     if not segments:
-        raise ValueError('the MT queue is empty; add segments with scripts/enqueue_segments.py')
+        raise ValueError('the MT queue is empty; add sources to config/mt_sources.yaml and run -step queue')
     calls = plan_calls(segments, engines, context_modes, n_samples)
     run_id = store.start_run(settings or {})
     return run_id, run_translations(calls, store, run_id, temperature, delay_seconds)

@@ -1,0 +1,23 @@
+# Source documents for machine translation (src/translation/sources.py has the fields).
+# scripts/run_translations.py fetches each, splits it into segments and queues them, then translates the
+# queue with every engine. Each document is parsed its own way: add a selector when newspaper4k gets it wrong.
+
+- id: amodei_pace_frontier
+  src_lang: en
+  tgt_lang: zh
+  url: https://darioamodei.com/post/we-must-pace-the-frontier
+  selector: article .w-richtext   # newspaper4k drops a list and the whole 'Bottom Line' section here
+  metadata:
+    author: Dario Amodei
+    title: We Must Pace the Frontier
+
+- id: ithome_1006510_weisenthal
+  src_lang: en
+  tgt_lang: zh
+  unit: document
+  text: Once again. We see how AI has some uncanny similarity to human minds.
+  source_url: https://www.ithome.com/1/006/510.htm
+  metadata:
+    author: Joe Weisenthal (@TheStalwart)
+    medium: tweet screenshot in article
+    shown_translation_zh: 再一次，我们看到人工智能与人类思维之间有着令人惊讶的相似之处。

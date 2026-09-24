@@ -11,6 +11,8 @@ CC_HTML_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_html'
 SITE_CRAWLS_DIR = REPO_ROOT / 'data' / 'interim' / 'site_crawls'  # scrapy/: <domain>/html, <domain>/embeddings
 SITE_CRAWLS_ANNOY_DIR = REPO_ROOT / 'data' / 'processed' / 'site_crawls_annoy'
 ENV_PATH = REPO_ROOT / '.env'  # API keys, e.g. XAI_API_KEY=...; gitignored
+MT_SOURCES_CONFIG = REPO_ROOT / 'config' / 'mt_sources.yaml'
+MT_SOURCES_DIR = REPO_ROOT / 'data' / 'raw' / 'mt_sources'  # <id>.html and <id>.txt per fetched source
 TRANSLATIONS_DB = REPO_ROOT / 'data' / 'processed' / 'translations.sqlite'  # src/translation/store.py
 
 

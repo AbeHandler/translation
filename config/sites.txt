@@ -1,0 +1,36 @@
+# Sites to crawl with scrapy/ (scrapy/crawl_sites.sh). One bare domain per line, e.g. denverpost.com
+# (no scheme, no path; subdomains such as www. are followed automatically). '#' lines are ignored.
+
+# Chinese tech / AI media
+jiqizhixin.com
+qbitai.com
+36kr.com
+huxiu.com
+tmtpost.com
+leiphone.com
+geekpark.net
+zhidx.com
+infoq.cn
+ithome.com
+pingwest.com
+
+# Chinese news / business media
+thepaper.cn
+yicai.com
+jiemian.com
+21jingji.com
+bjnews.com.cn
+guancha.cn
+cls.cn
+nbd.com.cn
+
+# Chinese state media
+xinhuanet.com
+news.cn
+people.com.cn
+chinadaily.com.cn
+huanqiu.com
+chinanews.com.cn
+gmw.cn
+stdaily.com
+cctv.com

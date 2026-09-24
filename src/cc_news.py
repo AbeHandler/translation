@@ -23,6 +23,7 @@ import os
 import random
 import socket
 import subprocess
+import time
 from collections import Counter
 from contextlib import contextmanager
 from types import SimpleNamespace
@@ -48,9 +49,16 @@ class CCNewsIndex:
     A WARC is named by its S3 key: crawl-data/CC-NEWS/2026/09/CC-NEWS-20260923153007-00006.warc.gz
     """
 
-    def __init__(self, aws='aws', bucket=S3_BUCKET):
+    # Common Crawl answers too many requests with "SlowDown" (HTTP 503); these are worth retrying.
+    THROTTLE_MESSAGES = ('SlowDown', 'reduce your request rate', 'Throttling', '503')
+    # Inside each aws call: adaptive mode slows down the client itself when it gets throttled.
+    AWS_RETRY_ENV = {'AWS_RETRY_MODE': 'adaptive', 'AWS_MAX_ATTEMPTS': '10'}
+
+    def __init__(self, aws='aws', bucket=S3_BUCKET, max_tries=8, max_wait_seconds=600):
         self.aws = aws
         self.bucket = bucket
+        self.max_tries = max_tries
+        self.max_wait_seconds = max_wait_seconds
 
     def list_warcs(self, start_date, end_date):
         """Keys of the WARCs crawled on days in [start_date, end_date]."""
@@ -71,11 +79,23 @@ class CCNewsIndex:
         return [prefix + line.split()[-1] for line in listing.splitlines() if line.endswith('.warc.gz')]
 
     def _aws(self, *args):
-        """Run the aws CLI and return its stdout; raise with its stderr on failure."""
-        result = subprocess.run([self.aws, *args], capture_output=True, text=True)
-        if result.returncode != 0:
-            raise RuntimeError(f'{self.aws} {" ".join(args)} failed:\n{result.stderr}')
-        return result.stdout
+        """
+        Run the aws CLI and return its stdout. When S3 throttles us, wait and try again, up to
+        max_tries times; the wait doubles each time and is random, so many workers don't retry in
+        lockstep. Any other failure, or throttling that never lets up, raises with aws's stderr.
+        """
+        env = {**os.environ, **self.AWS_RETRY_ENV}
+        for attempt in range(1, self.max_tries + 1):
+            result = subprocess.run([self.aws, *args], capture_output=True, text=True, env=env)
+            if result.returncode == 0:
+                return result.stdout
+            throttled = any(message in result.stderr for message in self.THROTTLE_MESSAGES)
+            if not throttled or attempt == self.max_tries:
+                break
+            wait = random.uniform(0, min(self.max_wait_seconds, 30 * 2 ** attempt))
+            logger.info('S3 throttled (try %d of %d); waiting %.0fs', attempt, self.max_tries, wait)
+            time.sleep(wait)
+        raise RuntimeError(f'{self.aws} {" ".join(args)} failed after {attempt} tries:\n{result.stderr}')
 
 
 def warc_name(key):

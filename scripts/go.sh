@@ -28,7 +28,9 @@ N_WORKERS=${N_WORKERS:-10}
 AWS=/home/abha4861/bin/v2/2.5.4/bin/aws  # aws CLI v2 on Alpine (an alias there, so not on PATH in jobs)
 mkdir -p logs/scripts/slurm  # SLURM won't create the --output dir
 
-ENV_JOB=$(sbatch --parsable scripts/slurm/update_env.slurm)
+# --export=NONE: without it sbatch copies this shell's environment (--export=ALL), including the
+# login node's MODULEPATH, and `module load anaconda` then fails on the compute node.
+ENV_JOB=$(sbatch --parsable --export=NONE scripts/slurm/update_env.slurm)
 echo "update_env       $ENV_JOB"
 
 # Passed to every worker. Unset optional vars go through empty, and the worker ignores them.

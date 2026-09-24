@@ -3,7 +3,7 @@
 # pip install config/requirements.txt into it. Fast to rerun. Submitted by scripts/go.sh.
 #
 # Usage (from the repo root):
-#   sbatch scripts/slurm/update_env.slurm
+#   sbatch --export=NONE scripts/slurm/update_env.slurm   # NONE: don't inherit the login node's modules
 
 #SBATCH --partition=acpu
 #SBATCH --time=24:00:00

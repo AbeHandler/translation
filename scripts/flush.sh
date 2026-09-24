@@ -3,7 +3,7 @@
 #   $TMP/find_seed_links/                  downloaded WARCs and .lock/.done files
 #   data/interim/cc_links/                 links jsonl, one per WARC
 #   data/processed/cc_link_matches*.jsonl  seed matches
-#   logs/scripts/slurm/{update_env,find_seed_links}_*.out
+#   logs/scripts/slurm/{update_env,find_seed_links,report_run_done}_*.out
 # Refuses while pipeline jobs are queued or running. Run from the repo root.
 #
 # Usage:
@@ -17,14 +17,14 @@ if [ -z "${TMP:-}" ]; then
     echo "ERROR: \$TMP is not set"
     exit 1
 fi
-if command -v squeue >/dev/null && [ -n "$(squeue -h -u "$USER" --name=update_env,find_seed_links)" ]; then
+if command -v squeue >/dev/null && [ -n "$(squeue -h -u "$USER" --name=update_env,find_seed_links,report_run_done)" ]; then
     echo "ERROR: pipeline jobs are still queued/running; scancel them first:"
-    squeue -u "$USER" --name=update_env,find_seed_links
+    squeue -u "$USER" --name=update_env,find_seed_links,report_run_done
     exit 1
 fi
 
 DIRS=("$TMP/find_seed_links" data/interim/cc_links)
-FILES=(data/processed/cc_link_matches*.jsonl logs/scripts/slurm/update_env_*.out logs/scripts/slurm/find_seed_links_*.out)
+FILES=(data/processed/cc_link_matches*.jsonl logs/scripts/slurm/update_env_*.out logs/scripts/slurm/find_seed_links_*.out logs/scripts/slurm/report_run_done_*.out)
 
 echo "WARNING: this deletes:"
 printf '  %s/\n' "${DIRS[@]}"

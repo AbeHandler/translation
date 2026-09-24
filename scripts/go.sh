@@ -4,6 +4,8 @@
 #   find_seed_links  N_WORKERS copies of scripts/find_seed_links.py, after update_env succeeds. Each lists the
 #                    WARCs, processes the ones not done or claimed, and the last one to finish
 #                    greps the links for config/seed_patterns.txt.
+#   report_run_done  after every worker ends: prints a summary and sends the one "done" email.
+#                    Workers and update_env only email on failure.
 # Safe to rerun: done WARCs are skipped. Clean slate: bash scripts/flush.sh
 # Logs: logs/scripts/slurm/<job>_<id>.out. Run from the repo root.
 #
@@ -35,15 +37,21 @@ echo "update_env       $ENV_JOB"
 
 # Passed to every worker. Unset optional vars go through empty, and the worker ignores them.
 EXPORTS="START_DATE=$START_DATE,END_DATE=$END_DATE,AWS=$AWS,TMP=$TMP,MAX_N=$MAX_N,MAX_WARCS=$MAX_WARCS"
+WORKER_JOBS=""
 for i in $(seq 1 "$N_WORKERS"); do
     JOB=$(sbatch --parsable --dependency=afterok:"$ENV_JOB" --kill-on-invalid-dep=yes \
         --export="$EXPORTS" scripts/slurm/find_seed_links.slurm)
-    echo "find_seed_links  $JOB (after $ENV_JOB)"
+    WORKER_JOBS+=":$JOB"
 done
+echo "find_seed_links  $N_WORKERS workers (after $ENV_JOB)"
+
+REPORT_JOB=$(sbatch --parsable --dependency=afterany"$WORKER_JOBS" --export="TMP=$TMP" \
+    scripts/slurm/report_run_done.slurm)
+echo "report_run_done  $REPORT_JOB (after all workers end)"
 
 echo
 echo "Spot checks:"
-echo "  squeue -u \$USER --name=update_env,find_seed_links"
+echo "  squeue -u \$USER --name=update_env,find_seed_links,report_run_done"
 echo "  ls $TMP/find_seed_links/*.done | wc -l   # WARCs finished"
 echo "  ls $TMP/find_seed_links/*.lock           # in progress (stale if no job is running)"
 echo "  tail logs/scripts/slurm/find_seed_links_*.out"

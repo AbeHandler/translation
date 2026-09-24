@@ -32,7 +32,7 @@ if [ -n "$CRAWL_JOBS" ]; then AFTER_CRAWLS=afterany:$CRAWL_JOBS; fi
 
 EMBED_JOBS=$(DEPENDENCY=$AFTER_CRAWLS bash scripts/embed_site_crawls.sh | tee /dev/stderr | sed -n 's/^JOB_IDS=//p')
 
-INDEX_JOB=$(sbatch --parsable --dependency=afterany:"$EMBED_JOBS" scripts/slurm/build_annoy_index.slurm)
+INDEX_JOB=$(sbatch --parsable --export=NONE --dependency=afterany:"$EMBED_JOBS" scripts/slurm/build_annoy_index.slurm)
 echo "build_annoy_index  $INDEX_JOB (after all embed workers)"
 
 echo

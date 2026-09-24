@@ -3,7 +3,7 @@
 # scripts/site_crawls_go.sh submits this after the embedding workers.
 #
 # Usage (from the repo root; the env must have annoy, so run update_env first if it hasn't since):
-#   sbatch scripts/slurm/build_annoy_index.slurm
+#   sbatch --export=NONE scripts/slurm/build_annoy_index.slurm   # NONE: see scripts/go.sh
 
 #SBATCH --partition=acpu
 #SBATCH --time=24:00:00

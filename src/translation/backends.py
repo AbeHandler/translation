@@ -191,7 +191,7 @@ class OpenAICompatLLM(Backend):
                        headers={'Authorization': f'Bearer {self.key}'},
                        json={'model': self.model, 'temperature': temperature,
                              'messages': [{'role': 'user', 'content': self.prompt(text, src, tgt, context_mode)}]},
-                       timeout=180)
+                       timeout=600)  # a whole document can take minutes to come back
         return checked_json(r)
 
     def parse(self, raw):

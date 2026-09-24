@@ -7,7 +7,7 @@ Source documents for MT, listed in a YAML config (config/mt_sources.yaml), each 
       url: https://darioamodei.com/...   # fetched, or
       text: "..."                        # given inline (e.g. a tweet read off a screenshot)
       selector: article .w-richtext      # optional: the element holding the text; default: newspaper4k
-      unit: sentence                     # sentence (default) or document: what one segment is
+      unit: sentence                     # sentence (default) or document (the whole text, one segment)
       source_url: https://...            # optional, when the text was found somewhere other than url
       metadata: {author: ...}            # optional, kept with every segment
 
@@ -110,13 +110,15 @@ def split_sentences(paragraph):
 
 
 def segments(source, text):
-    """unit document: the whole text is one segment. unit sentence: one segment per sentence (headings
-    skipped), with the sentences before and after it as context. seg_ids are <id>_1, <id>_2, ... in order."""
+    """unit document: the whole text is one segment, paragraphs and '## ' headings kept. unit sentence: one
+    segment per sentence (headings skipped), with the sentences before and after it as context. seg_ids are
+    <id>_1, <id>_2, ... in order."""
+    paragraphs = [' '.join(paragraph.split()) for paragraph in text.split('\n\n') if paragraph.strip()]
     if source.unit == 'document':
-        units = [' '.join(text.split())]
+        units = ['\n\n'.join(paragraphs)]
     else:
-        units = [sentence for paragraph in text.split('\n\n') if not paragraph.startswith('## ')
-                 for sentence in split_sentences(' '.join(paragraph.split()))]
+        units = [sentence for paragraph in paragraphs if not paragraph.startswith('## ')
+                 for sentence in split_sentences(paragraph)]
     metadata = json.dumps(source.metadata, ensure_ascii=False, sort_keys=True)
     source_url = source.source_url or source.url
     return [Segment(seg_id=f'{source.id}_{i + 1}', src_lang=source.src_lang, tgt_lang=source.tgt_lang, text=unit,

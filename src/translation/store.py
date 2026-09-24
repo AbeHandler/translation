@@ -93,7 +93,10 @@ class TranslationStore:
             if s.seg_id not in queued:
                 new.append((*values, source, added_at))
             elif queued[s.seg_id] != values:
-                raise ValueError(f'seg_id {s.seg_id} is already queued with different text, languages or metadata')
+                prefix = s.seg_id.rsplit('_', 1)[0]
+                raise ValueError(f'seg_id {s.seg_id} is already queued with different text, languages or metadata. '
+                                 'If its source changed on purpose (e.g. a new unit), delete its old queue rows: '
+                                 f"DELETE FROM queue WHERE seg_id LIKE '{prefix}\\_%' ESCAPE '\\'")
         with self.db:
             self.db.executemany(f'INSERT INTO queue ({SEGMENT_COLUMNS}, source, added_at) '
                                 f'VALUES ({", ".join("?" * (len(fields(Segment)) + 2))})', new)

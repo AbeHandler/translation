@@ -315,14 +315,7 @@ class WorkDir:
         return os.path.exists(self._marker(key, '.done'))
 
     def claim(self, key):
-        """Create the .lock file; False if another worker already has it (O_EXCL makes this atomic)."""
-        try:
-            fd = os.open(self._marker(key, '.lock'), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError:
-            return False
-        with os.fdopen(fd, 'w') as f:
-            f.write(f'{socket.gethostname()} {slurm_job_id()}\n')
-        return True
+        return claim_lock(self._marker(key, '.lock'))
 
     def release(self, key):
         os.remove(self._marker(key, '.lock'))
@@ -362,6 +355,18 @@ def grep_links(paths, patterns):
 
 
 # ---------------------------------------------------------------- small helpers
+
+def claim_lock(path):
+    """Create the lock file (host and job id inside); False if another worker already has it.
+    O_EXCL makes this atomic, also across nodes on the shared filesystem."""
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        return False
+    with os.fdopen(fd, 'w') as f:
+        f.write(f'{socket.gethostname()} {slurm_job_id()}\n')
+    return True
+
 
 @contextmanager
 def atomic_write(path):

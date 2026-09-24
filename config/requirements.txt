@@ -1,5 +1,7 @@
 # pip packages for the translation conda env (scripts/slurm/update_env.slurm installs them).
 # Versions pinned to the local env that was tested.
+# torch: the CPU-only build (much smaller; the embeddings run on CPU).
+--extra-index-url https://download.pytorch.org/whl/cpu
 news-please==1.6.16
 warcio==1.8.1
 readability-lxml==0.9
@@ -10,3 +12,6 @@ scrapy==2.19.0
 newspaper4k==0.9.6
 htmldate==1.10.0
 pyarrow==22.0.0
+torch==2.8.0+cpu
+transformers==4.57.3
+sentence-transformers==5.2.0

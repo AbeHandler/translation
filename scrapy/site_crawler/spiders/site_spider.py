@@ -10,7 +10,7 @@ PYTHONPATH=.. so `src` (at the repo root) imports:
 import datetime
 
 import scrapy
-from scrapy.http import TextResponse
+from scrapy.http import HtmlResponse, TextResponse
 
 from src.extract_pubdate import extract_pubdate
 
@@ -46,6 +46,7 @@ class SiteSpider(scrapy.Spider):
             # taken off again by HtmlParquetPipeline, so they aren't in pages.jsonl
             'content_type': response.headers.get('Content-Type', b'').decode('latin-1'),
             'html': response.body,
+            'is_html': isinstance(response, HtmlResponse),
         }
         for link in links:
             yield response.follow(link, self.parse)  # OffsiteMiddleware drops other domains

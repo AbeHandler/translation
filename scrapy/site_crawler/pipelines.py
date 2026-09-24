@@ -40,13 +40,18 @@ class HtmlParquetPipeline:
         return cls(html_dir)
 
     def process_item(self, item, spider):
-        """Takes the page's html and content_type off the item (so they stay out of pages.jsonl)."""
+        """Takes the page's html, content_type and is_html off the item (so they stay out of pages.jsonl).
+        is_html is scrapy's judgement, which also looks at the body: some servers (zhidx) omit Content-Type."""
         html = item.pop('html')
         content_type = item.pop('content_type')
-        if 'html' in content_type:
-            self.rows.append(self.row(item, html, content_type))
-            if len(self.rows) >= self.ROWS_PER_FILE:
-                self.write()
+        if not item.pop('is_html'):
+            spider.crawler.stats.inc_value('html_parquet/skipped_not_html')
+            logger.info('not saving HTML for %s: Content-Type %r', item['url'], content_type)
+            return item
+        self.rows.append(self.row(item, html, content_type))
+        spider.crawler.stats.inc_value('html_parquet/rows')
+        if len(self.rows) >= self.ROWS_PER_FILE:
+            self.write()
         return item
 
     def close_spider(self, spider):

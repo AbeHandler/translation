@@ -95,3 +95,15 @@ def test_runner_lock_refuses_a_second_runner(tmp_path):
                 pass
     with runner_lock(lock):  # released when the first runner ends
         pass
+
+
+def test_csv_metadata_is_queued(tmp_path):
+    from src.translation.segments import read_segments
+    csv_path = tmp_path / 's.csv'
+    csv_path.write_text('seg_id,src_lang,tgt_lang,text,source_url,author\n'
+                        't1,en,zh,Once again.,https://www.ithome.com/1/006/510.htm,@TheStalwart\n', encoding='utf-8')
+    store = TranslationStore(str(tmp_path / 'new_dir' / 't.sqlite'))  # creates the directory
+    store.enqueue(read_segments(csv_path), 's.csv')
+    (segment,) = store.queued_segments()
+    assert segment.source_url == 'https://www.ithome.com/1/006/510.htm'
+    assert json.loads(segment.metadata) == {'author': '@TheStalwart'}

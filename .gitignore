@@ -6,3 +6,7 @@ logs/
 
 # secrets (API keys)
 .env
+
+# tmp outputs
+tmp.jsonl
+tmp_report.md

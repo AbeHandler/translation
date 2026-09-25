@@ -8,7 +8,7 @@
 #                      without them (scripts/embed_site_crawls.sh)
 #   build_annoy_index  after every embed worker ends: rebuilds one Annoy index over all embeddings, replacing
 #                      the old one (scripts/slurm/build_annoy_index.slurm)
-# Each step also runs on its own (see its script). Clean slate: bash scrapy/flush_crawls.sh
+# Each step also runs on its own (see its script). Clean slate: sbatch --export=NONE scrapy/slurm/flush_crawls.slurm
 # Outputs: data/interim/site_crawls/<domain>/{pages.jsonl,html/,embeddings/}, data/processed/site_crawls_annoy/
 # Logs: logs/scrapy/, logs/scripts/slurm/. Run from the repo root.
 #

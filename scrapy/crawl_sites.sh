@@ -3,7 +3,7 @@
 # after update_env. Sites with a done marker are skipped, so rerunning resumes unfinished crawls.
 # Output: data/interim/site_crawls/<domain>/pages.jsonl (one line per page: url, title, pubdate, links)
 #         and <domain>/html/*.parquet (raw HTML, same format as CC-NEWS data/interim/cc_html).
-# Logs: logs/scrapy/<domain>.log and logs/scrapy/slurm/. Clean slate: bash scrapy/flush_crawls.sh
+# Logs: logs/scrapy/<domain>.log and logs/scrapy/slurm/. Clean slate: sbatch --export=NONE scrapy/slurm/flush_crawls.slurm
 #
 # Usage (from the repo root):
 #   bash scrapy/crawl_sites.sh

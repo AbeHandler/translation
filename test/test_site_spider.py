@@ -44,3 +44,16 @@ def test_sitemap_pages_newest_first_on_the_home_host_and_gzip_works():
         assert [r.url for r in requests] == ['https://www.x.com/article/old.html', 'https://www.x.com/article/new.html']
         old, new = requests
         assert new.priority > old.priority and new.callback == s.parse
+
+
+def test_usual_sitemap_paths_are_tried_and_a_non_sitemap_is_skipped():
+    import asyncio
+    s = spider()
+
+    async def start_urls():
+        return [r.url async for r in s.start()]
+    urls = asyncio.run(start_urls())
+    assert 'https://www.x.com/sitemap.xml' in urls and 'https://x.com/sitemap_index.xml' in urls
+    homepage = TextResponse('https://www.x.com/sitemap.xml', body=b'<html><body>home</body></html>',
+                            request=Request('https://www.x.com/sitemap.xml'))
+    assert list(s.parse_sitemap(homepage)) == []

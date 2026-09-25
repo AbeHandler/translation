@@ -3,9 +3,10 @@ One generic spider for any site: `-a domain=denverpost.com` crawls that domain (
 writing one item per HTML page with the page's outgoing links and publication date to pages.jsonl, and its
 raw HTML to Parquet (site_crawler/pipelines.py).
 
-It finds pages two ways: by following links from the homepage, and from the sitemaps listed in the site's
-robots.txt. Sitemaps matter: many news sites link only their newest articles from the homepage and load the
-rest with JavaScript (e.g. 21jingji), which link-following never reaches. Sitemap pages are crawled newest
+It finds pages two ways: by following links from the homepage, and from the site's sitemaps (those listed
+in robots.txt, and /sitemap.xml and /sitemap_index.xml, which many sites have without listing them).
+Sitemaps matter: many news sites link only their newest articles from the homepage and load the rest with
+JavaScript (e.g. 21jingji), which link-following never reaches. Sitemap pages are crawled newest
 first (by lastmod), and the sitemaps are refetched every run, so each round picks up new articles.
 
 PYTHONPATH=.. so `src` (at the repo root) imports:
@@ -24,6 +25,7 @@ from src.extract_pubdate import extract_pubdate
 
 
 SITEMAP_PRIORITY = 100_000  # above any page, so the sitemaps are read before the crawl gets going
+USUAL_SITEMAPS = ('sitemap.xml', 'sitemap_index.xml')  # tried on every site, as well as those in robots.txt
 
 
 class SiteSpider(scrapy.Spider):
@@ -47,6 +49,9 @@ class SiteSpider(scrapy.Spider):
         # round sees the newest articles.
         for url in self.start_urls:
             yield scrapy.Request(url + 'robots.txt', self.parse_robots, dont_filter=True, priority=SITEMAP_PRIORITY)
+            for path in USUAL_SITEMAPS:  # many sites have one without listing it in robots.txt (huxiu, xinhuanet)
+                for request in self.sitemap_request(url + path):
+                    yield request
         # Deduplicated (unlike the default start), so homepages aren't refetched via their own links or on resume.
         for url in self.start_urls:
             yield scrapy.Request(url, self.parse)
@@ -63,8 +68,8 @@ class SiteSpider(scrapy.Spider):
     def parse_sitemap(self, response):
         """A sitemap index: fetch its sitemaps. A sitemap: crawl its pages, newest first."""
         body = sitemap_body(response)
-        if body is None:
-            self.logger.error(f'not a sitemap: {response.url}')
+        if body is None:  # e.g. a guessed /sitemap.xml that serves the homepage instead
+            self.logger.info(f'not a sitemap: {response.url}')
             return
         sitemap = Sitemap(body)
         entries = list(sitemap)

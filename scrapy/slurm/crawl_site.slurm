@@ -3,7 +3,8 @@
 # data/interim/site_crawls/<domain>/jobdir, so resubmitting after a time limit picks up where it stopped.
 # Scrapy stops itself at 23.5h (CLOSESPIDER_TIMEOUT), before SLURM's 24h kill, so it can save its state
 # and finish writing pages.jsonl. Touches data/interim/site_crawls/<domain>/done only when scrapy reports
-# the whole site crawled (finish_reason 'finished'), not when it stopped on the timer or MAX_PAGES.
+# the whole site crawled (finish_reason 'finished'), not when it stopped on the timer or MAX_PAGES. A
+# 'finished' site with under MIN_PAGES pages fails the job instead (FAIL email): it was blocked, not crawled.
 # Raw HTML goes to data/interim/site_crawls/<domain>/html/*.parquet (same format as CC-NEWS cc_html).
 #
 # Usage (from the repo root; normally via scrapy/crawl_sites.sh):
@@ -58,7 +59,12 @@ FINISH_REASON=$(grep -o "'finish_reason': '[a-z_]*'" "$LOG_DIR/$DOMAIN.log" | ta
 PAGES_AFTER=$(wc -l < "$OUT_DIR/pages.jsonl")
 echo "Stopped because: $FINISH_REASON"
 echo "Pages this run:  $((PAGES_AFTER - PAGES_BEFORE))  (total $PAGES_AFTER in $OUT_DIR/pages.jsonl)"
-if [ "$FINISH_REASON" = finished ]; then
+MIN_PAGES=10  # a 'finished' crawl with fewer pages was blocked or found no links (e.g. a JavaScript-only site)
+if [ "$FINISH_REASON" = finished ] && [ "$PAGES_AFTER" -lt "$MIN_PAGES" ]; then
+    echo "ERROR: $DOMAIN finished with only $PAGES_AFTER pages in total; the site probably blocks us or"
+    echo "       has no links in its HTML. Not marking it done. See $LOG_DIR/$DOMAIN.log (e.g. 403/405 responses)."
+    exit 1
+elif [ "$FINISH_REASON" = finished ]; then
     touch "$OUT_DIR/done"
     echo "Site done"
 else

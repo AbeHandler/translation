@@ -3,7 +3,7 @@
 # returns right away. Every step skips work already done, so rerunning it runs the next round.
 #   update_env         create/update the translation conda env (config/requirements.txt)
 #   crawl_site         one job per site in config/sites.txt not yet done (scrapy/crawl_sites.sh). Each crawls
-#                      for up to 23.5h, resuming where the last round stopped; writes pages.jsonl + html/*.parquet
+#                      for up to 11.5h, resuming where the last round stopped; writes pages.jsonl + html/*.parquet
 #   embed_site_crawls  N_WORKERS CPU workers, after every crawl ends: bge-base-zh embeddings for each HTML file
 #                      without them (scripts/embed_site_crawls.sh)
 #   build_annoy_index  after every embed worker ends: rebuilds one Annoy index over all embeddings, replacing

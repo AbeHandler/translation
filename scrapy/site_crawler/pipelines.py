@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 class HtmlParquetPipeline:
     SCHEMA = ArticleHtmlArchiver.SCHEMA
-    ROWS_PER_FILE = 1000  # small files: a crash (not the clean 23.5h stop) loses at most this many pages
+    ROWS_PER_FILE = 1000  # small files: a crash (not the clean 11.5h stop) loses at most this many pages
 
     def __init__(self, html_dir):
         self.html_dir = html_dir

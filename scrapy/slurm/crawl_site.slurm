@@ -1,7 +1,7 @@
 #!/bin/bash
 # Crawl one site with the scrapy spider in scrapy/site_crawler. Resumable: the crawl state lives in
 # data/interim/site_crawls/<domain>/jobdir, so resubmitting after a time limit picks up where it stopped.
-# Scrapy stops itself at 23.5h (CLOSESPIDER_TIMEOUT), before SLURM's 24h kill, so it can save its state
+# Scrapy stops itself at 11.5h (CLOSESPIDER_TIMEOUT), before SLURM's 12h kill, so it can save its state
 # and finish writing pages.jsonl. Touches data/interim/site_crawls/<domain>/done only when scrapy reports
 # the whole site crawled (finish_reason 'finished'), not when it stopped on the timer or MAX_PAGES. A
 # 'finished' site with under MIN_PAGES pages fails the job instead (FAIL email): it was blocked, not crawled.
@@ -12,7 +12,7 @@
 #   sbatch --export=DOMAIN=denverpost.com,MAX_PAGES=50 scrapy/slurm/crawl_site.slurm   # test
 
 #SBATCH --partition=acpu
-#SBATCH --time=24:00:00
+#SBATCH --time=12:00:00
 #SBATCH --job-name=crawl_site
 #SBATCH --output=logs/scrapy/slurm/%x_%j.out
 #SBATCH --mem=8G
@@ -37,7 +37,7 @@ OUT_DIR=$PWD/data/interim/site_crawls/$DOMAIN
 LOG_DIR=$PWD/logs/scrapy
 mkdir -p "$OUT_DIR" "$LOG_DIR"
 
-STOP_AFTER_SECONDS=84600  # 23.5h: leaves SLURM's 24h limit half an hour for a clean shutdown
+STOP_AFTER_SECONDS=41400  # 11.5h: leaves SLURM's 12h limit half an hour for a clean shutdown
 LIMIT=()
 if [ -n "${MAX_PAGES:-}" ]; then LIMIT=(-s "CLOSESPIDER_PAGECOUNT=$MAX_PAGES"); fi
 

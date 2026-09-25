@@ -12,6 +12,7 @@ import glob
 import json
 import os
 import re
+import time
 from collections import Counter
 from urllib.parse import unquote
 
@@ -68,10 +69,15 @@ def scan_html(domain_dir, urls):
 
 def main():
     sites, candidates = [], []
-    for domain_dir in sorted(glob.glob(os.path.join(CRAWLS, '*'))):
+    domain_dirs = sorted(glob.glob(os.path.join(CRAWLS, '*')))
+    started = time.time()
+    for n, domain_dir in enumerate(domain_dirs, 1):
         domain = os.path.basename(domain_dir)
+        print(f'[{time.time() - started:6.0f}s] site {n}/{len(domain_dirs)} {domain}: reading pages.jsonl', flush=True)
         pages, n_bad = read_pages(domain_dir)
         window_pages = [p for p in pages if in_window(p.get('pubdate'))]
+        print(f'[{time.time() - started:6.0f}s]   {len(pages)} pages, {len(window_pages)} in the window; '
+              'scanning their HTML', flush=True)
         pubdates = sorted(p['pubdate'][:10] for p in pages if p.get('pubdate') and p['pubdate'][:10] <= '2026-12-31')
         html_hits = scan_html(domain_dir, {p['url'] for p in window_pages})
         site = Counter(pages=len(pages), bad_lines=n_bad, window_pages=len(window_pages),
@@ -92,6 +98,8 @@ def main():
                             'html_mentions_amodei', 'html_mentions_essay', 'html_has_darioamodei'):
                     site[key] += row[key]
         sites.append((domain, site, pubdates[0] if pubdates else '', pubdates[-1] if pubdates else ''))
+        print(f'[{time.time() - started:6.0f}s]   done: {site["exact_link"]} exact links, '
+              f'{site["html_mentions_essay"]} pages discussing the essay', flush=True)
 
     with open('tmp.jsonl', 'w', encoding='utf-8') as f:
         for row in candidates:

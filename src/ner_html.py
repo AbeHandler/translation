@@ -14,6 +14,7 @@ duckdb:  SELECT url, e.text FROM 'cc_ner/*.parquet', UNNEST(entities) AS t(e) WH
 """
 import logging
 import os
+import time
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -54,14 +55,20 @@ class EntityExtractor:
         """Write out_path (via .part, so a partial file never looks done). Returns counts."""
         counts = {'pages': 0, 'ner_pages': 0, 'entities': 0}
         schema = SCHEMA.with_metadata({'model': self.model})
+        started = time.time()
         with pq.ParquetWriter(out_path + '.part', schema, compression='zstd') as writer:
             parquet = pq.ParquetFile(html_path)
+            total = parquet.metadata.num_rows
             for batch in parquet.iter_batches(batch_size=READ_ROWS, columns=['record_id', 'url', 'language', 'html']):
                 rows = self.rows(batch.to_pylist())
                 writer.write_table(pa.Table.from_pylist(rows, schema))
                 counts['pages'] += len(rows)
                 counts['ner_pages'] += sum(row['entities'] is not None for row in rows)
                 counts['entities'] += sum(len(row['entities'] or []) for row in rows)
+                elapsed = time.time() - started
+                logger.info('%s: %d/%d pages (%.1f pages/s, ~%.0f min left)', os.path.basename(html_path),
+                            counts['pages'], total, counts['pages'] / elapsed,
+                            (total - counts['pages']) / max(counts['pages'] / elapsed, 1e-9) / 60)
         os.rename(out_path + '.part', out_path)
         return counts
 

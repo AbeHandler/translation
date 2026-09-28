@@ -12,9 +12,9 @@ The CC-NEWS pipeline for a date range, in steps (-step), each reading only the p
            including URL-encoded redirect links. Refuses unless every WARC in the range has its links file
            (-partial to match what there is).
 
-download, html, links and ner are worker steps: scripts/go.sh submits many copies to SLURM, which share the work through
-.lock/.done files. Every step skips work already done, so it is safe to stop and rerun; a new seed pattern
-only needs -step match. Clean slate: sbatch --export=NONE scripts/slurm/flush_cc_news.slurm
+download, html, links and ner are worker steps: scripts/go_zh_en.sh submits many copies to SLURM, which share
+the work through .lock/.done files. Every step skips work already done, so it is safe to stop and rerun; a new
+seed pattern only needs -step match. Clean slate: sbatch --export=NONE scripts/slurm/flush_cc_news.slurm
 
 Run as a module from the repo root, so `src` and `config` import:
     python -m scripts.cc_news_pipeline -step download -start-date 20260901 -end-date 20260923

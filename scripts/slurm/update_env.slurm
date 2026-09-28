@@ -1,6 +1,6 @@
 #!/bin/bash
 # Create the translation conda env (Python only, so conda has almost nothing to solve) and
-# pip install config/requirements.txt into it. Fast to rerun. Submitted by scripts/go.sh.
+# pip install config/requirements.txt into it. Fast to rerun. Submitted by scripts/go_zh_en.sh.
 #
 # Usage (from the repo root):
 #   sbatch --export=NONE scripts/slurm/update_env.slurm   # NONE: don't inherit the login node's modules

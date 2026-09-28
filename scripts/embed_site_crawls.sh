@@ -9,7 +9,7 @@
 #   N_WORKERS=20 bash scripts/embed_site_crawls.sh
 #   N_WORKERS=1 MAX_FILES=1 bash scripts/embed_site_crawls.sh   # test
 # DEPENDENCY=afterany:<job ids> makes the workers wait on those jobs instead of a new update_env
-# (scripts/site_crawls_go.sh does this). The last line printed is JOB_IDS=<id>:<id>:... of the workers.
+# (scripts/go_en_zh.sh does this). The last line printed is JOB_IDS=<id>:<id>:... of the workers.
 
 set -eo pipefail  # no -u: ~/.myrc references unset vars
 source ~/.myrc
@@ -22,7 +22,7 @@ N_WORKERS=${N_WORKERS:-10}
 mkdir -p logs/scripts/slurm  # SLURM won't create the --output dir
 
 if [ -z "${DEPENDENCY:-}" ]; then
-    # --export=NONE: don't inherit the login node's modules (see scripts/go.sh)
+    # --export=NONE: don't inherit the login node's modules (see scripts/go_zh_en.sh)
     ENV_JOB=$(sbatch --parsable --export=NONE scripts/slurm/update_env.slurm)
     echo "update_env         $ENV_JOB"
     DEPENDENCY=afterok:$ENV_JOB

@@ -13,15 +13,15 @@
 # Logs: logs/scrapy/, logs/scripts/slurm/. Run from the repo root.
 #
 # Usage:
-#   bash scripts/site_crawls_go.sh
-#   N_WORKERS=20 bash scripts/site_crawls_go.sh
-#   MAX_PAGES=50 N_WORKERS=1 bash scripts/site_crawls_go.sh   # test: 50 pages per site
+#   bash scripts/go_en_zh.sh
+#   N_WORKERS=20 bash scripts/go_en_zh.sh
+#   MAX_PAGES=50 N_WORKERS=1 bash scripts/go_en_zh.sh   # test: 50 pages per site
 
 set -eo pipefail  # no -u: ~/.myrc references unset vars
 source ~/.myrc
 mkdir -p logs/scripts/slurm  # SLURM won't create the --output dir
 
-# --export=NONE: don't inherit the login node's modules (see scripts/go.sh)
+# --export=NONE: don't inherit the login node's modules (see scripts/go_zh_en.sh)
 ENV_JOB=$(sbatch --parsable --export=NONE scripts/slurm/update_env.slurm)
 echo "update_env         $ENV_JOB"
 

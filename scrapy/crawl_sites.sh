@@ -9,7 +9,7 @@
 #   bash scrapy/crawl_sites.sh
 #   MAX_PAGES=50 bash scrapy/crawl_sites.sh   # test: stop each crawl after 50 pages
 # DEPENDENCY=afterok:<job id> makes the crawls wait on that job instead of a new update_env
-# (scripts/site_crawls_go.sh does this). The last line printed is JOB_IDS=<id>:<id>:... of the crawls.
+# (scripts/go_en_zh.sh does this). The last line printed is JOB_IDS=<id>:<id>:... of the crawls.
 
 set -eo pipefail  # no -u: ~/.myrc references unset vars
 source ~/.myrc
@@ -23,7 +23,7 @@ fi
 mkdir -p logs/scrapy/slurm logs/scripts/slurm  # SLURM won't create the --output dirs
 
 if [ -z "${DEPENDENCY:-}" ]; then
-    # --export=NONE: don't inherit the login node's modules (see scripts/go.sh)
+    # --export=NONE: don't inherit the login node's modules (see scripts/go_zh_en.sh)
     ENV_JOB=$(sbatch --parsable --export=NONE scripts/slurm/update_env.slurm)
     echo "update_env  $ENV_JOB"
     DEPENDENCY=afterok:$ENV_JOB

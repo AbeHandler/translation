@@ -1,8 +1,8 @@
 #!/bin/bash
 # Runs after the CC-NEWS pipeline's last steps (cc_news_match, cc_news_ner) have ended, success or not, and emails once,
-# so a run of many workers sends one "done" email. Prints a summary to its log. Submitted by scripts/go.sh.
+# so a run of many workers sends one "done" email. Prints a summary to its log. Submitted by scripts/go_zh_en.sh.
 #
-# Usage (from the repo root; normally via scripts/go.sh):
+# Usage (from the repo root; normally via scripts/go_zh_en.sh):
 #   sbatch --export=TMP=$TMP --dependency=afterany:<match job id> scripts/slurm/report_run_done.slurm
 
 #SBATCH --partition=acpu

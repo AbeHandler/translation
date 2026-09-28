@@ -1,5 +1,5 @@
 #!/bin/bash
-# FLUSH: deletes everything the CC-NEWS pipeline (scripts/go.sh) writes, for a clean rerun:
+# FLUSH: deletes everything the CC-NEWS pipeline (scripts/go_zh_en.sh) writes, for a clean rerun:
 #   $TMP/extract_warc_html/                .lock/.done files of the html step
 #   $TMP/find_seed_links/                  .lock/.done files of the old (pre-steps) pipeline, if any
 #   $TMP/cc_news_warcs/                    the WARC cache, ONLY with FLUSH_WARCS=1 (kept by default, since

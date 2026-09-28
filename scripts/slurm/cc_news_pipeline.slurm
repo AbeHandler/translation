@@ -1,9 +1,9 @@
 #!/bin/bash
 # One step of scripts/cc_news_pipeline.py (STEP=download|html|links|ner|match). All but match run as many
-# workers that share the work; match runs once, after links. scripts/go.sh submits them in order, named
+# workers that share the work; match runs once, after links. scripts/go_zh_en.sh submits them in order, named
 # cc_news_<step>, and gives ner more CPUs and memory (--cpus-per-task, --mem on the sbatch line).
 #
-# Usage (from the repo root; normally via scripts/go.sh):
+# Usage (from the repo root; normally via scripts/go_zh_en.sh):
 #   sbatch --job-name=cc_news_html --export=STEP=html,START_DATE=20260901,END_DATE=20260923,AWS=/home/abha4861/bin/v2/2.5.4/bin/aws,TMP=$TMP scripts/slurm/cc_news_pipeline.slurm
 #   optional: MAX_N=100, MAX_WARCS=1 (test), PARTIAL=1 (match what there is)
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# FLUSH: deletes everything scripts/site_crawls_go.sh writes, for a clean rerun:
+# FLUSH: deletes everything scripts/go_en_zh.sh writes, for a clean rerun:
 #   data/interim/site_crawls/          pages, HTML, embeddings, crawl state (jobdir) and done markers, per site
 #   data/processed/site_crawls_annoy/  the Annoy index
 #   logs/scrapy/                       scrapy and crawl SLURM logs

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Rebuild data/processed/gazetteer_stories.jsonl: every CC-NEWS story naming an entry of config/gazetteer.yaml
-# among its named entities (scripts/filter_by_gazetteer.py). scripts/go.sh submits it after the ner workers.
+# among its named entities (scripts/filter_by_gazetteer.py). scripts/go_zh_en.sh submits it after the ner workers.
 #
 # Usage (from the repo root):
 #   sbatch --export=NONE scripts/slurm/filter_by_gazetteer.slurm

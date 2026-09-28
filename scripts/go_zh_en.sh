@@ -19,19 +19,19 @@
 # Run from the repo root.
 #
 # Usage:
-#   START_DATE=20260901 END_DATE=20260923 bash scripts/go.sh
-#   START_DATE=20260901 END_DATE=20260923 N_HTML_WORKERS=20 N_LINK_WORKERS=20 bash scripts/go.sh
-#   START_DATE=20260901 END_DATE=20260923 MATCH_ONLY=1 bash scripts/go.sh      # rematch, e.g. after a new seed
-#   START_DATE=20260901 END_DATE=20260923 DOWNLOAD_ONLY=1 bash scripts/go.sh   # just download the WARCs
-#   START_DATE=20260901 END_DATE=20260923 N_NER_WORKERS=0 bash scripts/go.sh   # skip NER
-#   START_DATE=20260923 END_DATE=20260923 N_HTML_WORKERS=1 N_LINK_WORKERS=1 MAX_WARCS=1 MAX_N=100 PARTIAL=1 bash scripts/go.sh  # test
+#   START_DATE=20260901 END_DATE=20260923 bash scripts/go_zh_en.sh
+#   START_DATE=20260901 END_DATE=20260923 N_HTML_WORKERS=20 N_LINK_WORKERS=20 bash scripts/go_zh_en.sh
+#   START_DATE=20260901 END_DATE=20260923 MATCH_ONLY=1 bash scripts/go_zh_en.sh      # rematch, e.g. after a new seed
+#   START_DATE=20260901 END_DATE=20260923 DOWNLOAD_ONLY=1 bash scripts/go_zh_en.sh   # just download the WARCs
+#   START_DATE=20260901 END_DATE=20260923 N_NER_WORKERS=0 bash scripts/go_zh_en.sh   # skip NER
+#   START_DATE=20260923 END_DATE=20260923 N_HTML_WORKERS=1 N_LINK_WORKERS=1 MAX_WARCS=1 MAX_N=100 PARTIAL=1 bash scripts/go_zh_en.sh  # test
 
 set -eo pipefail  # no -u: ~/.myrc references unset vars
 source ~/.myrc  # first, so $TMP etc. from ~/.myrc are set before the checks below
 
 if [ -z "${START_DATE:-}" ] || [ -z "${END_DATE:-}" ]; then
     echo "ERROR: START_DATE and END_DATE (YYYYMMDD) are required"
-    echo "Usage: START_DATE=20260901 END_DATE=20260923 bash scripts/go.sh"
+    echo "Usage: START_DATE=20260901 END_DATE=20260923 bash scripts/go_zh_en.sh"
     exit 1
 fi
 for d in "$START_DATE" "$END_DATE"; do

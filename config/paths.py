@@ -9,11 +9,11 @@ CC_LINKS_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_links'
 CC_LINK_MATCHES_PATH = REPO_ROOT / 'data' / 'processed' / 'cc_link_matches.jsonl'
 CC_HTML_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_html'
 CC_NER_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_ner'  # src/ner_html.py, one per cc_html file
-CC_QUOTES_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_quotes'  # src/quote_extraction/pages.py, one per cc_ner file
 # trained by scripts/train_quote_extractor.py (config/quote_extraction.yaml); not in git
 QUOTE_MODEL_DIR = REPO_ROOT / 'results' / 'train_quote_extractor' / 'electra_small' / 'model'
 GAZETTEER_PATH = REPO_ROOT / 'config' / 'gazetteer.yaml'
 GAZETTEER_STORIES_PATH = REPO_ROOT / 'data' / 'processed' / 'gazetteer_stories.jsonl'
+GAZETTEER_QUOTES_PATH = REPO_ROOT / 'data' / 'processed' / 'gazetteer_quotes.jsonl'  # scripts/extract_quotes.py
 SITE_CRAWLS_DIR = REPO_ROOT / 'data' / 'interim' / 'site_crawls'  # scrapy/: <domain>/html, <domain>/embeddings
 SITE_CRAWLS_ANNOY_DIR = REPO_ROOT / 'data' / 'processed' / 'site_crawls_annoy'
 ENV_PATH = REPO_ROOT / '.env'  # API keys, e.g. XAI_API_KEY=...; gitignored

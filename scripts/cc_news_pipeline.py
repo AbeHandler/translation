@@ -8,13 +8,11 @@ The CC-NEWS pipeline for a date range, in steps (-step), each reading only the p
     links  cc_html/<warc>.parquet -> data/interim/cc_links/<warc>.jsonl   each article's body links
     ner    cc_html/<warc>.parquet -> data/interim/cc_ner/<warc>.parquet   each English article's text and named
            entities (spaCy en_core_web_trf on CPU, nlp.pipe; src/ner_html.py), for gazetteer filtering later
-    quotes cc_ner/<warc>.parquet -> data/interim/cc_quotes/<warc>.parquet   direct quotes and their speakers in
-           each English article's text (src/quote_extraction; offsets line up with the entities')
     match  cc_links -> data/processed/cc_link_matches.jsonl   links to the seeds in config/seed_patterns.txt,
            including URL-encoded redirect links. Refuses unless every WARC in the range has its links file
            (-partial to match what there is).
 
-download, html, links, ner and quotes are worker steps: scripts/go_zh_en.sh submits many copies to SLURM, which share
+download, html, links and ner are worker steps: scripts/go_zh_en.sh submits many copies to SLURM, which share
 the work through .lock/.done files. Every step skips work already done, so it is safe to stop and rerun; a new
 seed pattern only needs -step match. Clean slate: sbatch --export=NONE scripts/slurm/flush_cc_news.slurm
 
@@ -29,25 +27,23 @@ Run as a module from the repo root, so `src` and `config` import:
 import argparse
 import os
 
-from config.paths import (CC_HTML_DIR, CC_LINK_MATCHES_PATH, CC_LINKS_DIR, CC_NER_DIR, CC_QUOTES_DIR, QUOTE_MODEL_DIR,
-                          SEED_PATTERNS_PATH, download_warcs_work_dir, extract_warc_html_work_dir, warc_cache_dir)
+from config.paths import (CC_HTML_DIR, CC_LINK_MATCHES_PATH, CC_LINKS_DIR, CC_NER_DIR, SEED_PATTERNS_PATH,
+                          download_warcs_work_dir, extract_warc_html_work_dir, warc_cache_dir)
 from src.cc_news import (ArticleHtmlArchiver, ArticleLinkExtractor, CCNewsIndex, HtmlArchivePipeline, WarcWorker,
                          WorkDir, match_seed_links, read_patterns, warc_files, warc_name, with_max_n)
 from src.file_worker import process_files
 from src.warc_worker_cli import add_warc_worker_args, setup_worker_process
 
-STEPS = ('download', 'html', 'links', 'ner', 'quotes', 'match')
+STEPS = ('download', 'html', 'links', 'ner', 'match')
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='The CC-NEWS pipeline: download, html, links, ner, quotes, match')
+    parser = argparse.ArgumentParser(description='The CC-NEWS pipeline: download, html, links, ner, match')
     parser.add_argument('-step', required=True, choices=STEPS)
     add_warc_worker_args(parser, default_work_dir_help='html step; default $TMP/extract_warc_html')
     parser.add_argument('-html-dir', default=str(CC_HTML_DIR))
     parser.add_argument('-links-dir', default=str(CC_LINKS_DIR))
     parser.add_argument('-ner-dir', default=str(CC_NER_DIR))
-    parser.add_argument('-quotes-dir', default=str(CC_QUOTES_DIR))
-    parser.add_argument('-quote-model-dir', default=str(QUOTE_MODEL_DIR))
     parser.add_argument('-patterns', default=str(SEED_PATTERNS_PATH), help='one substring per line')
     parser.add_argument('-matches-path', default='', help=f'default {CC_LINK_MATCHES_PATH}')
     parser.add_argument('-partial', action='store_true', help='match: even if some WARCs have no links yet')
@@ -104,20 +100,6 @@ def ner(args):
     from_each_html_file(args, args.ner_dir, '.parquet', EntityExtractor(load_ner_model()).write)
 
 
-def quotes(args):
-    from src.quote_extraction.pages import QuoteFileWriter  # torch loads only for this step
-    from src.quote_extraction.predict import QuoteExtractor
-    if not os.path.isdir(args.quote_model_dir):
-        raise FileNotFoundError(f'no quote model at {args.quote_model_dir}; train it with '
-                                'scripts/slurm/train_quote_extractor.slurm (or copy it there)')
-    ner_paths = warc_files(args.ner_dir, '.parquet', args.start_date, args.end_date, args.max_n)
-    if not ner_paths:
-        raise FileNotFoundError(f'no NER files for {args.start_date}..{args.end_date} in {args.ner_dir}; '
-                                'run -step ner first')
-    writer = QuoteFileWriter(QuoteExtractor(args.quote_model_dir), args.quote_model_dir)
-    from_each_file(args, ner_paths, args.quotes_dir, '.parquet', writer.write)
-
-
 def match(args):
     keys = index(args).list_warcs(args.start_date, args.end_date)
     patterns = read_patterns(args.patterns)
@@ -137,7 +119,7 @@ def match(args):
 def main():
     setup_worker_process()
     args = parse_args()
-    {'download': download, 'html': html, 'links': links, 'ner': ner, 'quotes': quotes, 'match': match}[args.step](args)
+    {'download': download, 'html': html, 'links': links, 'ner': ner, 'match': match}[args.step](args)
 
 
 if __name__ == '__main__':

@@ -1,7 +1,7 @@
 #!/bin/bash
-# Train the direct-quote model (scripts/train_quote_extractor.py, config/quote_extraction.yaml) that the CC-NEWS
-# quotes step uses -> results/train_quote_extractor/<experiment_name>/model. Gets the DirectQuote data first if
-# it isn't there (github.com/THUNLP-MT/DirectQuote; it has no LICENSE file). CPU only: ~1h for ELECTRA-small.
+# Train the direct-quote model (scripts/train_quote_extractor.py, config/quote_extraction.yaml) that
+# scripts/extract_quotes.py uses -> results/train_quote_extractor/<experiment_name>/model. Gets the
+# DirectQuote data first if it isn't there (github.com/THUNLP-MT/DirectQuote; it has no LICENSE file). CPU only: ~1h for ELECTRA-small.
 #
 # Usage (from the repo root; the env must have been updated since the quote extractor was added):
 #   sbatch --export=NONE scripts/slurm/train_quote_extractor.slurm

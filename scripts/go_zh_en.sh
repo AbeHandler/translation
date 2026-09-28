@@ -7,11 +7,10 @@
 #   cc_news_links    N_LINK_WORKERS workers, after the html workers: cc_html -> data/interim/cc_links/<warc>.jsonl
 #   cc_news_ner      N_NER_WORKERS workers (8 CPUs, 16G each), also after the html workers: cc_html ->
 #                    data/interim/cc_ner/<warc>.parquet, each English article's text and spaCy entities
-#   cc_news_quotes   N_QUOTE_WORKERS workers (8 CPUs, 16G each), after the ner workers: cc_ner ->
-#                    data/interim/cc_quotes/<warc>.parquet, direct quotes and speakers (needs the trained model,
-#                    scripts/slurm/train_quote_extractor.slurm)
 #   filter_by_gazetteer  one job, after the ner workers: every story (in all NER files, not just this range)
 #                    naming an entry of config/gazetteer.yaml -> data/processed/gazetteer_stories.jsonl
+#   extract_quotes   one job, after the filter: direct quotes and speakers in those stories only ->
+#                    data/processed/gazetteer_quotes.jsonl (needs the model from train_quote_extractor.slurm)
 #   cc_news_match    one job, after the links workers: -> data/processed/cc_link_matches.jsonl (the seeds in
 #                    config/seed_patterns.txt). Fails if some WARC in the range still has no links file.
 #   report_run_done  after the match and ner: a summary and the one "done" email. The rest emails on failure.
@@ -26,8 +25,7 @@
 #   START_DATE=20260901 END_DATE=20260923 N_HTML_WORKERS=20 N_LINK_WORKERS=20 bash scripts/go_zh_en.sh
 #   START_DATE=20260901 END_DATE=20260923 MATCH_ONLY=1 bash scripts/go_zh_en.sh      # rematch, e.g. after a new seed
 #   START_DATE=20260901 END_DATE=20260923 DOWNLOAD_ONLY=1 bash scripts/go_zh_en.sh   # just download the WARCs
-#   START_DATE=20260901 END_DATE=20260923 N_NER_WORKERS=0 bash scripts/go_zh_en.sh   # skip NER (and quotes)
-#   START_DATE=20260901 END_DATE=20260923 N_QUOTE_WORKERS=0 bash scripts/go_zh_en.sh # skip quotes
+#   START_DATE=20260901 END_DATE=20260923 N_NER_WORKERS=0 bash scripts/go_zh_en.sh   # skip NER (and gazetteer, quotes)
 #   START_DATE=20260923 END_DATE=20260923 N_HTML_WORKERS=1 N_LINK_WORKERS=1 MAX_WARCS=1 MAX_N=100 PARTIAL=1 bash scripts/go_zh_en.sh  # test
 
 set -eo pipefail  # no -u: ~/.myrc references unset vars
@@ -64,7 +62,6 @@ fi
 N_HTML_WORKERS=${N_HTML_WORKERS:-10}
 N_LINK_WORKERS=${N_LINK_WORKERS:-10}
 N_NER_WORKERS=${N_NER_WORKERS:-10}
-N_QUOTE_WORKERS=${N_QUOTE_WORKERS:-10}
 N_DOWNLOAD_WORKERS=${N_DOWNLOAD_WORKERS:-10}
 AWS=/home/abha4861/bin/v2/2.5.4/bin/aws  # aws CLI v2 on Alpine (an alias there, so not on PATH in jobs)
 mkdir -p logs/scripts/slurm  # SLURM won't create the --output dir
@@ -104,11 +101,13 @@ if [ "${MATCH_ONLY:-}" != 1 ]; then
     NER_JOBS=$(submit_step ner "$N_NER_WORKERS" "afterany$HTML_JOBS" --cpus-per-task=8 --mem=16G)
     echo "cc_news_ner      $N_NER_WORKERS workers (after the html workers)"
     if [ -n "$NER_JOBS" ]; then
-        QUOTE_JOBS=$(submit_step quotes "$N_QUOTE_WORKERS" "afterany$NER_JOBS" --cpus-per-task=8 --mem=16G)
-        echo "cc_news_quotes   $N_QUOTE_WORKERS workers (after the ner workers)"
-        NER_JOBS=":$(sbatch --parsable --dependency=afterany"$NER_JOBS" --export="MAX_N=$MAX_N" \
-            scripts/slurm/filter_by_gazetteer.slurm)$QUOTE_JOBS"
-        echo "filter_by_gazetteer ${NER_JOBS#:} (after the ner workers)"
+        FILTER_JOB=$(sbatch --parsable --dependency=afterany"$NER_JOBS" --export="MAX_N=$MAX_N" \
+            scripts/slurm/filter_by_gazetteer.slurm)
+        echo "filter_by_gazetteer $FILTER_JOB (after the ner workers)"
+        # afterok: no stories file means nothing to take quotes from
+        NER_JOBS=":$(sbatch --parsable --dependency=afterok:"$FILTER_JOB" --kill-on-invalid-dep=yes \
+            --export="MAX_N=$MAX_N" scripts/slurm/extract_quotes.slurm)"
+        echo "extract_quotes   ${NER_JOBS#:} (after the filter)"
     fi
     AFTER=afterany$LINK_JOBS
 fi
@@ -121,11 +120,11 @@ echo "report_run_done  $REPORT_JOB (after the match and ner)"
 
 echo
 echo "Spot checks:"
-echo "  squeue -u \$USER --name=update_env,cc_news_html,cc_news_links,cc_news_ner,cc_news_quotes,cc_news_match,report_run_done"
+echo "  squeue -u \$USER --name=update_env,cc_news_html,cc_news_links,cc_news_ner,filter_by_gazetteer,extract_quotes,cc_news_match,report_run_done"
 echo "  ls $TMP/extract_warc_html/*.done | wc -l      # WARCs with HTML"
 echo "  ls data/interim/cc_links/*.jsonl | wc -l      # WARCs with links"
 echo "  ls data/interim/cc_ner/*.parquet | wc -l      # WARCs with entities"
-echo "  ls data/interim/cc_quotes/*.parquet | wc -l   # WARCs with quotes"
 echo "  wc -l data/processed/gazetteer_stories.jsonl  # stories naming a gazetteer entry"
+echo "  wc -l data/processed/gazetteer_quotes.jsonl   # direct quotes in those stories"
 echo "  ls $TMP/extract_warc_html/*.lock data/interim/cc_links/*.lock   # in progress (stale if no job runs)"
 echo "  tail logs/scripts/slurm/cc_news_*_*.out"

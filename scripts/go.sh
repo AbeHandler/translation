@@ -45,10 +45,12 @@ if [ "$START_DATE" -gt "$END_DATE" ]; then
     exit 1
 fi
 N_DAYS=$(( ($(date -d "$END_DATE" +%s) - $(date -d "$START_DATE" +%s)) / 86400 + 1 ))
-MAX_DAYS=${MAX_DAYS:-31}  # CC-NEWS is ~100 1GB WARCs a day: a month is ~3TB of scratch
-if [ "$N_DAYS" -gt "$MAX_DAYS" ]; then
-    echo "ERROR: $N_DAYS days is about $((N_DAYS / 10))TB of WARCs; run a few weeks at a time,"
-    echo "       or set MAX_DAYS=$N_DAYS if scratch really has room."
+GB_PER_DAY=12        # CC-NEWS: ~8-12 WARCs a day, ~1GB each (measured on 2026 WARCs)
+MAX_TB=${MAX_TB:-30}  # the WARC cache stays under this; scratch quota is 37TB
+EST_TB=$(( N_DAYS * GB_PER_DAY / 1000 ))
+echo "$N_DAYS days: about $((N_DAYS * GB_PER_DAY))GB of WARCs in $TMP/cc_news_warcs"
+if [ "$EST_TB" -ge "$MAX_TB" ]; then
+    echo "ERROR: that's over MAX_TB=${MAX_TB}TB; split the range, or set MAX_TB if scratch has room."
     exit 1
 fi
 if [ -z "${TMP:-}" ]; then

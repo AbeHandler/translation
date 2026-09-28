@@ -1,0 +1,20 @@
+# Paraphrase (indirect attribution) detection on PolNeAR, roberta-base (scripts/train_paraphrase_detector.py).
+# Outputs go to results/train_paraphrase_detector/<experiment_name>/: model/, label_map.json, eval_report.json, logs/.
+experiment_name: roberta_base
+model:
+  # cased and ~8x ELECTRA-small's size: train on a GPU (a Mac's MPS works), not Alpine's CPUs
+  base_model: roberta-base
+  max_seq_length: 512   # PolNeAR paragraphs: 99% are under ~150 words, but some articles have no paragraph breaks
+data:
+  polnear_dir: data/external/polnear/data   # git clone https://github.com/networkdynamics/PolNeAR data/external/polnear
+training:   # PolNeAR's own train/dev/test splits
+  epochs: 6   # ELECTRA-small's dev F1 was still rising at epoch 5; early stopping ends it sooner if not
+  batch_size: 16
+  learning_rate: 3e-5
+  weight_decay: 0.01
+  warmup_ratio: 0.06
+  eval_strategy: epoch
+  save_strategy: epoch
+  metric_for_best_model: f1
+  early_stopping_patience: 2
+  seed: 42

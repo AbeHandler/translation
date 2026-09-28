@@ -14,12 +14,12 @@ Run as a module from the repo root:
 import argparse
 
 import yaml
-from transformers import AutoTokenizer, set_seed
+from transformers import set_seed
 
 from config.paths import REPO_ROOT
 from src.quote_extraction.data import read_conll, split_contiguous
 from src.token_tagging.encoding import label_list
-from src.token_tagging.training import format_summary, train_and_save
+from src.token_tagging.training import format_summary, load_tokenizer, train_and_save
 from src.warc_worker_cli import optional_int
 
 NAME = 'train_quote_extractor'
@@ -46,7 +46,7 @@ def main():
     labels = label_list(paragraphs)
     print(f'{len(paragraphs)} paragraphs: ' + ', '.join(f'{k} {len(v)}' for k, v in splits.items()))
 
-    tokenizer = AutoTokenizer.from_pretrained(config['model']['base_model'])
+    tokenizer = load_tokenizer(config['model']['base_model'])
     report = train_and_save(splits, labels, tokenizer, config, out_dir, {'experiment': experiment})
     print('\n' + format_summary(report))
     print(f'\ntrained in {report["train_seconds"]}s -> {out_dir}')

@@ -11,16 +11,19 @@ Get the data first (~1 GB):  git clone --depth 1 https://github.com/networkdynam
 Run as a module from the repo root:
     python -m scripts.train_paraphrase_detector
     python -m scripts.train_paraphrase_detector -max-articles 20   # smoke test
+    python -m scripts.train_paraphrase_detector -config config/paraphrase_detection_roberta_base.yaml   # local GPU
+
+The HF Trainer uses a GPU when there is one (CUDA, or MPS on a Mac), else the CPU.
 """
 import argparse
 
 import yaml
-from transformers import AutoTokenizer, set_seed
+from transformers import set_seed
 
 from config.paths import REPO_ROOT
 from src.paraphrase_detection.polnear import read_split
 from src.token_tagging.encoding import label_list
-from src.token_tagging.training import format_summary, train_and_save
+from src.token_tagging.training import format_summary, load_tokenizer, train_and_save
 from src.warc_worker_cli import optional_int
 
 NAME = 'train_paraphrase_detector'
@@ -51,7 +54,7 @@ def main():
         print(f'{split}: {len(splits[split])} paragraphs, {counts[split]}')
     labels = label_list(splits['train'])
 
-    tokenizer = AutoTokenizer.from_pretrained(config['model']['base_model'])
+    tokenizer = load_tokenizer(config['model']['base_model'])
     report = train_and_save(splits, labels, tokenizer, config, out_dir,
                             {'experiment': experiment, 'attribution_counts': counts})
     print('\n' + format_summary(report))

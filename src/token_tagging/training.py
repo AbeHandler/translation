@@ -7,10 +7,15 @@ import numpy as np
 from datasets import Dataset
 from seqeval.metrics import classification_report
 from seqeval.scheme import IOB2
-from transformers import (AutoModelForTokenClassification, DataCollatorForTokenClassification, EarlyStoppingCallback,
-                          Trainer, TrainingArguments)
+from transformers import (AutoModelForTokenClassification, AutoTokenizer, DataCollatorForTokenClassification,
+                          EarlyStoppingCallback, Trainer, TrainingArguments)
 
 from src.token_tagging.encoding import IGNORE, encode
+
+
+def load_tokenizer(base_model):
+    """add_prefix_space: BPE tokenizers (RoBERTa, GPT-2) need it for pre-split words; WordPiece ignores it."""
+    return AutoTokenizer.from_pretrained(base_model, add_prefix_space=True)
 
 
 def to_tag_sequences(predictions, label_ids, id2label):

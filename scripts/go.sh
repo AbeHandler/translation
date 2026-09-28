@@ -32,6 +32,23 @@ if [ -z "${START_DATE:-}" ] || [ -z "${END_DATE:-}" ]; then
     echo "Usage: START_DATE=20260901 END_DATE=20260923 bash scripts/go.sh"
     exit 1
 fi
+for d in "$START_DATE" "$END_DATE"; do
+    if ! [[ $d =~ ^20[0-9]{6}$ ]] || ! date -d "$d" >/dev/null 2>&1; then
+        echo "ERROR: dates must be YYYYMMDD (e.g. 20260223), not '$d'"
+        exit 1
+    fi
+done
+if [ "$START_DATE" -gt "$END_DATE" ]; then
+    echo "ERROR: START_DATE $START_DATE is after END_DATE $END_DATE"
+    exit 1
+fi
+N_DAYS=$(( ($(date -d "$END_DATE" +%s) - $(date -d "$START_DATE" +%s)) / 86400 + 1 ))
+MAX_DAYS=${MAX_DAYS:-31}  # CC-NEWS is ~100 1GB WARCs a day: a month is ~3TB of scratch
+if [ "$N_DAYS" -gt "$MAX_DAYS" ]; then
+    echo "ERROR: $N_DAYS days is about $((N_DAYS / 10))TB of WARCs; run a few weeks at a time,"
+    echo "       or set MAX_DAYS=$N_DAYS if scratch really has room."
+    exit 1
+fi
 if [ -z "${TMP:-}" ]; then
     echo "ERROR: \$TMP is not set; the WARC cache and .lock/.done files go there"
     exit 1

@@ -58,6 +58,7 @@ def train_and_evaluate(splits, tokenizer, labels, config, model_dir, log_dir):
     args = TrainingArguments(
         output_dir=str(model_dir) + '_checkpoints', logging_dir=str(log_dir), num_train_epochs=t['epochs'],
         per_device_train_batch_size=t['batch_size'], per_device_eval_batch_size=t['batch_size'],
+        gradient_accumulation_steps=t.get('gradient_accumulation_steps', 1),
         learning_rate=float(t['learning_rate']), weight_decay=t['weight_decay'], warmup_ratio=t['warmup_ratio'],
         eval_strategy=t['eval_strategy'], save_strategy=t['save_strategy'], logging_strategy=t['eval_strategy'],
         load_best_model_at_end=True, metric_for_best_model=t['metric_for_best_model'], greater_is_better=True,

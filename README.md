@@ -25,8 +25,9 @@ Every step skips work already done, so any driver can be stopped and rerun.
   by `scripts/extract_quotes.py` on the gazetteer stories → `data/processed/gazetteer_quotes.jsonl`;
   `scripts/slurm/train_quote_extractor.slurm` trains it on Alpine.
 - `scripts/train_paraphrase_detector.py` — the paraphrase (indirect attribution) model: Source / Cue / Content
-  tags trained on PolNeAR (`config/paraphrase_detection.yaml`), direct quotes left to the quote extractor;
-  `scripts/slurm/train_paraphrase_detector.slurm` trains it on Alpine. Both models share `src/token_tagging`.
+  tags trained on PolNeAR (`config/paraphrase_detection*.yaml`), direct quotes left to the quote extractor.
+  Trained locally on the GPU; the model is rsynced to Alpine for CPU inference. Both models share
+  `src/token_tagging`.
 - `scripts/filter_by_gazetteer.py` — stories naming gazetteer entries → `data/processed/gazetteer_stories.jsonl`.
 - `scrapy/crawl_sites.sh` — one crawl job per site (`scrapy/slurm/crawl_site.slurm`).
 - `scripts/embed_site_crawls.sh` — bge-base-zh embeddings of crawled pages.

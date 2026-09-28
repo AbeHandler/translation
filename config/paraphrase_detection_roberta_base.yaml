@@ -2,14 +2,15 @@
 # Outputs go to results/train_paraphrase_detector/<experiment_name>/: model/, label_map.json, eval_report.json, logs/.
 experiment_name: roberta_base
 model:
-  # cased and ~8x ELECTRA-small's size: train on a GPU (a Mac's MPS works), not Alpine's CPUs
+  # cased and ~8x ELECTRA-small's size: train locally on the GPU (MPS); rsync model/ to Alpine for CPU inference
   base_model: roberta-base
   max_seq_length: 512   # PolNeAR paragraphs: 99% are under ~150 words, but some articles have no paragraph breaks
 data:
   polnear_dir: data/external/polnear/data   # git clone https://github.com/networkdynamics/PolNeAR data/external/polnear
 training:   # PolNeAR's own train/dev/test splits
   epochs: 6   # ELECTRA-small's dev F1 was still rising at epoch 5; early stopping ends it sooner if not
-  batch_size: 16
+  batch_size: 8   # x2 accumulation = 16; 16 x 512 subwords ran out of the M2 Max's 32 GB (MPS)
+  gradient_accumulation_steps: 2
   learning_rate: 3e-5
   weight_decay: 0.01
   warmup_ratio: 0.06

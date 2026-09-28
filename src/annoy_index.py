@@ -39,9 +39,6 @@ def build_annoy_index(embedding_files, out_dir, n_trees=50, n_jobs=-1):
     index, model, ids = None, None, []
     started = time.time()
     for n, (domain, path) in enumerate(embedding_files, 1):
-        if n % LOG_EVERY_FILES == 0 or n == len(embedding_files):
-            logger.info('read %d/%d embeddings files, %d vectors added (%.0fs)', n, len(embedding_files), len(ids),
-                        time.time() - started)
         table = pq.read_table(path)
         file_model = table.schema.metadata[b'model'].decode()
         model = model or file_model
@@ -56,6 +53,9 @@ def build_annoy_index(embedding_files, out_dir, n_trees=50, n_jobs=-1):
             index.add_item(len(ids), row['embedding'])
             ids.append({'id': len(ids), 'record_id': row['record_id'], 'url': row['url'], 'domain': domain,
                         'language': row['language']})
+        if n % LOG_EVERY_FILES == 0 or n == len(embedding_files):
+            logger.info('read %d/%d embeddings files, %d vectors added (%.0fs)', n, len(embedding_files), len(ids),
+                        time.time() - started)
     if index is None:
         raise ValueError('no embeddings to index')
     logger.info('building %d trees over %d vectors (the slow part; no progress until it ends)...', n_trees, len(ids))

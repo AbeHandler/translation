@@ -26,3 +26,6 @@ typer==0.20.0
 click==8.1.7
 spacy-curated-transformers==0.3.1  # en_core_web_trf runs on this (not HF transformers)
 en_core_web_trf @ https://github.com/explosion/spacy-models/releases/download/en_core_web_trf-3.8.0/en_core_web_trf-3.8.0-py3-none-any.whl
+datasets==3.5.0      # quote extraction training (src/quote_extraction)
+accelerate==1.15.0
+seqeval==1.2.2

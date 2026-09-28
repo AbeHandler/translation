@@ -10,3 +10,7 @@ logs/
 # tmp outputs
 tmp.jsonl
 tmp_report.md
+
+# trained models and checkpoints (reports next to them are kept)
+results/*/*/model/
+results/*/*/model_checkpoints/

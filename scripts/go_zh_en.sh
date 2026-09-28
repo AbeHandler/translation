@@ -28,9 +28,24 @@
 #   START_DATE=20260901 END_DATE=20260923 N_NER_WORKERS=0 bash scripts/go_zh_en.sh   # skip NER (and gazetteer, quotes)
 #   START_DATE=20260901 END_DATE=20260923 N_HTML_WORKERS=0 N_NER_WORKERS=0 bash scripts/go_zh_en.sh   # links + match only
 #   START_DATE=20260923 END_DATE=20260923 N_HTML_WORKERS=1 N_LINK_WORKERS=1 MAX_WARCS=1 MAX_N=100 PARTIAL=1 bash scripts/go_zh_en.sh  # test
+#   LINKS_ONLY=1 bash scripts/go_zh_en.sh     # links for every HTML file there is (no dates, no match)
 
 set -eo pipefail  # no -u: ~/.myrc references unset vars
 source ~/.myrc  # first, so $TMP etc. from ~/.myrc are set before the checks below
+AWS=/home/abha4861/bin/v2/2.5.4/bin/aws  # aws CLI v2 on Alpine (an alias there, so not on PATH in jobs)
+
+if [ "${LINKS_ONLY:-}" = 1 ]; then  # every cc_html file without links yet; reads nothing from S3, so no dates
+    mkdir -p logs/scripts/slurm
+    N_LINK_WORKERS=${N_LINK_WORKERS:-10}
+    ENV_JOB=$(sbatch --parsable --export=NONE scripts/slurm/update_env.slurm)
+    for ((i = 0; i < N_LINK_WORKERS; i++)); do
+        sbatch --parsable --job-name=cc_news_links --dependency=afterok:"$ENV_JOB" --kill-on-invalid-dep=yes \
+            --export="STEP=links,AWS=$AWS,TMP=$TMP,MAX_N=$MAX_N" scripts/slurm/cc_news_pipeline.slurm > /dev/null
+    done
+    echo "update_env $ENV_JOB, then $N_LINK_WORKERS cc_news_links workers over every HTML file"
+    echo "  ls data/interim/cc_html/*.parquet | grep -v max | wc -l; ls data/interim/cc_links/*.jsonl | grep -v max | wc -l"
+    exit 0
+fi
 
 if [ -z "${START_DATE:-}" ] || [ -z "${END_DATE:-}" ]; then
     echo "ERROR: START_DATE and END_DATE (YYYYMMDD) are required"
@@ -64,7 +79,6 @@ N_HTML_WORKERS=${N_HTML_WORKERS:-10}
 N_LINK_WORKERS=${N_LINK_WORKERS:-10}
 N_NER_WORKERS=${N_NER_WORKERS:-10}
 N_DOWNLOAD_WORKERS=${N_DOWNLOAD_WORKERS:-10}
-AWS=/home/abha4861/bin/v2/2.5.4/bin/aws  # aws CLI v2 on Alpine (an alias there, so not on PATH in jobs)
 mkdir -p logs/scripts/slurm  # SLURM won't create the --output dir
 
 # --export=NONE: without it sbatch copies this shell's environment (--export=ALL), including the

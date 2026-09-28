@@ -21,10 +21,12 @@ Run as a module from the repo root, so `src` and `config` import:
     python -m scripts.cc_news_pipeline -step html -start-date 20260901 -end-date 20260923
     python -m scripts.cc_news_pipeline -step ner -start-date 20260901 -end-date 20260923
     python -m scripts.cc_news_pipeline -step links -start-date 20260901 -end-date 20260923
+    python -m scripts.cc_news_pipeline -step links      # every HTML file there is (links and ner: dates optional)
     python -m scripts.cc_news_pipeline -step match -start-date 20260901 -end-date 20260923
     python -m scripts.cc_news_pipeline -step html -start-date 20260923 -end-date 20260923 -max-warcs 1 -max-n 100
 """
 import argparse
+import datetime
 import os
 
 from config.paths import (CC_HTML_DIR, CC_LINK_MATCHES_PATH, CC_LINKS_DIR, CC_NER_DIR, SEED_PATTERNS_PATH,
@@ -35,6 +37,7 @@ from src.file_worker import process_files
 from src.warc_worker_cli import add_warc_worker_args, setup_worker_process
 
 STEPS = ('download', 'html', 'links', 'ner', 'match')
+ALL_DATES = (datetime.date(1900, 1, 1), datetime.date(2999, 12, 31))  # links and ner without dates: every file
 
 
 def parse_args():
@@ -50,30 +53,39 @@ def parse_args():
     return parser.parse_args()
 
 
+def require_dates(args):
+    """download, html and match work on CC-NEWS's WARC list, so they need a range."""
+    if not (args.start_date and args.end_date):
+        raise ValueError(f'-step {args.step} needs -start-date and -end-date')
+    return args.start_date, args.end_date
+
+
 def index(args):
     return CCNewsIndex(args.warc_cache_dir or str(warc_cache_dir()), args.aws)
 
 
 def download(args):
     """Just fetch the WARCs into the cache; the .done files only record that they are there."""
+    dates = require_dates(args)
     worker = WarcWorker(index=index(args), work_dir=WorkDir(str(download_warcs_work_dir()), args.max_n),
                         max_warcs=args.max_warcs)
-    keys = worker.list_warcs(args.start_date, args.end_date)
+    keys = worker.list_warcs(*dates)
     worker.process_all(keys, lambda key, local_warc: {'bytes': os.path.getsize(local_warc)})
 
 
 def html(args):
+    dates = require_dates(args)
     worker = WarcWorker(index=index(args), work_dir=WorkDir(args.work_dir or str(extract_warc_html_work_dir()),
                                                             args.max_n),
                         max_warcs=args.max_warcs)
-    HtmlArchivePipeline(worker, ArticleHtmlArchiver(max_n=args.max_n), args.html_dir).run(args.start_date,
-                                                                                          args.end_date)
+    HtmlArchivePipeline(worker, ArticleHtmlArchiver(max_n=args.max_n), args.html_dir).run(*dates)
 
 
 def html_paths_for(args):
-    paths = warc_files(args.html_dir, '.parquet', args.start_date, args.end_date, args.max_n)
+    start, end = (args.start_date or ALL_DATES[0]), (args.end_date or ALL_DATES[1])
+    paths = warc_files(args.html_dir, '.parquet', start, end, args.max_n)
     if not paths:
-        raise FileNotFoundError(f'no HTML Parquet files for {args.start_date}..{args.end_date} in {args.html_dir}; '
+        raise FileNotFoundError(f'no HTML Parquet files for {start}..{end} in {args.html_dir}; '
                                 'run -step html first')
     return paths
 
@@ -101,7 +113,8 @@ def ner(args):
 
 
 def match(args):
-    keys = index(args).list_warcs(args.start_date, args.end_date)
+    dates = require_dates(args)
+    keys = index(args).list_warcs(*dates)
     patterns = read_patterns(args.patterns)
     matches_path = args.matches_path or with_max_n(str(CC_LINK_MATCHES_PATH), args.max_n)
 

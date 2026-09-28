@@ -7,8 +7,9 @@ import sys
 
 def add_warc_worker_args(parser, default_work_dir_help):
     """Flags every WARC worker takes. SLURM passes unset optional values as '', so '' means default."""
-    parser.add_argument('-start-date', required=True, type=parse_date, help='YYYYMMDD, inclusive')
-    parser.add_argument('-end-date', required=True, type=parse_date, help='YYYYMMDD, inclusive')
+    parser.add_argument('-start-date', type=optional_date, default=None,
+                        help='YYYYMMDD, inclusive (steps reading local files: optional, default everything)')
+    parser.add_argument('-end-date', type=optional_date, default=None, help='YYYYMMDD, inclusive')
     parser.add_argument('-aws', default='aws', help='path to the aws CLI')
     parser.add_argument('-work-dir', default='', help=f'.lock/.done files ({default_work_dir_help})')
     parser.add_argument('-warc-cache-dir', default='', help='downloaded WARCs, kept (default $TMP/cc_news_warcs)')
@@ -19,6 +20,10 @@ def add_warc_worker_args(parser, default_work_dir_help):
 
 def parse_date(text):
     return datetime.datetime.strptime(text, '%Y%m%d').date()
+
+
+def optional_date(text):
+    return parse_date(text) if text else None
 
 
 def optional_int(text):

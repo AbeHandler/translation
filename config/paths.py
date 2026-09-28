@@ -9,6 +9,9 @@ CC_LINKS_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_links'
 CC_LINK_MATCHES_PATH = REPO_ROOT / 'data' / 'processed' / 'cc_link_matches.jsonl'
 CC_HTML_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_html'
 CC_NER_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_ner'  # src/ner_html.py, one per cc_html file
+CC_QUOTES_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_quotes'  # src/quote_extraction/pages.py, one per cc_ner file
+# trained by scripts/train_quote_extractor.py (config/quote_extraction.yaml); not in git
+QUOTE_MODEL_DIR = REPO_ROOT / 'results' / 'train_quote_extractor' / 'electra_small' / 'model'
 GAZETTEER_PATH = REPO_ROOT / 'config' / 'gazetteer.yaml'
 GAZETTEER_STORIES_PATH = REPO_ROOT / 'data' / 'processed' / 'gazetteer_stories.jsonl'
 SITE_CRAWLS_DIR = REPO_ROOT / 'data' / 'interim' / 'site_crawls'  # scrapy/: <domain>/html, <domain>/embeddings

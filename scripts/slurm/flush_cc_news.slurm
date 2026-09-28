@@ -7,6 +7,7 @@
 #   data/interim/cc_html/                  raw article HTML Parquet, one per WARC
 #   data/interim/cc_links/                 links jsonl, one per WARC
 #   data/interim/cc_ner/                   text and named entities Parquet, one per WARC
+#   data/interim/cc_quotes/                direct quotes Parquet, one per WARC (the quote model is kept)
 #   $TMP/download_warcs/                   .lock/.done files of the download step
 #   data/processed/cc_link_matches*.jsonl  seed matches
 #   data/processed/gazetteer_stories*.jsonl stories naming gazetteer entries
@@ -35,7 +36,7 @@ if [ -z "${TMP:-}" ]; then
     echo "ERROR: \$TMP is not set"
     exit 1
 fi
-JOBS=update_env,cc_news_download,cc_news_html,cc_news_links,cc_news_ner,filter_by_gazetteer,cc_news_match,report_run_done
+JOBS=update_env,cc_news_download,cc_news_html,cc_news_links,cc_news_ner,cc_news_quotes,filter_by_gazetteer,cc_news_match,report_run_done
 if [ -n "$(squeue -h -u "$USER" --name=$JOBS)" ]; then
     echo "ERROR: pipeline jobs are still queued/running; scancel them first:"
     squeue -u "$USER" --name=$JOBS
@@ -43,7 +44,7 @@ if [ -n "$(squeue -h -u "$USER" --name=$JOBS)" ]; then
 fi
 
 DIRS=("$TMP/extract_warc_html" "$TMP/download_warcs" "$TMP/find_seed_links" data/interim/cc_html data/interim/cc_links
-      data/interim/cc_ner)
+      data/interim/cc_ner data/interim/cc_quotes)
 if [ "${FLUSH_WARCS:-}" = 1 ]; then
     DIRS+=("$TMP/cc_news_warcs")
 fi

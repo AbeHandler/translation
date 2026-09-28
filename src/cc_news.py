@@ -1,25 +1,20 @@
 """
-Working with CC-NEWS WARCs. Logic only: no paths, no command line. Two pipelines share the same
-WARC worker (list, claim, fetch, process, mark done) and one WARC cache:
-    SeedLinkPipeline    which articles link to a set of seed URLs   (scripts/find_seed_links.py)
-    HtmlArchivePipeline raw HTML of every en/zh article, as Parquet  (scripts/extract_warc_html.py)
+Working with CC-NEWS. Logic only: no paths, no command line. Three steps (scripts/cc_news_pipeline.py), each
+reading only the previous step's output, so only the first touches the (1GB) WARCs:
+    html   WARC -> <html_dir>/<warc>.parquet: raw HTML of every en/zh article (ArticleHtmlArchiver), the same
+           format as the site crawls' html/*.parquet. HtmlArchivePipeline: many workers coordinate through
+           <work_dir>/<warc>.lock and <warc>.done; WARCs are fetched into a cache and kept.
+    links  <warc>.parquet -> <links_dir>/<warc>.jsonl: each article's body links (ArticleLinkExtractor;
+           readability drops nav, footer and sidebar links). Workers: src/file_worker.py.
+    match  every links file of the date range -> the links containing a seed pattern (match_seed_links),
+           also inside URL-encoded redirect links. Checks first that every WARC in the range has its links.
 
-SeedLinkPipeline.run(start_date, end_date) runs every step; each one skips work already done,
-so a rerun picks up where the last one stopped:
-    1. list the WARCs crawled in [start_date, end_date] that have no .done file yet
-    2. for each of them (shuffled) that no other worker has claimed: fetch it (from the WARC cache,
-       downloading it only if it isn't there), write one row per en/zh article with the links in
-       its body -> <output_dir>/<warc>.jsonl, mark it done
-    3. once every WARC in the range is done, find article links containing one of the seed
-       patterns -> matches_path
-
-Many copies can run at once: they coordinate through <work_dir>/<warc>.lock and <warc>.done
-files, so work_dir and the cache must be on a filesystem every node can see. Cached WARCs are
-kept, so the other pipeline, or a rerun, reads them instead of downloading again. Whichever copy finishes last
-writes the matches. max_n (rows per WARC, for tests) adds .max<N> to every file name, so test
-runs never mix with real ones.
+Each step skips work already done, so a rerun picks up where the last one stopped. Work dirs and the WARC
+cache must be on a filesystem every node can see. max_n (rows per WARC, for tests) adds .max<N> to every file
+name, so test runs never mix with real ones.
 """
 import datetime
+import glob
 import json
 import logging
 import os
@@ -31,7 +26,7 @@ from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass
 from types import SimpleNamespace
-from urllib.parse import urljoin, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 
 import lxml.html
 from newsplease.pipeline.extractor.extractors.lang_detect_extractor import LangExtractor
@@ -41,6 +36,8 @@ from tqdm.utils import CallbackIOWrapper
 import pyarrow as pa
 import pyarrow.parquet as pq
 from warcio.archiveiterator import ArchiveIterator
+
+from src.file_worker import claim_lock, slurm_job_id
 
 S3_BUCKET = 's3://commoncrawl/'
 
@@ -146,50 +143,52 @@ class NewsPleaseLanguage:
         return self._extractor._language({'spider_response': SimpleNamespace(body=html)})
 
 
+LANGUAGES = ('en', 'zh')  # news-please two-letter codes; zh covers zh-cn, zh-tw, zh-hk, ...
+
+
 class ArticleLinkExtractor:
-    """Turns a WARC into one row per article in the wanted languages:
-        {url, title, language, n_links, links: [{href, text, internal}]}
+    """Turns an HTML Parquet file (ArticleHtmlArchiver's) into one row per article:
+        {url, title, language, record_id, n_links, links: [{href, text, internal}]}
 
     readability trims each page to the article body, so nav/footer/sidebar links are dropped.
     """
 
-    LANGUAGES = ('en', 'zh')  # news-please two-letter codes; zh covers zh-cn, zh-tw, zh-hk, ...
     SKIP_HREF_PREFIXES = ('#', 'javascript:', 'mailto:', 'tel:')
+    BATCH_ROWS = 200  # pages read at a time, so a whole file's HTML never sits in memory
 
-    def __init__(self, languages=LANGUAGES, max_n=None):
-        self.languages = languages
-        self.max_n = max_n
+    def __init__(self):
         self.counts = Counter()
-        self._language = NewsPleaseLanguage()
 
-    def rows(self, warc_stream):
-        """Yield rows from an open .warc.gz stream (at most max_n). Tallies self.counts."""
-        self.counts = Counter(rows=0, links=0, other_language=0, errors=0, bad_hrefs=0)
-        for page in iter_html_pages(warc_stream):
-            row = self._row(page.url, page.html)
-            if row is None:
-                continue
-            self.counts['rows'] += 1
-            self.counts['links'] += row['n_links']
-            yield row
-            if self.max_n and self.counts['rows'] >= self.max_n:
-                return
+    def write(self, html_path, out_path):
+        """Write out_path (atomically). Returns the counts."""
+        write_jsonl(out_path, self.rows(html_path))
+        return dict(self.counts)
 
-    def _row(self, url, html):
-        """The row for one page, or None if it is in another language or can't be parsed."""
+    def rows(self, html_path):
+        """Yield a row per parseable page. Tallies self.counts."""
+        self.counts = Counter(rows=0, links=0, errors=0, bad_hrefs=0)
+        parquet = pq.ParquetFile(html_path)
+        for batch in parquet.iter_batches(batch_size=self.BATCH_ROWS, columns=['url', 'language', 'record_id', 'html']):
+            for page in batch.to_pylist():
+                row = self._row(page)
+                if row is None:
+                    continue
+                self.counts['rows'] += 1
+                self.counts['links'] += row['n_links']
+                yield row
+
+    def _row(self, page):
+        """The row for one page, or None if it can't be parsed."""
         try:
-            language = self._language(html)
-            if language not in self.languages:
-                self.counts['other_language'] += 1
-                return None
-            doc = Document(html)
+            doc = Document(page['html'])
             title, body = doc.short_title(), lxml.html.fromstring(doc.summary())
         except Exception as exc:  # empty/garbled pages are common in CC-NEWS
             self.counts['errors'] += 1
-            logger.debug('parse failed for %s: %s', url, exc)
+            logger.debug('parse failed for %s: %s', page['url'], exc)
             return None
-        links = self._links(url, body)
-        return {'url': url, 'title': title, 'language': language, 'n_links': len(links), 'links': links}
+        links = self._links(page['url'], body)
+        return {'url': page['url'], 'title': title, 'language': page['language'], 'record_id': page['record_id'],
+                'n_links': len(links), 'links': links}
 
     def _links(self, page_url, body):
         """Links in the article body, with relative hrefs made absolute. Unparseable hrefs are skipped."""
@@ -238,7 +237,6 @@ class ArticleHtmlArchiver:
     """Writes the raw HTML of every page in the wanted languages to one zstd-compressed Parquet
     file per WARC, for parsing later (e.g. newspaper for text, title, date)."""
 
-    LANGUAGES = ArticleLinkExtractor.LANGUAGES
     SCHEMA = pa.schema([
         ('url', pa.string()),
         ('language', pa.string()),
@@ -340,33 +338,42 @@ def read_patterns(path):
 
 
 def grep_links(paths, patterns):
-    """Yield one row per (article link, pattern) where the pattern is a substring of the href."""
+    """Yield one row per (article link, pattern) where the pattern is in the href, as written or URL-decoded
+    (redirect links carry their target encoded: link.zhihu.com/?target=https%3A%2F%2Fdarioamodei.com%2F...);
+    decoded says which."""
+    hosts = {pattern.split('/')[0] for pattern in patterns}  # dots survive URL-encoding; slashes don't
     for path in paths:
         with open(path, encoding='utf-8') as f:
             for line in f:
-                if not any(p in line for p in patterns):  # skip the json parse for most lines
+                if not any(host in line for host in hosts):  # skip the json parse for most lines
                     continue
                 article = json.loads(line)
                 for link in article['links']:
-                    for pattern in (p for p in patterns if p in link['href']):
-                        yield {'pattern': pattern, 'href': link['href'], 'link_text': link['text'],
-                               'url': article['url'], 'title': article['title'],
-                               'language': article['language'], 'links_file': os.path.basename(path)}
+                    href = link['href']
+                    decoded = unquote(unquote(href))
+                    for pattern in patterns:
+                        if pattern in href or pattern in decoded:
+                            yield {'pattern': pattern, 'href': href, 'decoded': pattern not in href,
+                                   'link_text': link['text'], 'url': article['url'], 'title': article['title'],
+                                   'language': article['language'], 'links_file': os.path.basename(path)}
+
+
+def match_seed_links(keys, links_path_of, patterns, matches_path, partial=False):
+    """Write every seed-pattern match in the links files of these WARC keys to matches_path. Unless partial,
+    first check that every WARC has its links file, so the matches cover the whole date range. Returns the
+    number of matches per pattern."""
+    paths = [links_path_of(key) for key in keys]
+    missing = [path for path in paths if not os.path.exists(path)]
+    if missing and not partial:
+        raise FileNotFoundError(f'{len(missing)} of {len(paths)} WARCs have no links file yet (e.g. {missing[0]}); '
+                                'run the html and links steps first, or pass -partial')
+    matches = list(grep_links([path for path in paths if os.path.exists(path)], patterns))
+    os.makedirs(os.path.dirname(matches_path), exist_ok=True)
+    write_jsonl(matches_path, matches)
+    return Counter(match['pattern'] for match in matches)
 
 
 # ---------------------------------------------------------------- small helpers
-
-def claim_lock(path):
-    """Create the lock file (host and job id inside); False if another worker already has it.
-    O_EXCL makes this atomic, also across nodes on the shared filesystem."""
-    try:
-        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError:
-        return False
-    with os.fdopen(fd, 'w') as f:
-        f.write(f'{socket.gethostname()} {slurm_job_id()}\n')
-    return True
-
 
 @contextmanager
 def atomic_write(path):
@@ -382,6 +389,20 @@ def write_jsonl(path, rows):
             f.write(json.dumps(row, ensure_ascii=False) + '\n')
 
 
+def warc_files(directory, ext, start_date, end_date, max_n=None):
+    """Files <directory>/<warc name>[.max<N>]<ext> of WARCs crawled in [start_date, end_date]: test files
+    (.max<N>) only when max_n is given, and then only those."""
+    paths = []
+    for path in sorted(glob.glob(os.path.join(directory, '*' + ext))):
+        name = os.path.basename(path).removesuffix(ext)
+        suffix = f'.max{max_n}' if max_n else ''
+        if (suffix and not name.endswith(suffix)) or (not suffix and '.max' in name):
+            continue
+        if start_date <= warc_date(name.removesuffix(suffix)) <= end_date:
+            paths.append(path)
+    return paths
+
+
 def with_max_n(name, max_n):
     """'a' -> 'a.max100' and 'a.jsonl' -> 'a.max100.jsonl' for test runs; unchanged when max_n is None."""
     if not max_n:
@@ -390,14 +411,10 @@ def with_max_n(name, max_n):
     return f'{stem}.max{max_n}{ext}'
 
 
-def slurm_job_id():
-    return os.environ.get('SLURM_JOB_ID', f'pid{os.getpid()}')
-
-
 # ---------------------------------------------------------------- the pipeline
 
 class WarcWorker:
-    """The loop both pipelines share: for each WARC not done and not claimed by another worker
+    """The html step's loop: for each WARC not done and not claimed by another worker
     (in random order), fetch it (from the cache, or download it), run process(key, local_warc) -> info,
     and write info to its .done file. Many workers can run at once; they coordinate through work_dir."""
 
@@ -441,57 +458,8 @@ class WarcWorker:
         logger.info('done %s %s', warc_name(key), info)
 
 
-class SeedLinkPipeline:
-    """Links jsonl for every WARC in a date range, then (once all are done) the seed-pattern matches."""
-
-    def __init__(self, worker, extractor, output_dir, patterns, matches_path):
-        self.worker = worker
-        self.extractor = extractor
-        self.output_dir = output_dir
-        self.patterns = patterns
-        self.matches_path = matches_path
-        os.makedirs(output_dir, exist_ok=True)
-
-    def run(self, start_date, end_date):
-        keys = self.worker.list_warcs(start_date, end_date)
-        self.worker.process_all(keys, self.extract_article_links)
-        self.grep_seed_patterns(keys)
-
-    def extract_article_links(self, key, local_warc):
-        out_path = self.links_path(key)
-        with open_with_progress(local_warc) as stream:
-            write_jsonl(out_path, self.extractor.rows(stream))
-        return {'output': out_path, **self.extractor.counts}
-
-    def grep_seed_patterns(self, keys):
-        """Write the matches, but only once every WARC is done (the last worker to finish does it)."""
-        n_not_done = self.worker.n_not_done(keys)
-        if n_not_done:
-            logger.info('%d WARCs not done yet (other workers, or -max-warcs); not grepping', n_not_done)
-            return
-
-        paths = [self.links_path(key) for key in keys]
-        matches = list(grep_links(paths, self.patterns))
-        os.makedirs(os.path.dirname(self.matches_path), exist_ok=True)
-        write_jsonl(self.matches_path, matches)
-
-        work_dir = self.worker.work_dir.path
-        counts = Counter(match['pattern'] for match in matches)
-        print(f'Grepped {len(paths)} links files -> {self.matches_path}')
-        for pattern in self.patterns:
-            print(f'  {counts[pattern]:6d}  {pattern}')
-        print('\nSpot checks:')
-        print(f'  ls {work_dir}/*.done | wc -l   # should be {len(keys)}')
-        print(f"  cat {work_dir}/*.done | jq -s 'map(.rows) | add'")
-        print(f'  jq -r .pattern {self.matches_path} | sort | uniq -c')
-        print(f"  jq -c '{{href, url, language}}' {self.matches_path} | head")
-
-    def links_path(self, key):
-        return os.path.join(self.output_dir, with_max_n(warc_name(key), self.worker.work_dir.max_n) + '.jsonl')
-
-
 class HtmlArchivePipeline:
-    """One Parquet file of raw en/zh article HTML per WARC in a date range."""
+    """The html step: one Parquet file of raw en/zh article HTML per WARC in a date range."""
 
     def __init__(self, worker, archiver, output_dir):
         self.worker = worker

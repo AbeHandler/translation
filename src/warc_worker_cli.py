@@ -1,5 +1,4 @@
-"""Command-line pieces shared by the WARC worker scripts (scripts/find_seed_links.py,
-scripts/extract_warc_html.py), so each script only adds its own flags."""
+"""Command-line pieces for the CC-NEWS pipeline (scripts/cc_news_pipeline.py): flags, logging, SIGTERM."""
 import datetime
 import logging
 import signal
@@ -14,7 +13,8 @@ def add_warc_worker_args(parser, default_work_dir_help):
     parser.add_argument('-work-dir', default='', help=f'.lock/.done files ({default_work_dir_help})')
     parser.add_argument('-warc-cache-dir', default='', help='downloaded WARCs, kept (default $TMP/cc_news_warcs)')
     parser.add_argument('-max-n', type=optional_int, default=None, help='stop after N rows per WARC (testing)')
-    parser.add_argument('-max-warcs', type=optional_int, default=None, help='stop after N WARCs (testing)')
+    parser.add_argument('-max-warcs', type=optional_int, default=None,
+                        help='stop after N WARCs (html) or files (links) (testing)')
 
 
 def parse_date(text):

@@ -9,18 +9,17 @@ For every HTML file, writes one embeddings file with a row per page, in the same
 The text is newspaper4k's title + article body. The model reads at most its max length in tokens (512 for
 bge-base), so long articles are embedded from their start. The model name is in the file's metadata.
 
-embed_all() is the worker loop: many copies can run at once (e.g. as SLURM jobs). Each takes the HTML files
-that have no embeddings file yet, in random order, and claims each with a .lock next to its output.
+embed_all() is the worker loop (src/file_worker.py): many copies can run at once, each taking HTML files that
+have no embeddings file yet.
 """
 import logging
 import os
-import random
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 from newspaper import Article
 
-from src.cc_news import claim_lock
+from src.file_worker import process_files
 
 logger = logging.getLogger(__name__)
 
@@ -77,21 +76,4 @@ class HtmlEmbedder:
 def embed_all(html_paths, out_path_of, embedder, max_files=None):
     """Embed every HTML file whose output (out_path_of(html_path)) doesn't exist yet and that no other
     worker has claimed. Returns the number of files this worker embedded."""
-    todo = [path for path in html_paths if not os.path.exists(out_path_of(path))]
-    random.shuffle(todo)
-    logger.info('%d HTML files, %d without embeddings', len(html_paths), len(todo))
-    n_done = 0
-    for html_path in todo:
-        out_path = out_path_of(html_path)
-        os.makedirs(os.path.dirname(out_path), exist_ok=True)
-        if os.path.exists(out_path) or not claim_lock(out_path + '.lock'):
-            continue
-        try:
-            info = embedder.embed_file(html_path, out_path)
-        finally:
-            os.remove(out_path + '.lock')  # also on failure, so a rerun can pick the file up
-        logger.info('embedded %s %s', html_path, info)
-        n_done += 1
-        if max_files and n_done >= max_files:
-            break
-    return n_done
+    return process_files(html_paths, out_path_of, embedder.embed_file, max_files)

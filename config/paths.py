@@ -21,11 +21,8 @@ def warc_cache_dir():
     return _tmp_dir('cc_news_warcs')
 
 
-def find_seed_links_work_dir():
-    return _tmp_dir('find_seed_links')
-
-
 def extract_warc_html_work_dir():
+    """.lock/.done files of the CC-NEWS html step (scripts/cc_news_pipeline.py)."""
     return _tmp_dir('extract_warc_html')
 
 

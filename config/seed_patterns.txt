@@ -1,3 +1,4 @@
-# Substrings to look for in article-body link hrefs (scripts/find_seed_links.py). One per line.
+# Substrings to look for in article-body link hrefs, as written or URL-decoded (-step match of
+# scripts/cc_news_pipeline.py). One per line; each starts with the host, e.g. openai.com/index/.
 openai.com/index/
 darioamodei.com/post/we-must-pace-the-frontier

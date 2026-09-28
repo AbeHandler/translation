@@ -1,22 +1,22 @@
 #!/bin/bash
-# Driver for the whole pipeline: submits it to SLURM and returns right away.
+# Driver for the CC-NEWS pipeline (scripts/cc_news_pipeline.py): submits every step to SLURM, each after the
+# one before it, and returns right away.
 #   update_env       create the translation conda env and pip install config/requirements.txt
-#   find_seed_links    N_WORKERS copies of scripts/find_seed_links.py, after update_env succeeds. Each
-#                      lists the WARCs, processes the ones not done or claimed, and the last one to
-#                      finish greps the links for config/seed_patterns.txt.
-#   extract_warc_html  N_HTML_WORKERS copies of scripts/extract_warc_html.py, also after update_env:
-#                      raw en/zh article HTML -> data/interim/cc_html/<warc>.parquet. Has its own
-#                      .lock/.done files, so it never skips or blocks find_seed_links. 0 = skip it.
-#   report_run_done  after every worker ends: prints a summary and sends the one "done" email.
-#                    Workers and update_env only email on failure.
-# Safe to rerun: done WARCs are skipped, and downloaded WARCs are cached in $TMP/cc_news_warcs. Clean slate: bash scripts/flush.sh
-# Logs: logs/scripts/slurm/<job>_<id>.out. Run from the repo root.
+#   cc_news_html     N_HTML_WORKERS workers: WARCs -> data/interim/cc_html/<warc>.parquet (raw en/zh HTML).
+#                    The only step that reads WARCs (cached in $TMP/cc_news_warcs and kept).
+#   cc_news_links    N_LINK_WORKERS workers, after the html workers: cc_html -> data/interim/cc_links/<warc>.jsonl
+#   cc_news_match    one job, after the links workers: -> data/processed/cc_link_matches.jsonl (the seeds in
+#                    config/seed_patterns.txt). Fails if some WARC in the range still has no links file.
+#   report_run_done  after the match: a summary and the one "done" email. Everything else emails on failure.
+# Safe to rerun: every step skips work already done. A new seed pattern only needs the match step (MATCH_ONLY=1).
+# Clean slate: sbatch --export=NONE scripts/slurm/flush_cc_news.slurm. Logs: logs/scripts/slurm/<job>_<id>.out.
+# Run from the repo root.
 #
 # Usage:
 #   START_DATE=20260901 END_DATE=20260923 bash scripts/go.sh
-#   START_DATE=20260901 END_DATE=20260923 N_WORKERS=20 N_HTML_WORKERS=20 bash scripts/go.sh
-#   START_DATE=20260901 END_DATE=20260923 N_WORKERS=0 bash scripts/go.sh   # HTML only
-#   START_DATE=20260923 END_DATE=20260923 N_WORKERS=1 MAX_WARCS=1 MAX_N=100 bash scripts/go.sh  # test
+#   START_DATE=20260901 END_DATE=20260923 N_HTML_WORKERS=20 N_LINK_WORKERS=20 bash scripts/go.sh
+#   START_DATE=20260901 END_DATE=20260923 MATCH_ONLY=1 bash scripts/go.sh      # rematch, e.g. after a new seed
+#   START_DATE=20260923 END_DATE=20260923 N_HTML_WORKERS=1 N_LINK_WORKERS=1 MAX_WARCS=1 MAX_N=100 PARTIAL=1 bash scripts/go.sh  # test
 
 set -eo pipefail  # no -u: ~/.myrc references unset vars
 source ~/.myrc  # first, so $TMP etc. from ~/.myrc are set before the checks below
@@ -27,11 +27,11 @@ if [ -z "${START_DATE:-}" ] || [ -z "${END_DATE:-}" ]; then
     exit 1
 fi
 if [ -z "${TMP:-}" ]; then
-    echo "ERROR: \$TMP is not set; .lock/.done files go in \$TMP/find_seed_links"
+    echo "ERROR: \$TMP is not set; the WARC cache and .lock/.done files go there"
     exit 1
 fi
-N_WORKERS=${N_WORKERS:-10}
 N_HTML_WORKERS=${N_HTML_WORKERS:-10}
+N_LINK_WORKERS=${N_LINK_WORKERS:-10}
 AWS=/home/abha4861/bin/v2/2.5.4/bin/aws  # aws CLI v2 on Alpine (an alias there, so not on PATH in jobs)
 mkdir -p logs/scripts/slurm  # SLURM won't create the --output dir
 
@@ -40,32 +40,38 @@ mkdir -p logs/scripts/slurm  # SLURM won't create the --output dir
 ENV_JOB=$(sbatch --parsable --export=NONE scripts/slurm/update_env.slurm)
 echo "update_env       $ENV_JOB"
 
-# Passed to every worker. Unset optional vars go through empty, and the worker ignores them.
-EXPORTS="START_DATE=$START_DATE,END_DATE=$END_DATE,AWS=$AWS,TMP=$TMP,MAX_N=$MAX_N,MAX_WARCS=$MAX_WARCS"
-WORKER_JOBS=""
-submit_workers() {  # submit_workers <slurm script> <how many>
-    for ((i = 0; i < $2; i++)); do
-        JOB=$(sbatch --parsable --dependency=afterok:"$ENV_JOB" --kill-on-invalid-dep=yes \
-            --export="$EXPORTS" "$1")
-        WORKER_JOBS+=":$JOB"
-    done
-    echo "$(basename "$1" .slurm)  $2 workers (after $ENV_JOB)"
-}
-submit_workers scripts/slurm/find_seed_links.slurm "$N_WORKERS"
-submit_workers scripts/slurm/extract_warc_html.slurm "$N_HTML_WORKERS"
-if [ -z "$WORKER_JOBS" ]; then
-    echo "No workers submitted (N_WORKERS=0 and N_HTML_WORKERS=0)"
-    exit 0
-fi
+# Passed to every step. Unset optional vars go through empty, and the script ignores them.
+EXPORTS="START_DATE=$START_DATE,END_DATE=$END_DATE,AWS=$AWS,TMP=$TMP,MAX_N=$MAX_N,MAX_WARCS=$MAX_WARCS,PARTIAL=$PARTIAL"
 
-REPORT_JOB=$(sbatch --parsable --dependency=afterany"$WORKER_JOBS" --export="TMP=$TMP" \
+submit_step() {  # submit_step <step> <how many> <dependency>; prints the job ids as :id:id...
+    local jobs=""
+    for ((i = 0; i < $2; i++)); do
+        jobs+=":$(sbatch --parsable --job-name="cc_news_$1" --dependency="$3" --kill-on-invalid-dep=yes \
+            --export="STEP=$1,$EXPORTS" scripts/slurm/cc_news_pipeline.slurm)"
+    done
+    echo "$jobs"
+}
+
+AFTER=afterok:$ENV_JOB
+if [ "${MATCH_ONLY:-}" != 1 ]; then
+    HTML_JOBS=$(submit_step html "$N_HTML_WORKERS" "$AFTER")
+    echo "cc_news_html     $N_HTML_WORKERS workers (after $ENV_JOB)"
+    # afterany: a worker hitting its time limit shouldn't block the rest; the next step checks what's done
+    LINK_JOBS=$(submit_step links "$N_LINK_WORKERS" "afterany$HTML_JOBS")
+    echo "cc_news_links    $N_LINK_WORKERS workers (after the html workers)"
+    AFTER=afterany$LINK_JOBS
+fi
+MATCH_JOB=$(submit_step match 1 "$AFTER")
+echo "cc_news_match    ${MATCH_JOB#:}"
+
+REPORT_JOB=$(sbatch --parsable --dependency=afterany"$MATCH_JOB" --export="TMP=$TMP" \
     scripts/slurm/report_run_done.slurm)
-echo "report_run_done  $REPORT_JOB (after all workers end)"
+echo "report_run_done  $REPORT_JOB (after the match)"
 
 echo
 echo "Spot checks:"
-echo "  squeue -u \$USER --name=update_env,find_seed_links,extract_warc_html,report_run_done"
-echo "  ls $TMP/find_seed_links/*.done $TMP/extract_warc_html/*.done | wc -l   # WARCs finished (both)"
-echo "  ls $TMP/*/*.lock                          # in progress (stale if no job is running)"
-echo "  du -sh $TMP/cc_news_warcs                 # WARC cache, shared by both steps and kept"
-echo "  tail logs/scripts/slurm/{find_seed_links,extract_warc_html}_*.out"
+echo "  squeue -u \$USER --name=update_env,cc_news_html,cc_news_links,cc_news_match,report_run_done"
+echo "  ls $TMP/extract_warc_html/*.done | wc -l      # WARCs with HTML"
+echo "  ls data/interim/cc_links/*.jsonl | wc -l      # WARCs with links"
+echo "  ls $TMP/extract_warc_html/*.lock data/interim/cc_links/*.lock   # in progress (stale if no job runs)"
+echo "  tail logs/scripts/slurm/cc_news_*_*.out"

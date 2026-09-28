@@ -11,7 +11,9 @@ added to, so this always rebuilds from every file; rerun it to take in new embed
 """
 import datetime
 import json
+import logging
 import os
+import time
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -25,6 +27,9 @@ IDS_SCHEMA = pa.schema([
     ('language', pa.string()),
 ])
 OUTPUTS = ('index.ann', 'ids.parquet', 'info.json')
+LOG_EVERY_FILES = 100
+
+logger = logging.getLogger(__name__)
 
 
 def build_annoy_index(embedding_files, out_dir, n_trees=50, n_jobs=-1):
@@ -32,7 +37,11 @@ def build_annoy_index(embedding_files, out_dir, n_trees=50, n_jobs=-1):
     os.makedirs(out_dir, exist_ok=True)
     part = {name: os.path.join(out_dir, name + '.part') for name in OUTPUTS}
     index, model, ids = None, None, []
-    for domain, path in embedding_files:
+    started = time.time()
+    for n, (domain, path) in enumerate(embedding_files, 1):
+        if n % LOG_EVERY_FILES == 0 or n == len(embedding_files):
+            logger.info('read %d/%d embeddings files, %d vectors added (%.0fs)', n, len(embedding_files), len(ids),
+                        time.time() - started)
         table = pq.read_table(path)
         file_model = table.schema.metadata[b'model'].decode()
         model = model or file_model
@@ -49,7 +58,10 @@ def build_annoy_index(embedding_files, out_dir, n_trees=50, n_jobs=-1):
                         'language': row['language']})
     if index is None:
         raise ValueError('no embeddings to index')
+    logger.info('building %d trees over %d vectors (the slow part; no progress until it ends)...', n_trees, len(ids))
+    build_started = time.time()
     index.build(n_trees, n_jobs=n_jobs)
+    logger.info('built in %.0fs; writing ids and info', time.time() - build_started)
     info = {'model': model, 'dimensions': index.f, 'items': len(ids), 'embedding_files': len(embedding_files),
             'domains': len({row['domain'] for row in ids}), 'n_trees': n_trees,
             'built_at': datetime.datetime.now().isoformat()}

@@ -6,6 +6,8 @@
 #                                          re-downloading is slow; Alpine purges scratch anyway)
 #   data/interim/cc_html/                  raw article HTML Parquet, one per WARC
 #   data/interim/cc_links/                 links jsonl, one per WARC
+#   data/interim/cc_ner/                   text and named entities Parquet, one per WARC
+#   $TMP/download_warcs/                   .lock/.done files of the download step
 #   data/processed/cc_link_matches*.jsonl  seed matches
 # Submitting it is the confirmation: there is no prompt. Refuses while pipeline jobs are queued or running.
 # Deletes files in random order, which spreads the load on the shared filesystem.
@@ -32,14 +34,15 @@ if [ -z "${TMP:-}" ]; then
     echo "ERROR: \$TMP is not set"
     exit 1
 fi
-JOBS=update_env,cc_news_html,cc_news_links,cc_news_match,report_run_done
+JOBS=update_env,cc_news_download,cc_news_html,cc_news_links,cc_news_ner,cc_news_match,report_run_done
 if [ -n "$(squeue -h -u "$USER" --name=$JOBS)" ]; then
     echo "ERROR: pipeline jobs are still queued/running; scancel them first:"
     squeue -u "$USER" --name=$JOBS
     exit 1
 fi
 
-DIRS=("$TMP/extract_warc_html" "$TMP/find_seed_links" data/interim/cc_html data/interim/cc_links)
+DIRS=("$TMP/extract_warc_html" "$TMP/download_warcs" "$TMP/find_seed_links" data/interim/cc_html data/interim/cc_links
+      data/interim/cc_ner)
 if [ "${FLUSH_WARCS:-}" = 1 ]; then
     DIRS+=("$TMP/cc_news_warcs")
 fi

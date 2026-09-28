@@ -8,6 +8,7 @@ SEED_PATTERNS_PATH = REPO_ROOT / 'config' / 'seed_patterns.txt'
 CC_LINKS_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_links'
 CC_LINK_MATCHES_PATH = REPO_ROOT / 'data' / 'processed' / 'cc_link_matches.jsonl'
 CC_HTML_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_html'
+CC_NER_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_ner'  # src/ner_html.py, one per cc_html file
 SITE_CRAWLS_DIR = REPO_ROOT / 'data' / 'interim' / 'site_crawls'  # scrapy/: <domain>/html, <domain>/embeddings
 SITE_CRAWLS_ANNOY_DIR = REPO_ROOT / 'data' / 'processed' / 'site_crawls_annoy'
 ENV_PATH = REPO_ROOT / '.env'  # API keys, e.g. XAI_API_KEY=...; gitignored
@@ -19,6 +20,11 @@ TRANSLATIONS_DB = REPO_ROOT / 'data' / 'processed' / 'translations.sqlite'  # sr
 def warc_cache_dir():
     """Downloaded CC-NEWS WARCs, shared by every pipeline and kept (Alpine scratch purges old files)."""
     return _tmp_dir('cc_news_warcs')
+
+
+def download_warcs_work_dir():
+    """.lock/.done files of the CC-NEWS download step (scripts/cc_news_pipeline.py)."""
+    return _tmp_dir('download_warcs')
 
 
 def extract_warc_html_work_dir():

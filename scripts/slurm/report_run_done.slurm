@@ -1,5 +1,5 @@
 #!/bin/bash
-# Runs after the CC-NEWS pipeline's last step (cc_news_match) has ended, success or not, and emails once,
+# Runs after the CC-NEWS pipeline's last steps (cc_news_match, cc_news_ner) have ended, success or not, and emails once,
 # so a run of many workers sends one "done" email. Prints a summary to its log. Submitted by scripts/go.sh.
 #
 # Usage (from the repo root; normally via scripts/go.sh):
@@ -26,8 +26,10 @@ echo "  still locked:     $(find "$TMP/extract_warc_html" -name '*.lock' 2>/dev/
 echo "WARCs with links:   $(find data/interim/cc_links -name '*.jsonl' ! -name '*.max*' 2>/dev/null | wc -l)"
 echo "  still locked:     $(find data/interim/cc_links -name '*.lock' 2>/dev/null | wc -l)"
 if [ -f "$MATCHES" ]; then
-    echo "Seed-link matches:  $(wc -l < "$MATCHES")  ($MATCHES, $(stat -c %y "$MATCHES" | cut -d. -f1))"
+    echo "WARCs with entities: $(find data/interim/cc_ner -name '*.parquet' ! -name '*.max*' 2>/dev/null | wc -l)"
+echo "Seed-link matches:  $(wc -l < "$MATCHES")  ($MATCHES, $(stat -c %y "$MATCHES" | cut -d. -f1))"
 else
-    echo "Seed-link matches:  none written (see logs/scripts/slurm/cc_news_match_*.out)"
+    echo "WARCs with entities: $(find data/interim/cc_ner -name '*.parquet' ! -name '*.max*' 2>/dev/null | wc -l)"
+echo "Seed-link matches:  none written (see logs/scripts/slurm/cc_news_match_*.out)"
 fi
 echo "Cached WARCs:       $(find "$TMP/cc_news_warcs" -name '*.warc.gz' 2>/dev/null | wc -l)  ($(du -sh "$TMP/cc_news_warcs" 2>/dev/null | cut -f1))"

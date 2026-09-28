@@ -28,4 +28,5 @@ if ! conda env list | grep -q "^${ENV_NAME} "; then
 fi
 conda activate "$ENV_NAME"
 pip install -r config/requirements.txt
+python -c "import spacy; spacy.load('en_core_web_trf'); print('spaCy model ok')"
 python -c "import newsplease, newspaper, htmldate, warcio, readability, lxml, tqdm, scrapy, torch, sentence_transformers, annoy, httpx, tenacity, google.auth, dotenv; print('env ok')"

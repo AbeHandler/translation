@@ -10,3 +10,12 @@ OpenAI: [OpenAI]
 DeepSeek: [DeepSeek]
 Moonshot AI: [Moonshot AI, Moonshot, Kimi]
 MiniMax: [MiniMax]
+
+# China's "six AI tigers" (AI六小虎): Moonshot AI and MiniMax above, and
+Zhipu AI: [Zhipu AI, Zhipu, Z.ai, ChatGLM, GLM]
+Baichuan: [Baichuan]
+StepFun: [StepFun]
+01.AI: [01.AI, Lingyiwanwu, Yi-Lightning]
+# big-tech labs often covered with them
+Qwen: [Qwen, Tongyi Qianwen]
+Doubao: [Doubao]

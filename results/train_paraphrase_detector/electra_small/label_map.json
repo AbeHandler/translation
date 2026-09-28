@@ -1,0 +1,9 @@
+{
+  "Out": 0,
+  "B-Content": 1,
+  "I-Content": 2,
+  "B-Cue": 3,
+  "I-Cue": 4,
+  "B-Source": 5,
+  "I-Source": 6
+}

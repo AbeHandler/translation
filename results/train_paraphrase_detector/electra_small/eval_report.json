@@ -1,0 +1,207 @@
+{
+  "test": {
+    "Content": {
+      "precision": 0.6073184052430366,
+      "recall": 0.62157629960872,
+      "f1-score": 0.614364640883978,
+      "support": 1789.0
+    },
+    "Cue": {
+      "precision": 0.6841477949940405,
+      "recall": 0.703862660944206,
+      "f1-score": 0.6938652160773647,
+      "support": 1631.0
+    },
+    "Source": {
+      "precision": 0.7352342158859471,
+      "recall": 0.7945707997065297,
+      "f1-score": 0.7637517630465444,
+      "support": 1363.0
+    },
+    "micro avg": {
+      "precision": 0.6710156563629065,
+      "recall": 0.6989337236044324,
+      "f1-score": 0.6846902201740911,
+      "support": 4783.0
+    },
+    "macro avg": {
+      "precision": 0.6755668053743413,
+      "recall": 0.7066699200864853,
+      "f1-score": 0.690660540002629,
+      "support": 4783.0
+    },
+    "weighted avg": {
+      "precision": 0.6699690396963451,
+      "recall": 0.6989337236044324,
+      "f1-score": 0.684044775872059,
+      "support": 4783.0
+    }
+  },
+  "truncated_paragraphs": {
+    "train": 22,
+    "dev": 3,
+    "test": 3
+  },
+  "log_history": [
+    {
+      "loss": 0.665,
+      "grad_norm": 9.503451347351074,
+      "learning_rate": 8.513964151729888e-05,
+      "epoch": 1.0,
+      "step": 1021
+    },
+    {
+      "eval_loss": 0.4178497791290283,
+      "eval_precision": 0.6617701747861658,
+      "eval_recall": 0.6618932490236191,
+      "eval_f1": 0.6618317061831707,
+      "eval_runtime": 9.5065,
+      "eval_samples_per_second": 193.447,
+      "eval_steps_per_second": 12.097,
+      "epoch": 1.0,
+      "step": 1021
+    },
+    {
+      "loss": 0.3738,
+      "grad_norm": 2.528393507003784,
+      "learning_rate": 6.385994164235098e-05,
+      "epoch": 2.0,
+      "step": 2042
+    },
+    {
+      "eval_loss": 0.3905937969684601,
+      "eval_precision": 0.7007889166827016,
+      "eval_recall": 0.6773293658173702,
+      "eval_f1": 0.6888594666162284,
+      "eval_runtime": 5.7977,
+      "eval_samples_per_second": 317.197,
+      "eval_steps_per_second": 19.836,
+      "epoch": 2.0,
+      "step": 2042
+    },
+    {
+      "loss": 0.2865,
+      "grad_norm": 6.212769508361816,
+      "learning_rate": 4.258024176740308e-05,
+      "epoch": 3.0,
+      "step": 3063
+    },
+    {
+      "eval_loss": 0.4018971621990204,
+      "eval_precision": 0.6985321100917431,
+      "eval_recall": 0.7080156220941045,
+      "eval_f1": 0.7032418952618453,
+      "eval_runtime": 5.953,
+      "eval_samples_per_second": 308.92,
+      "eval_steps_per_second": 19.318,
+      "epoch": 3.0,
+      "step": 3063
+    },
+    {
+      "loss": 0.2199,
+      "grad_norm": 5.972066879272461,
+      "learning_rate": 2.1300541892455193e-05,
+      "epoch": 4.0,
+      "step": 4084
+    },
+    {
+      "eval_loss": 0.42245781421661377,
+      "eval_precision": 0.6931140430146394,
+      "eval_recall": 0.7132229867956109,
+      "eval_f1": 0.7030247479376718,
+      "eval_runtime": 5.9383,
+      "eval_samples_per_second": 309.687,
+      "eval_steps_per_second": 19.366,
+      "epoch": 4.0,
+      "step": 4084
+    },
+    {
+      "loss": 0.1745,
+      "grad_norm": 5.682051181793213,
+      "learning_rate": 2.0842017507294707e-08,
+      "epoch": 5.0,
+      "step": 5105
+    },
+    {
+      "eval_loss": 0.46235203742980957,
+      "eval_precision": 0.6865645360098609,
+      "eval_recall": 0.7251255346847685,
+      "eval_f1": 0.7053183791606368,
+      "eval_runtime": 5.9362,
+      "eval_samples_per_second": 309.793,
+      "eval_steps_per_second": 19.373,
+      "epoch": 5.0,
+      "step": 5105
+    },
+    {
+      "train_runtime": 700.0827,
+      "train_samples_per_second": 116.593,
+      "train_steps_per_second": 7.292,
+      "total_flos": 619737609735324.0,
+      "train_loss": 0.34396786442232646,
+      "epoch": 5.0,
+      "step": 5105
+    }
+  ],
+  "best_checkpoint": "/Users/abha4861/translation/results/train_paraphrase_detector/electra_small/model_checkpoints/checkpoint-5105",
+  "config": {
+    "experiment_name": "electra_small",
+    "model": {
+      "base_model": "google/electra-small-discriminator",
+      "max_seq_length": 512
+    },
+    "data": {
+      "polnear_dir": "data/external/polnear/data"
+    },
+    "training": {
+      "epochs": 5,
+      "batch_size": 16,
+      "learning_rate": "1e-4",
+      "weight_decay": 0.01,
+      "warmup_ratio": 0.06,
+      "eval_strategy": "epoch",
+      "save_strategy": "epoch",
+      "metric_for_best_model": "f1",
+      "early_stopping_patience": 2,
+      "seed": 42
+    }
+  },
+  "labels": [
+    "Out",
+    "B-Content",
+    "I-Content",
+    "B-Cue",
+    "I-Cue",
+    "B-Source",
+    "I-Source"
+  ],
+  "train_seconds": 709,
+  "split_sizes": {
+    "train": 16325,
+    "dev": 1839,
+    "test": 1624
+  },
+  "experiment": "electra_small",
+  "attribution_counts": {
+    "train": {
+      "attributions": 19834,
+      "tagged": 16783,
+      "direct_quotes": 3049,
+      "nested": 2,
+      "articles": 840
+    },
+    "dev": {
+      "attributions": 2192,
+      "tagged": 1823,
+      "direct_quotes": 369,
+      "articles": 84
+    },
+    "test": {
+      "attributions": 2044,
+      "tagged": 1645,
+      "direct_quotes": 396,
+      "nested": 3,
+      "articles": 84
+    }
+  }
+}

@@ -1,14 +1,6 @@
 """Reading DirectQuote: one word and tag per line, a blank line between paragraphs. The README says IOB1, but the
 data marks nearly every chunk start with B- (IOB2); the few chunks that start with I- are fixed to B-."""
-from dataclasses import dataclass
-
-OUT = 'Out'
-
-
-@dataclass
-class Paragraph:
-    words: list
-    tags: list
+from src.token_tagging.data import Paragraph, to_iob2
 
 
 def read_conll(path):
@@ -30,20 +22,6 @@ def read_conll(path):
     if words:
         paragraphs.append(Paragraph(words, to_iob2(tags)))
     return paragraphs
-
-
-def label_type(tag):
-    return None if tag == OUT else tag.split('-', 1)[1]
-
-
-def to_iob2(tags):
-    """I-X that starts a chunk (after Out or another type) becomes B-X."""
-    fixed = []
-    for i, tag in enumerate(tags):
-        if tag.startswith('I-') and (i == 0 or label_type(tags[i - 1]) != label_type(tag)):
-            tag = 'B-' + tag[2:]
-        fixed.append(tag)
-    return fixed
 
 
 def split_contiguous(paragraphs, train_frac, dev_frac):

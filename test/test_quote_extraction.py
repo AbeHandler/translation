@@ -1,7 +1,9 @@
 """Run from the repo root: python -m pytest test/"""
-from src.quote_extraction.data import Paragraph, read_conll, split_contiguous, to_iob2
-from src.quote_extraction.encoding import label_list
-from src.quote_extraction.predict import attribute, spans, words_with_offsets
+from src.quote_extraction.data import read_conll, split_contiguous
+from src.quote_extraction.predict import attribute
+from src.token_tagging.data import Paragraph, to_iob2
+from src.token_tagging.encoding import label_list
+from src.token_tagging.tagger import spans, words_with_offsets
 
 
 def test_read_conll_normalizes_chunk_starts_to_b(tmp_path):

@@ -1,6 +1,7 @@
 """Run from the repo root: python -m pytest test/"""
 from src.paraphrase_detection.polnear import parse_ann, read_split, tag_article
 from src.paraphrase_detection.predict import group
+from src.token_tagging.tagger import chunk_bounds
 
 TEXT = 'Title\n\nOfficials said the talks would resume. "We are ready," Smith said.\n\nHe thinks she believes it.'
 ANN = '\n'.join([
@@ -43,3 +44,10 @@ def test_group_pairs_content_with_nearest_cue_and_its_source():
     assert group(spans) == [(('Content', 2, 5), ('Cue', 1, 1), ('Source', 0, 0)),
                             (('Content', 10, 12), ('Cue', 13, 13), ('Source', 14, 15))]
     assert group([('Content', 0, 3)]) == [(('Content', 0, 3), None, None)]
+
+
+def test_chunks_end_at_sentence_ends_when_they_can():
+    words = ['a', 'b', '.', 'c', 'd', 'e', 'f', '.', 'g']
+    assert chunk_bounds(words, 5) == [(0, 3), (3, 8), (8, 9)]
+    assert chunk_bounds(['a'] * 7, 3) == [(0, 3), (3, 6), (6, 7)]
+    assert chunk_bounds(words, None) == [(0, 9)]

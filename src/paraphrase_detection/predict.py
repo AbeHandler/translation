@@ -9,6 +9,7 @@ paragraph get none, and no Source.
     detector = ParaphraseDetector('results/train_paraphrase_detector/electra_small/model')
     detector.predict('Officials said the talks would resume next week.')
 """
+from src.paraphrase_detection.polnear import MAX_WORDS
 from src.token_tagging.tagger import WordTagger
 
 FIELDS = ('content', 'cue', 'source')
@@ -35,8 +36,8 @@ def group(span_list):
 
 
 class ParaphraseDetector:
-    def __init__(self, model_dir, max_length=512, device=None):
-        self.tagger = WordTagger(model_dir, max_length, device)
+    def __init__(self, model_dir, max_length=512, device=None, max_words=MAX_WORDS):
+        self.tagger = WordTagger(model_dir, max_length, device, max_words)  # chunked as in training
 
     def predict(self, text):
         """[{content, cue, source, content_start, content_end, cue_start, ...}], character offsets into text

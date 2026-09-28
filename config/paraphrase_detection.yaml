@@ -4,7 +4,7 @@ experiment_name: electra_small
 model:
   # small enough to train on a laptop; on Alpine try bert-base-cased or roberta-base (new experiment_name)
   base_model: google/electra-small-discriminator
-  max_seq_length: 512   # PolNeAR paragraphs: 99% are under ~150 words, but some articles have no paragraph breaks
+  max_seq_length: 512   # paragraphs are cut into chunks of <= 150 words (MAX_WORDS in polnear.py)
 data:
   polnear_dir: data/external/polnear/data   # git clone https://github.com/networkdynamics/PolNeAR data/external/polnear
 training:   # PolNeAR's own train/dev/test splits

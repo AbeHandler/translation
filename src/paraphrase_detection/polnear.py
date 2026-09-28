@@ -8,8 +8,9 @@ and E lines tie them into one attribution:
 An attribution can have no Source, and more than one Content. Some articles were annotated by several
 annotators; the first .ann file in sorted order is used.
 
-Articles are split into paragraphs and words as at prediction time (src/token_tagging/tagger.py) and each word is
-tagged B-/I- Source, Cue or Content. Two kinds of attributions are left untagged:
+Articles are split into paragraphs and words as at prediction time (src/token_tagging/tagger.py), paragraphs into
+chunks of at most MAX_WORDS words, and each word is tagged B-/I- Source, Cue or Content. Two kinds of
+attributions are left untagged:
   - direct quotes: every Content is wrapped in quotation marks (src/quote_extraction covers those)
   - nested: an attribution whose spans overlap a longer one already tagged ("He said [she claimed X]" keeps the
     outer one; one tag per word can't hold both)
@@ -18,11 +19,12 @@ from collections import Counter
 from pathlib import Path
 
 from src.token_tagging.data import OUT, Paragraph, to_iob2
-from src.token_tagging.tagger import paragraphs, words_with_offsets
+from src.token_tagging.tagger import chunk_bounds, paragraphs, words_with_offsets
 
 ROLES = ('Source', 'Cue', 'Content')
 QUOTE_MARKS = '"“”'
 TRAILING_PUNCTUATION = '.,;:!?'
+MAX_WORDS = 150  # 99% of PolNeAR paragraphs are shorter; some articles have no paragraph breaks at all
 
 
 def parse_ann(ann_text):
@@ -63,8 +65,9 @@ def word_range(word_starts, start, end):
     return (inside[0], inside[-1]) if inside else None
 
 
-def tag_article(text, attributions):
-    """(paragraphs, counts): Paragraph per text paragraph, tags from the non-direct, non-nested attributions."""
+def tag_article(text, attributions, max_words=MAX_WORDS):
+    """(paragraphs, counts): Paragraph per text paragraph chunk, tags from the non-direct, non-nested
+    attributions."""
     counts = Counter(attributions=len(attributions))
     words, paragraph_of = [], []
     for n, (paragraph, base) in enumerate(paragraphs(text)):
@@ -92,7 +95,8 @@ def tag_article(text, attributions):
         by_paragraph.setdefault(n, Paragraph([], []))
         by_paragraph[n].words.append(word)
         by_paragraph[n].tags.append(tag)
-    result = [Paragraph(p.words, to_iob2(p.tags)) for _, p in sorted(by_paragraph.items())]
+    result = [Paragraph(p.words[start:end], to_iob2(p.tags[start:end]))
+              for _, p in sorted(by_paragraph.items()) for start, end in chunk_bounds(p.words, max_words)]
     return result, counts
 
 
@@ -104,7 +108,7 @@ def annotation_path(split_dir, stem):
     return found[0]
 
 
-def read_split(data_dir, split, max_articles=None):
+def read_split(data_dir, split, max_articles=None, max_words=MAX_WORDS):
     """(paragraphs, counts) for PolNeAR's data/<split> (train, dev or test), articles in sorted order."""
     split_dir = Path(data_dir) / split
     texts = sorted((split_dir / 'text').glob('*.txt'))[:max_articles]
@@ -114,7 +118,7 @@ def read_split(data_dir, split, max_articles=None):
     for path in texts:
         text = path.read_text(encoding='utf-8')
         ann = annotation_path(split_dir, path.stem).read_text(encoding='utf-8')
-        article_paragraphs, article_counts = tag_article(text, parse_ann(ann))
+        article_paragraphs, article_counts = tag_article(text, parse_ann(ann), max_words)
         all_paragraphs.extend(article_paragraphs)
         counts.update(article_counts)
     counts['articles'] = len(texts)

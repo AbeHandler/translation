@@ -26,6 +26,7 @@
 #   START_DATE=20260901 END_DATE=20260923 MATCH_ONLY=1 bash scripts/go_zh_en.sh      # rematch, e.g. after a new seed
 #   START_DATE=20260901 END_DATE=20260923 DOWNLOAD_ONLY=1 bash scripts/go_zh_en.sh   # just download the WARCs
 #   START_DATE=20260901 END_DATE=20260923 N_NER_WORKERS=0 bash scripts/go_zh_en.sh   # skip NER (and gazetteer, quotes)
+#   START_DATE=20260901 END_DATE=20260923 N_HTML_WORKERS=0 N_NER_WORKERS=0 bash scripts/go_zh_en.sh   # links + match only
 #   START_DATE=20260923 END_DATE=20260923 N_HTML_WORKERS=1 N_LINK_WORKERS=1 MAX_WARCS=1 MAX_N=100 PARTIAL=1 bash scripts/go_zh_en.sh  # test
 
 set -eo pipefail  # no -u: ~/.myrc references unset vars
@@ -84,6 +85,10 @@ submit_step() {  # submit_step <step> <how many> <dependency> [more sbatch optio
     echo "$jobs"
 }
 
+after() {  # after <:id:id...>: wait for those jobs to end, or just for update_env when a step was skipped (0 workers)
+    if [ -n "$1" ]; then echo "afterany$1"; else echo "afterok:$ENV_JOB"; fi
+}
+
 AFTER=afterok:$ENV_JOB
 if [ "${DOWNLOAD_ONLY:-}" = 1 ]; then
     submit_step download "$N_DOWNLOAD_WORKERS" "$AFTER" > /dev/null
@@ -96,9 +101,9 @@ if [ "${MATCH_ONLY:-}" != 1 ]; then
     HTML_JOBS=$(submit_step html "$N_HTML_WORKERS" "$AFTER")
     echo "cc_news_html     $N_HTML_WORKERS workers (after $ENV_JOB)"
     # afterany: a worker hitting its time limit shouldn't block the rest; the next step checks what's done
-    LINK_JOBS=$(submit_step links "$N_LINK_WORKERS" "afterany$HTML_JOBS")
+    LINK_JOBS=$(submit_step links "$N_LINK_WORKERS" "$(after "$HTML_JOBS")")
     echo "cc_news_links    $N_LINK_WORKERS workers (after the html workers)"
-    NER_JOBS=$(submit_step ner "$N_NER_WORKERS" "afterany$HTML_JOBS" --cpus-per-task=8 --mem=16G)
+    NER_JOBS=$(submit_step ner "$N_NER_WORKERS" "$(after "$HTML_JOBS")" --cpus-per-task=8 --mem=16G)
     echo "cc_news_ner      $N_NER_WORKERS workers (after the html workers)"
     if [ -n "$NER_JOBS" ]; then
         FILTER_JOB=$(sbatch --parsable --dependency=afterany"$NER_JOBS" --export="MAX_N=$MAX_N" \
@@ -109,7 +114,7 @@ if [ "${MATCH_ONLY:-}" != 1 ]; then
             --export="MAX_N=$MAX_N" scripts/slurm/extract_quotes.slurm)"
         echo "extract_quotes   ${NER_JOBS#:} (after the filter)"
     fi
-    AFTER=afterany$LINK_JOBS
+    AFTER=$(after "$LINK_JOBS")
 fi
 MATCH_JOB=$(submit_step match 1 "$AFTER")
 echo "cc_news_match    ${MATCH_JOB#:}"

@@ -7,6 +7,8 @@
 #   cc_news_links    N_LINK_WORKERS workers, after the html workers: cc_html -> data/interim/cc_links/<warc>.jsonl
 #   cc_news_ner      N_NER_WORKERS workers (8 CPUs, 16G each), also after the html workers: cc_html ->
 #                    data/interim/cc_ner/<warc>.parquet, each English article's text and spaCy entities
+#   filter_by_gazetteer  one job, after the ner workers: every story (in all NER files, not just this range)
+#                    naming an entry of config/gazetteer.yaml -> data/processed/gazetteer_stories.jsonl
 #   cc_news_match    one job, after the links workers: -> data/processed/cc_link_matches.jsonl (the seeds in
 #                    config/seed_patterns.txt). Fails if some WARC in the range still has no links file.
 #   report_run_done  after the match and ner: a summary and the one "done" email. The rest emails on failure.
@@ -94,6 +96,11 @@ if [ "${MATCH_ONLY:-}" != 1 ]; then
     echo "cc_news_links    $N_LINK_WORKERS workers (after the html workers)"
     NER_JOBS=$(submit_step ner "$N_NER_WORKERS" "afterany$HTML_JOBS" --cpus-per-task=8 --mem=16G)
     echo "cc_news_ner      $N_NER_WORKERS workers (after the html workers)"
+    if [ -n "$NER_JOBS" ]; then
+        NER_JOBS=":$(sbatch --parsable --dependency=afterany"$NER_JOBS" --export="MAX_N=$MAX_N" \
+            scripts/slurm/filter_by_gazetteer.slurm)"
+        echo "filter_by_gazetteer ${NER_JOBS#:} (after the ner workers)"
+    fi
     AFTER=afterany$LINK_JOBS
 fi
 MATCH_JOB=$(submit_step match 1 "$AFTER")
@@ -109,5 +116,6 @@ echo "  squeue -u \$USER --name=update_env,cc_news_html,cc_news_links,cc_news_ne
 echo "  ls $TMP/extract_warc_html/*.done | wc -l      # WARCs with HTML"
 echo "  ls data/interim/cc_links/*.jsonl | wc -l      # WARCs with links"
 echo "  ls data/interim/cc_ner/*.parquet | wc -l      # WARCs with entities"
+echo "  wc -l data/processed/gazetteer_stories.jsonl  # stories naming a gazetteer entry"
 echo "  ls $TMP/extract_warc_html/*.lock data/interim/cc_links/*.lock   # in progress (stale if no job runs)"
 echo "  tail logs/scripts/slurm/cc_news_*_*.out"

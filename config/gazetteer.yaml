@@ -1,0 +1,12 @@
+# Gazetteer for scripts/filter_by_gazetteer.py: canonical name -> the ways it is written. A story is kept when
+# one of its named entities (spaCy NER, English pages only) contains one of these as a whole word, ignoring
+# case: "Amodei" matches the entity "Dario Amodei", "Claude" matches "Claude Code". Untyped: spaCy's own label
+# is kept with each match, but not required to be anything.
+
+Anthropic: [Anthropic]
+Claude: [Claude]
+Dario Amodei: [Dario Amodei, Amodei]
+OpenAI: [OpenAI]
+DeepSeek: [DeepSeek]
+Moonshot AI: [Moonshot AI, Moonshot, Kimi]
+MiniMax: [MiniMax]

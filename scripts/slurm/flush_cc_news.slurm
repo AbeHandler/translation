@@ -9,6 +9,7 @@
 #   data/interim/cc_ner/                   text and named entities Parquet, one per WARC
 #   $TMP/download_warcs/                   .lock/.done files of the download step
 #   data/processed/cc_link_matches*.jsonl  seed matches
+#   data/processed/gazetteer_stories*.jsonl stories naming gazetteer entries
 # Submitting it is the confirmation: there is no prompt. Refuses while pipeline jobs are queued or running.
 # Deletes files in random order, which spreads the load on the shared filesystem.
 #
@@ -34,7 +35,7 @@ if [ -z "${TMP:-}" ]; then
     echo "ERROR: \$TMP is not set"
     exit 1
 fi
-JOBS=update_env,cc_news_download,cc_news_html,cc_news_links,cc_news_ner,cc_news_match,report_run_done
+JOBS=update_env,cc_news_download,cc_news_html,cc_news_links,cc_news_ner,filter_by_gazetteer,cc_news_match,report_run_done
 if [ -n "$(squeue -h -u "$USER" --name=$JOBS)" ]; then
     echo "ERROR: pipeline jobs are still queued/running; scancel them first:"
     squeue -u "$USER" --name=$JOBS
@@ -48,7 +49,7 @@ if [ "${FLUSH_WARCS:-}" = 1 ]; then
 fi
 echo "WARNING: deleting:"
 printf '  %s/\n' "${DIRS[@]}"
-echo "  data/processed/cc_link_matches*.jsonl"
+echo "  data/processed/cc_link_matches*.jsonl data/processed/gazetteer_stories*.jsonl"
 for dir in "${DIRS[@]}"; do
     if [ -d "$dir" ]; then
         find "$dir" -type f | shuf | xargs -r rm -f
@@ -56,5 +57,5 @@ for dir in "${DIRS[@]}"; do
         echo "  deleted $dir/"
     fi
 done
-rm -f data/processed/cc_link_matches*.jsonl
+rm -f data/processed/cc_link_matches*.jsonl data/processed/gazetteer_stories*.jsonl
 echo "Flushed"

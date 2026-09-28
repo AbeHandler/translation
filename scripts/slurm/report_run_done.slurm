@@ -27,9 +27,11 @@ echo "WARCs with links:   $(find data/interim/cc_links -name '*.jsonl' ! -name '
 echo "  still locked:     $(find data/interim/cc_links -name '*.lock' 2>/dev/null | wc -l)"
 if [ -f "$MATCHES" ]; then
     echo "WARCs with entities: $(find data/interim/cc_ner -name '*.parquet' ! -name '*.max*' 2>/dev/null | wc -l)"
+echo "Gazetteer stories:   $(wc -l < data/processed/gazetteer_stories.jsonl 2>/dev/null || echo none)"
 echo "Seed-link matches:  $(wc -l < "$MATCHES")  ($MATCHES, $(stat -c %y "$MATCHES" | cut -d. -f1))"
 else
     echo "WARCs with entities: $(find data/interim/cc_ner -name '*.parquet' ! -name '*.max*' 2>/dev/null | wc -l)"
+echo "Gazetteer stories:   $(wc -l < data/processed/gazetteer_stories.jsonl 2>/dev/null || echo none)"
 echo "Seed-link matches:  none written (see logs/scripts/slurm/cc_news_match_*.out)"
 fi
 echo "Cached WARCs:       $(find "$TMP/cc_news_warcs" -name '*.warc.gz' 2>/dev/null | wc -l)  ($(du -sh "$TMP/cc_news_warcs" 2>/dev/null | cut -f1))"

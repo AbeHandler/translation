@@ -4,7 +4,8 @@ import os
 from src.common_crawl_full.filter import is_english_ai_page
 from src.common_crawl_full.worker import out_path, process_warcs
 
-EN = '<html><body><p>' + 'The new AI model from the lab was released to researchers this week. ' * 10 + '</p></body></html>'
+EN = ('<html><body><p>' + 'The new AI model from the lab was released to researchers this week. ' * 10
+      + '</p></body></html>')
 
 
 def test_english_pages_saying_ai_are_kept():

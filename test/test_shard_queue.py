@@ -35,12 +35,27 @@ def test_worker_keeps_rows_in_order_records_errors_and_skips_done_shards(tmp_pat
     assert process_queue(str(tmp_path / 'q'), process_row) == 0 and len(calls) == 5
 
 
-def test_a_fresh_rebuild_keeps_results_and_reuses_them_for_identical_shards(tmp_path):
+def test_a_fresh_rebuild_keeps_results_and_queues_nothing_already_done(tmp_path):
     from src.shard_queue.shards import clear_queue
     rows = [{'url': f'u{i}'} for i in range(4)]
     add_to_queue(rows, str(tmp_path / 'q'), shard_size=10)
     assert process_queue(str(tmp_path / 'q'), lambda row: {'ok': 1}) == 1
     clear_queue(str(tmp_path / 'q'))
     assert shard_paths(str(tmp_path / 'q')) == [] and len(list((tmp_path / 'q' / 'results').glob('*.jsonl'))) == 1
-    add_to_queue(rows, str(tmp_path / 'q'), shard_size=10)  # same content -> same shard name -> result reused
-    assert process_queue(str(tmp_path / 'q'), lambda row: {'ok': 1}) == 0
+    assert add_to_queue(rows, str(tmp_path / 'q'), shard_size=10) == (0, 4)
+
+
+def test_rows_already_done_are_not_queued_again_but_failed_ones_are(tmp_path):
+    from src.shard_queue.shards import clear_queue
+    rows = [{'srcpage': 'p', 'url': f'u{i}'} for i in range(3)]
+    add_to_queue(rows, str(tmp_path / 'q'), shard_size=10)
+
+    def process_row(row):
+        if row['url'] == 'u1':
+            raise ValueError('timeout')
+        return {'language': 'en'}
+    process_queue(str(tmp_path / 'q'), process_row)
+    clear_queue(str(tmp_path / 'q'))
+    assert add_to_queue(rows + [{'srcpage': 'p', 'url': 'u9'}], str(tmp_path / 'q')) == (2, 2)  # u1 retried, u9 new
+    queued = sorted(r['url'] for p in shard_paths(str(tmp_path / 'q')) for r in read_shard(p))
+    assert queued == ['u1', 'u9']

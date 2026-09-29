@@ -34,7 +34,7 @@ if [ -z "${QUEUE_DIR:-}" ]; then
     exit 1
 fi
 if ! ls "$QUEUE_DIR"/shard_*.jsonl > /dev/null 2>&1; then
-    echo "ERROR: no shards in $QUEUE_DIR; build the queue first"
+    echo "ERROR: no shards in $QUEUE_DIR: build the queue first (or everything in it is done: see $QUEUE_DIR/results)"
     exit 1
 fi
 N_WORKERS=${N_WORKERS:-20}

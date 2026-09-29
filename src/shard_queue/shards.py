@@ -4,8 +4,11 @@ Writing and reading queue shards: JSONL files of up to shard_size rows in queue_
 never touches existing ones, so results already made for a shard stay valid and a rerun of the worker only
 processes the new shards. Content names mean a result can never be mistaken for another shard's.
 
-Results live in the queue: queue_dir/results/<shard name> (src/shard_queue/worker.py). clear_queue removes the
-shards but keeps the results, so after a fresh rebuild any shard with the same content reuses its result.
+Results live in the queue: queue_dir/results/<shard name> (src/shard_queue/worker.py), and are never deleted:
+processing is the expensive part. add_to_queue skips rows that already have a successful result (rows whose
+result was an error are queued again), and clear_queue removes the shards but keeps the results, so a fresh
+rebuild only queues work not yet done. Results can hold the same row twice (e.g. from before this rule, or two
+workers racing); dedupe when reading them, e.g. by url.
 """
 import glob
 import hashlib
@@ -33,15 +36,28 @@ def read_shard(path):
         return [json.loads(line) for line in f]
 
 
+def done_keys(queue_dir, fields):
+    """Row keys (over these fields) of every row with a successful result in queue_dir/results."""
+    keys = set()
+    for path in glob.glob(os.path.join(results_dir(queue_dir), '*.jsonl')):
+        for result in read_shard(path):
+            if 'error' not in result:
+                keys.add(row_key({field: result.get(field) for field in fields}))
+    return keys
+
+
 def add_to_queue(rows, queue_dir, shard_size=SHARD_SIZE, seed=0):
-    """Add the rows not already queued, shuffled (so any prefix of the work is a random sample), as new shards.
-    Returns (rows added, rows already queued)."""
+    """Add the rows not already queued and not already done, shuffled (so any prefix of the work is a random
+    sample), as new shards. Returns (rows added, rows skipped: already queued or done)."""
+    rows = list(rows)
     os.makedirs(queue_dir, exist_ok=True)
-    queued = {row_key(row) for path in shard_paths(queue_dir) for row in read_shard(path)}
+    skip = {row_key(row) for path in shard_paths(queue_dir) for row in read_shard(path)}
+    if rows:
+        skip |= done_keys(queue_dir, sorted(rows[0]))
     new = {}
     for row in rows:
         key = row_key(row)
-        if key not in queued:
+        if key not in skip:
             new[key] = row
     new_rows = list(new.values())
     random.Random(seed).shuffle(new_rows)
@@ -51,7 +67,7 @@ def add_to_queue(rows, queue_dir, shard_size=SHARD_SIZE, seed=0):
         with open(path + '.part', 'w', encoding='utf-8') as f:
             f.write(lines)
         os.rename(path + '.part', path)
-    return len(new_rows), len(queued)
+    return len(new_rows), len(rows) - len(new_rows)
 
 
 def clear_queue(queue_dir):

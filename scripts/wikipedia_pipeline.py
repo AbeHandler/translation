@@ -112,7 +112,8 @@ def queue(args, config, lang_dir, queue_dir):
             for page in pq.read_table(ai_pages, columns=['title', 'text']).to_pylist()
             for url in external_links(page['text'])]
     added, already = add_to_queue(rows, queue_dir, config['queue']['shard_size'])
-    print(f'{len(rows)} links from AI articles: {added} new ones queued ({already} were already) in {queue_dir}')
+    print(f'{len(rows)} links from AI articles: {added} new ones queued ({already} already queued or done) '
+          f'in {queue_dir}')
     print(f'Process them: bash scripts/process_queue.sh wikipedia_{args.lang}')
 
 

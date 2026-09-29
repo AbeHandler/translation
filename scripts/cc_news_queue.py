@@ -59,8 +59,8 @@ def main():
         clear_queue(queue_dir)
     added, already = add_to_queue(rows, queue_dir, args.shard_size)
     print(f'{len(pairs)} WARCs ({missing} with NER but no links file yet): {len(rows)} links from '
-          f'{len({r["srcpage"] for r in rows})} AI articles; {added} new ones queued ({already} were already) '
-          f'in {queue_dir}')
+          f'{len({r["srcpage"] for r in rows})} AI articles; {added} new ones queued '
+          f'({already} already queued or done) in {queue_dir}')
     print('Process them: bash scripts/process_queue.sh news')
 
 

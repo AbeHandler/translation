@@ -61,8 +61,7 @@ def main():
     print(f'{len(pairs)} WARCs ({missing} with NER but no links file yet): {len(rows)} links from '
           f'{len({r["srcpage"] for r in rows})} AI articles; {added} new ones queued ({already} were already) '
           f'in {queue_dir}')
-    print(f'Process them: QUEUE_DIR={queue_dir} RESULTS_DIR=$TMP/cc_news_results PROCESSOR=... '
-          'bash scripts/process_queue.sh')
+    print('Process them: bash scripts/process_queue.sh news')
 
 
 if __name__ == '__main__':

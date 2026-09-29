@@ -113,7 +113,7 @@ def queue(args, config, lang_dir, queue_dir):
             for url in external_links(page['text'])]
     added, already = add_to_queue(rows, queue_dir, config['queue']['shard_size'])
     print(f'{len(rows)} links from AI articles: {added} new ones queued ({already} were already) in {queue_dir}')
-    print(f'Process them: QUEUE_DIR={queue_dir} RESULTS_DIR=... PROCESSOR=... bash scripts/process_queue.sh')
+    print(f'Process them: bash scripts/process_queue.sh wikipedia_{args.lang}')
 
 
 def main():

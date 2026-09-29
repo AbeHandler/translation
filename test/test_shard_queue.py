@@ -59,3 +59,17 @@ def test_rows_already_done_are_not_queued_again_but_failed_ones_are(tmp_path):
     assert add_to_queue(rows + [{'srcpage': 'p', 'url': 'u9'}], str(tmp_path / 'q')) == (2, 2)  # u1 retried, u9 new
     queued = sorted(r['url'] for p in shard_paths(str(tmp_path / 'q')) for r in read_shard(p))
     assert queued == ['u1', 'u9']
+
+
+def test_collect_dedupes_by_key_and_prefers_success(tmp_path):
+    from src.shard_queue.collect import collect_results, queue_status
+    add_to_queue([{'srcpage': 'p', 'url': f'u{i}'} for i in range(2)], str(tmp_path / 'q'))
+    results = tmp_path / 'q' / 'results'
+    results.mkdir()
+    (results / 'a.jsonl').write_text('{"srcpage": "p", "url": "u0", "error": "timeout"}\n'
+                                     '{"srcpage": "p", "url": "u1", "language": "zh"}\n', encoding='utf-8')
+    (results / 'b.jsonl').write_text('{"srcpage": "p", "url": "u0", "language": "en"}\n'
+                                     '{"srcpage": "p", "url": "u1", "error": "timeout"}\n', encoding='utf-8')
+    rows = collect_results(str(tmp_path / 'q'), ['srcpage', 'url'])
+    assert sorted((r['url'], r.get('language')) for r in rows) == [('u0', 'en'), ('u1', 'zh')]
+    assert queue_status(str(tmp_path / 'q')) == {'shards': 1, 'done': 0, 'missing': 1, 'locks': 0}

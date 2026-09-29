@@ -16,3 +16,4 @@ results/*/*/model/
 results/*/*/model_checkpoints/
 tmp2_report.txt
 tmp2_cn_quotes.jsonl
+tmp_debug_report.txt

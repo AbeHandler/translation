@@ -21,16 +21,27 @@ def safe(process_row):
     return run
 
 
+LOG_EVERY = 100  # rows
+
+
 def process_shard(shard_path, out_path, process_row):
     """Write out_path (atomically): one line per row of the shard, in order, row + result. Returns counts."""
     rows = read_shard(shard_path)
+    name = os.path.basename(shard_path)
+    logger.info('%s: starting, %d rows', name, len(rows))
     started = time.time()
-    results = [safe(process_row)(row) for row in rows]
+    results, n_errors, run = [], 0, safe(process_row)
+    for n, row in enumerate(rows, 1):
+        results.append(run(row))
+        n_errors += 'error' in results[-1]
+        if n % LOG_EVERY == 0 or n == len(rows):
+            elapsed = time.time() - started
+            logger.info('%s: %d/%d rows, %d errors (%.1f rows/s, ~%.0f min left)', name, n, len(rows), n_errors,
+                        n / elapsed, (len(rows) - n) / max(n / elapsed, 1e-9) / 60)
     with open(out_path + '.part', 'w', encoding='utf-8') as f:
         for row, result in zip(rows, results):
             f.write(json.dumps({**row, **result}, ensure_ascii=False) + '\n')
     os.rename(out_path + '.part', out_path)
-    n_errors = sum('error' in result for result in results)
     return {'rows': len(rows), 'errors': n_errors, 'seconds': round(time.time() - started, 1)}
 
 

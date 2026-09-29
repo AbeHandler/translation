@@ -5,6 +5,7 @@
 # Usage (from the repo root):
 #   sbatch --export=NONE scripts/slurm/cc_news_queue.slurm      # TMP comes from ~/.myrc
 #   sbatch --export=START_DATE=20260223,END_DATE=20260302,MIN_AI_MENTIONS=2 scripts/slurm/cc_news_queue.slurm
+#   sbatch --export=FRESH=1,MIN_AI_MENTIONS=3 scripts/slurm/cc_news_queue.slurm   # delete the queue first, start over
 
 #SBATCH --partition=acpu
 #SBATCH --time=04:00:00
@@ -28,4 +29,5 @@ fi
 module load anaconda
 conda activate translation
 
-python -m scripts.cc_news_queue -start-date "$START_DATE" -end-date "$END_DATE" -min-ai-mentions "${MIN_AI_MENTIONS:-1}"
+python -m scripts.cc_news_queue -start-date "$START_DATE" -end-date "$END_DATE" -min-ai-mentions "${MIN_AI_MENTIONS:-1}" \
+    ${FRESH:+-fresh}

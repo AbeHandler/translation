@@ -1,5 +1,5 @@
 #!/bin/bash
-# Rebuild $TMP/cc_news_queue: the external links of CC-NEWS articles about AI (scripts/cc_news_queue.py), for
+# Add to $TMP/cc_news_queue (only links not queued yet): the external links of CC-NEWS articles about AI (scripts/cc_news_queue.py), for
 # scripts/process_queue.sh.
 #
 # Usage (from the repo root):

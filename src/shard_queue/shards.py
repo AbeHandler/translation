@@ -1,5 +1,11 @@
-"""Writing and reading queue shards: JSONL files of shard_size rows, named shard_00000.jsonl, ... in queue_dir."""
+"""
+Writing and reading queue shards: JSONL files of up to shard_size rows in queue_dir, named after their content
+(shard_<hash>.jsonl). A queue only grows: add_to_queue writes only rows that aren't in it yet, as new shards, and
+never touches existing ones, so results already made for a shard stay valid and a rerun of the worker only
+processes the new shards. Content names mean a result can never be mistaken for another shard's.
+"""
 import glob
+import hashlib
 import json
 import os
 import random
@@ -8,21 +14,8 @@ import shutil
 SHARD_SIZE = 1000
 
 
-def write_shards(rows, queue_dir, shard_size=SHARD_SIZE, seed=0):
-    """Replace queue_dir with the rows, shuffled (so any prefix of the work is a random sample), in shards.
-    Built in queue_dir.part and swapped in whole, so a queue is never half-written. Returns the number of shards."""
-    rows = list(rows)
-    random.Random(seed).shuffle(rows)
-    part = queue_dir.rstrip('/') + '.part'
-    shutil.rmtree(part, ignore_errors=True)
-    os.makedirs(part)
-    for n, start in enumerate(range(0, len(rows), shard_size)):
-        with open(os.path.join(part, f'shard_{n:05d}.jsonl'), 'w', encoding='utf-8') as f:
-            for row in rows[start:start + shard_size]:
-                f.write(json.dumps(row, ensure_ascii=False) + '\n')
-    shutil.rmtree(queue_dir, ignore_errors=True)
-    os.rename(part, queue_dir)
-    return (len(rows) + shard_size - 1) // shard_size
+def row_key(row):
+    return json.dumps(row, ensure_ascii=False, sort_keys=True)
 
 
 def shard_paths(queue_dir):
@@ -32,3 +25,30 @@ def shard_paths(queue_dir):
 def read_shard(path):
     with open(path, encoding='utf-8') as f:
         return [json.loads(line) for line in f]
+
+
+def add_to_queue(rows, queue_dir, shard_size=SHARD_SIZE, seed=0):
+    """Add the rows not already queued, shuffled (so any prefix of the work is a random sample), as new shards.
+    Returns (rows added, rows already queued)."""
+    os.makedirs(queue_dir, exist_ok=True)
+    queued = {row_key(row) for path in shard_paths(queue_dir) for row in read_shard(path)}
+    new = {}
+    for row in rows:
+        key = row_key(row)
+        if key not in queued:
+            new[key] = row
+    new_rows = list(new.values())
+    random.Random(seed).shuffle(new_rows)
+    for start in range(0, len(new_rows), shard_size):
+        lines = ''.join(json.dumps(row, ensure_ascii=False) + '\n' for row in new_rows[start:start + shard_size])
+        path = os.path.join(queue_dir, f'shard_{hashlib.sha1(lines.encode()).hexdigest()[:16]}.jsonl')
+        with open(path + '.part', 'w', encoding='utf-8') as f:
+            f.write(lines)
+        os.rename(path + '.part', path)
+    return len(new_rows), len(queued)
+
+
+def clear_queue(queue_dir):
+    """Delete a queue, for a fresh start (e.g. after narrowing what goes in it). Its results stay valid for any
+    shard that comes back with the same content."""
+    shutil.rmtree(queue_dir, ignore_errors=True)

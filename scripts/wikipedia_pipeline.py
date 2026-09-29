@@ -8,8 +8,9 @@ AI articles on Wikipedia and the external links they cite, per language (-lang),
     filter    the AI articles: config/wikipedia.yaml's rule over those pages -> .../<lang>/ai_pages.parquet
               (rebuilt every run: change the rule, rerun filter and queue)
     queue     their external links, shuffled, 1000 per shard -> $TMP/wikipedia_queue/<lang>/shard_*.jsonl
-              ({srcpage, url}), for scripts/process_queue.sh (src/shard_queue). Rebuilt every run.
-Every step skips work already done, except filter and queue, which are cheap and always rebuild.
+              ({srcpage, url}), for scripts/process_queue.sh (src/shard_queue). Adds only links not queued yet,
+              so results already made stay valid; delete the queue dir for a fresh start.
+Every step skips work already done; filter always rebuilds (it's cheap).
 
 Run as a module from the repo root:
     python -m scripts.wikipedia_pipeline -lang zh -step download
@@ -26,7 +27,7 @@ import yaml
 
 from config.paths import WIKIPEDIA_CONFIG, WIKIPEDIA_DIR, wikipedia_tmp_dir
 from src.file_worker import process_files
-from src.shard_queue.shards import write_shards
+from src.shard_queue.shards import add_to_queue
 from src.warc_worker_cli import optional_int, setup_worker_process
 from src.wikipedia.dump import chunks, download, dump_paths, read_pages, stream_offsets
 from src.ai_mentions import mentions_ai
@@ -110,8 +111,8 @@ def queue(args, config, lang_dir, queue_dir):
     rows = [{'srcpage': page['title'], 'url': url}
             for page in pq.read_table(ai_pages, columns=['title', 'text']).to_pylist()
             for url in external_links(page['text'])]
-    n_shards = write_shards(rows, queue_dir, config['queue']['shard_size'])
-    print(f'{len(rows)} links from AI articles -> {n_shards} shards in {queue_dir}')
+    added, already = add_to_queue(rows, queue_dir, config['queue']['shard_size'])
+    print(f'{len(rows)} links from AI articles: {added} new ones queued ({already} were already) in {queue_dir}')
     print(f'Process them: QUEUE_DIR={queue_dir} RESULTS_DIR=... PROCESSOR=... bash scripts/process_queue.sh')
 
 

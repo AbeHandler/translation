@@ -2,7 +2,8 @@
 A queue of rows (dicts) kept as shard files on a shared filesystem, and a worker that processes it. Built for
 many workers at once (e.g. hundreds of SLURM jobs), with no database or server:
 
-    shards.py  write_shards(rows, queue_dir): rows, shuffled, as queue_dir/shard_00000.jsonl, ... (1000 rows each)
+    shards.py  add_to_queue(rows, queue_dir): the rows not queued yet, shuffled, as new shards of 1000 rows
+               (queue_dir/shard_<content hash>.jsonl). A queue only grows, so its results always stay valid.
     worker.py  process_queue(queue_dir, results_dir, process_row): every shard without a result, in random order,
                each claimed with a .lock (src/file_worker.py) and processed one row at a time; results go to
                results_dir/<shard>.jsonl, one line per input row: the row, plus what process_row returned, or an

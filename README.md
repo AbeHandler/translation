@@ -15,6 +15,11 @@ two collection pipelines: CC-NEWS, and our own crawl of Chinese sites. Integrati
   `config/mt_sources.yaml`, queue them, translate with every engine into `data/processed/translations.sqlite`.
   `python -m scripts.run_translations -engines grok -dry-run`
 
+- `scripts/go_wikipedia.sh` — Wikipedia (zh, en) from the dumps: every article saying "AI" → a filter
+  (`config/wikipedia.yaml`) → their external links as a queue of `{srcpage, url}` shards in `$TMP/wikipedia_queue/`.
+- `scripts/process_queue.sh` — process any shard queue with many SLURM workers (`src/shard_queue`; a processor
+  per use in `src/shard_queue/processors.py`).
+
 Every step skips work already done, so any driver can be stopped and rerun.
 
 ## Steps (each also runs on its own; usage at the top of each file)

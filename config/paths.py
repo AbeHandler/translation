@@ -19,6 +19,8 @@ SITE_CRAWLS_ANNOY_DIR = REPO_ROOT / 'data' / 'processed' / 'site_crawls_annoy'
 ENV_PATH = REPO_ROOT / '.env'  # API keys, e.g. XAI_API_KEY=...; gitignored
 MT_SOURCES_CONFIG = REPO_ROOT / 'config' / 'mt_sources.yaml'
 MT_SOURCES_DIR = REPO_ROOT / 'data' / 'raw' / 'mt_sources'  # <id>.html and <id>.txt per fetched source
+WIKIPEDIA_CONFIG = REPO_ROOT / 'config' / 'wikipedia.yaml'
+WIKIPEDIA_DIR = REPO_ROOT / 'data' / 'interim' / 'wikipedia'  # <lang>/pages/chunk_*.parquet, <lang>/ai_pages.parquet
 TRANSLATIONS_DB = REPO_ROOT / 'data' / 'processed' / 'translations.sqlite'  # src/translation/store.py
 
 
@@ -30,6 +32,11 @@ def warc_cache_dir():
 def download_warcs_work_dir():
     """.lock/.done files of the CC-NEWS download step (scripts/cc_news_pipeline.py)."""
     return _tmp_dir('download_warcs')
+
+
+def wikipedia_tmp_dir(name):
+    """$TMP/wikipedia_<name>: dumps, queue, results (large, and fine to delete and rebuild)."""
+    return _tmp_dir(f'wikipedia_{name}')
 
 
 def extract_warc_html_work_dir():

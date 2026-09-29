@@ -1,0 +1,7 @@
+# scripts/wikipedia_pipeline.py: AI articles on Wikipedia and the external links they cite.
+languages: [zh, en]
+streams_per_chunk: 200      # dump streams (~100 pages each) per unit of work in the pages step: ~20k pages
+filter:                     # which pages (all say "AI" at least once) count as AI articles; cheap to change and rerun
+  min_ai_mentions: 1        # times "AI" appears as a word of its own
+queue:
+  shard_size: 1000          # {srcpage, url} rows per queue shard

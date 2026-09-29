@@ -1,6 +1,7 @@
 """Run from the repo root: python -m pytest test/"""
 from src.wikipedia.dump import chunks, parse_page
-from src.wikipedia.links import external_links, mentions_ai
+from src.ai_mentions import mentions_ai
+from src.wikipedia.links import external_links
 
 
 def test_ai_as_a_word_of_its_own_also_next_to_chinese():

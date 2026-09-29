@@ -1,8 +1,5 @@
 """
-Deciding which articles are about AI, and finding the external links in their wikitext.
-
-mentions_ai counts "AI" as a word of its own: not inside other Latin words ("MAIL", "Aida"), but it may touch
-Chinese characters ("AI芯片"), so plain \\b word boundaries (which treat CJK as word characters) aren't used.
+The external links in an article's wikitext (which articles are about AI: src/ai_mentions.py).
 
 external_links finds the URLs in cite templates (url=, archive-url=) and bracketed links. Archive copies
 (web.archive.org, archive.today) and Wikimedia's own sites are dropped: the original URL is in the same
@@ -10,15 +7,10 @@ citation, and the aim is the sources outside Wikipedia.
 """
 import re
 
-AI = re.compile(r'(?<![A-Za-z])AI(?![A-Za-z])')
 URL = re.compile(r'https?://[^\s|\]\}<>"\'{]+')
 SKIP_HOSTS = re.compile(r'^https?://([a-z0-9-]+\.)*(archive\.org|archive\.today|archive\.ph|archive\.is|'
                         r'wikipedia\.org|wikimedia\.org|wikidata\.org|wiktionary\.org|wikisource\.org)(/|$|:)', re.I)
 TRAILING = '.,;:!?)'
-
-
-def mentions_ai(text):
-    return len(AI.findall(text))
 
 
 def external_links(wikitext):

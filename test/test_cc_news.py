@@ -60,3 +60,23 @@ def test_warc_files_by_date_and_test_suffix(tmp_path):
         'CC-NEWS-20260923000000-00002.parquet']
     assert [p.split('/')[-1] for p in warc_files(str(tmp_path), '.parquet', day, day, max_n=100)] == [
         'CC-NEWS-20260923000000-00003.max100.parquet']
+
+
+def test_ai_article_links_joins_text_and_links_and_keeps_external_links(tmp_path):
+    from src.cc_news import ai_article_links
+    from src.ner_html import SCHEMA as NER_SCHEMA
+    ner = [{'record_id': 'r1', 'url': 'https://a.cn/1', 'language': 'en', 'text': 'New AI rules. AI chips.',
+            'ner_chars': 0, 'entities': None},
+           {'record_id': 'r2', 'url': 'https://a.cn/2', 'language': 'en', 'text': 'Football.', 'ner_chars': 0,
+            'entities': None}]
+    pq.write_table(pa.Table.from_pylist(ner, NER_SCHEMA), tmp_path / 'w.parquet')
+    links = [{'url': 'https://a.cn/1', 'record_id': 'r1', 'links': [
+                 {'href': 'https://x.com/a', 'text': '', 'internal': False},
+                 {'href': 'https://a.cn/other', 'text': '', 'internal': True},
+                 {'href': 'https://x.com/a', 'text': '', 'internal': False}]},
+             {'url': 'https://a.cn/2', 'record_id': 'r2', 'links': [{'href': 'https://y.com', 'text': '',
+                                                                     'internal': False}]}]
+    (tmp_path / 'w.jsonl').write_text(''.join(json.dumps(r) + '\n' for r in links), encoding='utf-8')
+    rows = list(ai_article_links(str(tmp_path / 'w.parquet'), str(tmp_path / 'w.jsonl')))
+    assert rows == [{'srcpage': 'https://a.cn/1', 'url': 'https://x.com/a'}]
+    assert len(list(ai_article_links(str(tmp_path / 'w.parquet'), str(tmp_path / 'w.jsonl'), 3))) == 0

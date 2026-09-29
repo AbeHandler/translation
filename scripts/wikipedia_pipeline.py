@@ -29,7 +29,8 @@ from src.file_worker import process_files
 from src.shard_queue.shards import write_shards
 from src.warc_worker_cli import optional_int, setup_worker_process
 from src.wikipedia.dump import chunks, download, dump_paths, read_pages, stream_offsets
-from src.wikipedia.links import external_links, mentions_ai
+from src.ai_mentions import mentions_ai
+from src.wikipedia.links import external_links
 
 STEPS = ('download', 'pages', 'filter', 'queue')
 PAGES_SCHEMA = pa.schema([('page_id', pa.int64()), ('title', pa.string()), ('ai_mentions', pa.int32()),

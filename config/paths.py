@@ -34,6 +34,11 @@ def download_warcs_work_dir():
     return _tmp_dir('download_warcs')
 
 
+def cc_news_queue_dir():
+    """External links of CC-NEWS articles about AI, as a shard queue (scripts/cc_news_queue.py)."""
+    return _tmp_dir('cc_news_queue')
+
+
 def wikipedia_tmp_dir(name):
     """$TMP/wikipedia_<name>: dumps, queue, results (large, and fine to delete and rebuild)."""
     return _tmp_dir(f'wikipedia_{name}')

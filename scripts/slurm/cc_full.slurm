@@ -1,5 +1,5 @@
 #!/bin/bash
-# One job of scripts/cc_full.py (STEP=list|filter|all): the regular Common Crawl's English pages saying "AI",
+# One job of scripts/cc_full.py (STEP=list|filter|all|links|queue): the regular Common Crawl's English pages saying "AI",
 # in $TMP/cc_full/ (TMP from ~/.myrc). scripts/go_cc_full.sh submits the list job and the filter workers.
 #
 # Usage (from the repo root; normally via scripts/go_cc_full.sh):
@@ -21,7 +21,7 @@ set -eo pipefail  # no -u: ~/.myrc and conda activate reference unset vars
 source ~/.myrc
 
 if [ -z "${STEP:-}" ] || [ -z "${TMP:-}" ]; then
-    echo "ERROR: STEP (list|filter|all) is required, and TMP (from ~/.myrc)"
+    echo "ERROR: STEP (list|filter|all|links|queue) is required, and TMP (from ~/.myrc)"
     exit 1
 fi
 

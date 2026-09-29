@@ -44,6 +44,11 @@ def cc_full_dir():
     return _tmp_dir('cc_full')
 
 
+def cc_full_queue_dir():
+    """External links of the regular Common Crawl's English AI pages, as a shard queue (scripts/cc_full.py)."""
+    return _tmp_dir('cc_full_queue')
+
+
 def cc_news_queue_dir():
     """External links of CC-NEWS articles about AI, as a shard queue (scripts/cc_news_queue.py)."""
     return _tmp_dir('cc_news_queue')

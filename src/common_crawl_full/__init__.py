@@ -7,4 +7,5 @@ random order: whatever gets done is a random sample.
     index.py   the WARC list: every WARC of every crawl since a given year, written to a file once
     filter.py  one WARC -> its English pages that say "AI" (src/ai_mentions.py), as a gzipped WARC
     worker.py  a worker: WARCs from the list in random order, skipping those done or claimed by another worker
+    links.py   the AI pages' body links (<warc>.links.jsonl), and their external links for the link queue
 """

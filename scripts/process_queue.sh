@@ -8,6 +8,7 @@
 #   news          $TMP/cc_news_queue       -> data/processed/news_link_languages.jsonl        (scripts/cc_news_queue.py)
 #   wikipedia_zh  $TMP/wikipedia_queue/zh  -> data/processed/wikipedia_zh_link_languages.jsonl (wikipedia_pipeline.py)
 #   wikipedia_en  $TMP/wikipedia_queue/en  -> data/processed/wikipedia_en_link_languages.jsonl
+#   cc_full       $TMP/cc_full_queue       -> data/processed/cc_full_link_languages.jsonl     (scripts/cc_full.py)
 #   COLLECT_ONLY=1 bash scripts/process_queue.sh news    # just collect (and see the summary) now
 # PROCESSOR (default link_language) is a name from scripts/process_queue.py.
 #
@@ -28,12 +29,13 @@ case "${1:-}" in
     news)          QUEUE_DIR=$TMP/cc_news_queue;      OUT=data/processed/news_link_languages.jsonl ;;
     wikipedia_zh)  QUEUE_DIR=$TMP/wikipedia_queue/zh; OUT=data/processed/wikipedia_zh_link_languages.jsonl ;;
     wikipedia_en)  QUEUE_DIR=$TMP/wikipedia_queue/en; OUT=data/processed/wikipedia_en_link_languages.jsonl ;;
+    cc_full)       QUEUE_DIR=$TMP/cc_full_queue;      OUT=data/processed/cc_full_link_languages.jsonl ;;
     "")            OUT=${OUT:-$QUEUE_DIR/collected.jsonl} ;;  # QUEUE_DIR given directly
-    *)             echo "ERROR: unknown queue '$1'; use news, wikipedia_zh or wikipedia_en"; exit 1 ;;
+    *)             echo "ERROR: unknown queue '$1'; use news, cc_full, wikipedia_zh or wikipedia_en"; exit 1 ;;
 esac
 PROCESSOR=${PROCESSOR:-link_language}
 if [ -z "${QUEUE_DIR:-}" ]; then
-    echo "ERROR: name a queue (news, wikipedia_zh, wikipedia_en), or set QUEUE_DIR"
+    echo "ERROR: name a queue (news, cc_full, wikipedia_zh, wikipedia_en), or set QUEUE_DIR"
     exit 1
 fi
 mkdir -p logs/scripts/slurm

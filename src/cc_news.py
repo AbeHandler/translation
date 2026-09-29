@@ -19,7 +19,6 @@ import json
 import logging
 import os
 import random
-import re
 import socket
 import subprocess
 import time
@@ -31,7 +30,6 @@ from urllib.parse import unquote, urljoin, urlparse
 
 import lxml.html
 from newsplease.pipeline.extractor.extractors.lang_detect_extractor import LangExtractor
-import tldextract
 from readability import Document
 from tqdm import tqdm
 from tqdm.utils import CallbackIOWrapper
@@ -40,6 +38,7 @@ import pyarrow.parquet as pq
 from warcio.archiveiterator import ArchiveIterator
 
 from src.ai_mentions import mentions_ai
+from src.external_links import external_links
 from src.file_worker import claim_lock, slurm_job_id
 
 S3_BUCKET = 's3://commoncrawl/'
@@ -173,15 +172,15 @@ class ArticleLinkExtractor:
         parquet = pq.ParquetFile(html_path)
         for batch in parquet.iter_batches(batch_size=self.BATCH_ROWS, columns=['url', 'language', 'record_id', 'html']):
             for page in batch.to_pylist():
-                row = self._row(page)
+                row = self.row(page)
                 if row is None:
                     continue
                 self.counts['rows'] += 1
                 self.counts['links'] += row['n_links']
                 yield row
 
-    def _row(self, page):
-        """The row for one page, or None if it can't be parsed."""
+    def row(self, page):
+        """The row for one page ({url, language, record_id, html}), or None if it can't be parsed."""
         try:
             doc = Document(page['html'])
             title, body = doc.short_title(), lxml.html.fromstring(doc.summary())
@@ -362,7 +361,7 @@ def grep_links(paths, patterns):
 
 
 def ai_article_links(ner_path, links_path, min_ai_mentions=1):
-    """{srcpage, url} for each external body link (another registered domain, not an image or media file) of the
+    """{srcpage, url} for each external body link (src/external_links.py) of the
     articles in one WARC whose text says "AI" at least
     min_ai_mentions times (src/ai_mentions.py). The text comes from the NER file (every language), the links from
     the links file; they are joined on record_id, or on url for links files made before they had record_id."""
@@ -375,20 +374,8 @@ def ai_article_links(ner_path, links_path, min_ai_mentions=1):
             text = by_id.get(article['record_id']) if 'record_id' in article else by_url.get(article['url'])
             if mentions_ai(text) < min_ai_mentions:
                 continue
-            site = registered_domain(article['url'])
-            for href in dict.fromkeys(link['href'] for link in article['links']):
-                if registered_domain(href) != site and not MEDIA.search(urlparse(href).path):
-                    yield {'srcpage': article['url'], 'url': href}
-
-
-# offline: the public suffix list bundled with tldextract, never fetched
-_domains = tldextract.TLDExtract(suffix_list_urls=())
-MEDIA = re.compile(r'\.(jpe?g|png|gif|webp|svg|bmp|ico|mp4|mp3|m4a|mov|webm|avif)$', re.I)
-
-
-def registered_domain(url):
-    """xinhuanet.com for https://www.news.xinhuanet.com/a (so a site's own subdomains and CDNs aren't 'external')."""
-    return _domains(url).top_domain_under_public_suffix or urlparse(url).hostname
+            for href in external_links(article['url'], (link['href'] for link in article['links'])):
+                yield {'srcpage': article['url'], 'url': href}
 
 
 def match_seed_links(keys, links_path_of, patterns, matches_path, partial=False):

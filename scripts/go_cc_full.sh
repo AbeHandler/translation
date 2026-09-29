@@ -5,10 +5,14 @@
 # skips WARCs done or claimed, so rerun or add workers any time. ~3.6M WARCs: whatever gets done is a random
 # sample. Run from the repo root.
 #
+# `links`: N_WORKERS link workers (each .ai.warc.gz -> .links.jsonl), then a queue job adding their external
+# links to $TMP/cc_full_queue; then process it with scripts/process_queue.sh cc_full.
+#
 # Usage:
 #   bash scripts/go_cc_full.sh                     # one worker
 #   N_WORKERS=100 bash scripts/go_cc_full.sh
 #   N_WORKERS=1 MAX_WARCS=1 bash scripts/go_cc_full.sh   # test: one WARC
+#   N_WORKERS=10 bash scripts/go_cc_full.sh links  # links of the AI pages streamed so far, then the queue
 
 set -eo pipefail  # no -u: ~/.myrc references unset vars
 source ~/.myrc
@@ -23,6 +27,18 @@ EXPORTS="SINCE_YEAR=$SINCE_YEAR,MAX_WARCS=$MAX_WARCS"
 
 ENV_JOB=$(sbatch --parsable --export=NONE scripts/slurm/update_env.slurm)
 echo "update_env      $ENV_JOB"
+if [ "${1:-}" = links ]; then
+    JOBS=""
+    for ((i = 0; i < N_WORKERS; i++)); do
+        JOBS+=":$(sbatch --parsable --job-name=cc_full_links --dependency=afterok:"$ENV_JOB" --kill-on-invalid-dep=yes \
+            --export="STEP=links,$EXPORTS" scripts/slurm/cc_full.slurm)"
+    done
+    QUEUE_JOB=$(sbatch --parsable --job-name=cc_full_queue --dependency=afterany"$JOBS" \
+        --export="STEP=queue,$EXPORTS" scripts/slurm/cc_full.slurm)
+    echo "cc_full_links   $N_WORKERS workers, then cc_full_queue $QUEUE_JOB"
+    echo "  then: bash scripts/process_queue.sh cc_full"
+    exit 0
+fi
 if [ "$N_WORKERS" -eq 1 ]; then
     JOB=$(sbatch --parsable --job-name=cc_full_all --dependency=afterok:"$ENV_JOB" --kill-on-invalid-dep=yes \
         --export="STEP=all,$EXPORTS" scripts/slurm/cc_full.slurm)

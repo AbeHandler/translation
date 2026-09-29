@@ -33,3 +33,10 @@ def test_worker_does_each_warc_once_and_survives_a_failure(tmp_path):
     assert sorted(f for f in os.listdir(tmp_path) if f.endswith('.ai.warc.gz')) == [
         f'CC-MAIN-{i}.ai.warc.gz' for i in range(4)]
     assert not [f for f in os.listdir(tmp_path) if f.endswith('.lock')]
+
+
+def test_external_links_leave_the_site_and_skip_media():
+    from src.external_links import external_links
+    hrefs = ['https://cdn.example.com/a.js', 'https://www.xinhuanet.com/x', 'https://img.other.org/p.JPG',
+             'https://www.xinhuanet.com/x', 'https://blog.example.com/post']
+    assert external_links('https://www.example.com/page', hrefs) == ['https://www.xinhuanet.com/x']

@@ -3,19 +3,25 @@ Writing and reading queue shards: JSONL files of up to shard_size rows in queue_
 (shard_<hash>.jsonl). A queue only grows: add_to_queue writes only rows that aren't in it yet, as new shards, and
 never touches existing ones, so results already made for a shard stay valid and a rerun of the worker only
 processes the new shards. Content names mean a result can never be mistaken for another shard's.
+
+Results live in the queue: queue_dir/results/<shard name> (src/shard_queue/worker.py). clear_queue removes the
+shards but keeps the results, so after a fresh rebuild any shard with the same content reuses its result.
 """
 import glob
 import hashlib
 import json
 import os
 import random
-import shutil
 
 SHARD_SIZE = 1000
 
 
 def row_key(row):
     return json.dumps(row, ensure_ascii=False, sort_keys=True)
+
+
+def results_dir(queue_dir):
+    return os.path.join(queue_dir, 'results')
 
 
 def shard_paths(queue_dir):
@@ -49,6 +55,7 @@ def add_to_queue(rows, queue_dir, shard_size=SHARD_SIZE, seed=0):
 
 
 def clear_queue(queue_dir):
-    """Delete a queue, for a fresh start (e.g. after narrowing what goes in it). Its results stay valid for any
-    shard that comes back with the same content."""
-    shutil.rmtree(queue_dir, ignore_errors=True)
+    """Delete a queue's shards, for a fresh start (e.g. after narrowing what goes in it). Its results are kept:
+    a shard that comes back with the same content (so the same name) reuses its result."""
+    for path in shard_paths(queue_dir):
+        os.remove(path)

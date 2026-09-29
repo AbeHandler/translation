@@ -26,9 +26,21 @@ def test_worker_keeps_rows_in_order_records_errors_and_skips_done_shards(tmp_pat
         if row['url'] == 'u3':
             raise ValueError('boom')
         return {'n': len(row['url'])}
-    assert process_queue(str(tmp_path / 'q'), str(tmp_path / 'r'), process_row) == 3
-    results = [json.loads(line) for p in sorted((tmp_path / 'r').glob('shard_*.jsonl')) for line in open(p)]
+    assert process_queue(str(tmp_path / 'q'), process_row) == 3
+    results = [json.loads(line) for p in sorted((tmp_path / 'q' / 'results').glob('shard_*.jsonl'))
+               for line in open(p)]
     queued = [row for p in shard_paths(str(tmp_path / 'q')) for row in read_shard(p)]
     assert [r['url'] for r in results] == [r['url'] for r in queued]
     assert next(r for r in results if r['url'] == 'u3')['error'] == 'ValueError: boom'
-    assert process_queue(str(tmp_path / 'q'), str(tmp_path / 'r'), process_row) == 0 and len(calls) == 5
+    assert process_queue(str(tmp_path / 'q'), process_row) == 0 and len(calls) == 5
+
+
+def test_a_fresh_rebuild_keeps_results_and_reuses_them_for_identical_shards(tmp_path):
+    from src.shard_queue.shards import clear_queue
+    rows = [{'url': f'u{i}'} for i in range(4)]
+    add_to_queue(rows, str(tmp_path / 'q'), shard_size=10)
+    assert process_queue(str(tmp_path / 'q'), lambda row: {'ok': 1}) == 1
+    clear_queue(str(tmp_path / 'q'))
+    assert shard_paths(str(tmp_path / 'q')) == [] and len(list((tmp_path / 'q' / 'results').glob('*.jsonl'))) == 1
+    add_to_queue(rows, str(tmp_path / 'q'), shard_size=10)  # same content -> same shard name -> result reused
+    assert process_queue(str(tmp_path / 'q'), lambda row: {'ok': 1}) == 0

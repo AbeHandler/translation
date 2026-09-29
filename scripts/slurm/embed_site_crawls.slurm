@@ -3,7 +3,7 @@
 # file yet and isn't claimed by another worker. scripts/embed_site_crawls.sh submits N of these after update_env.
 #
 # Usage (from the repo root; normally via scripts/embed_site_crawls.sh):
-#   sbatch --export=TMP=$TMP scripts/slurm/embed_site_crawls.slurm
+#   sbatch --export=NONE scripts/slurm/embed_site_crawls.slurm   # TMP comes from ~/.myrc
 #   optional: MAX_FILES=1 (test)
 
 #SBATCH --partition=acpu

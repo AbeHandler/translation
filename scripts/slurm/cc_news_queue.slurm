@@ -3,8 +3,8 @@
 # scripts/process_queue.sh.
 #
 # Usage (from the repo root):
-#   sbatch --export=TMP=$TMP scripts/slurm/cc_news_queue.slurm
-#   optional: START_DATE=20260223, END_DATE=20260302 (default: every WARC), MIN_AI_MENTIONS=2
+#   sbatch --export=NONE scripts/slurm/cc_news_queue.slurm      # TMP comes from ~/.myrc
+#   sbatch --export=START_DATE=20260223,END_DATE=20260302,MIN_AI_MENTIONS=2 scripts/slurm/cc_news_queue.slurm
 
 #SBATCH --partition=acpu
 #SBATCH --time=04:00:00
@@ -21,7 +21,7 @@ set -eo pipefail  # no -u: ~/.myrc and conda activate reference unset vars
 source ~/.myrc
 
 if [ -z "${TMP:-}" ]; then
-    echo "ERROR: TMP is required (the queue goes in \$TMP/cc_news_queue)"
+    echo "ERROR: \$TMP is not set (in ~/.myrc); the queue goes in \$TMP/cc_news_queue"
     exit 1
 fi
 

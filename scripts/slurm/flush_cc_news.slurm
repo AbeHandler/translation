@@ -15,8 +15,8 @@
 # Deletes files in random order, which spreads the load on the shared filesystem.
 #
 # Usage (from the repo root):
-#   sbatch --export=TMP=$TMP scripts/slurm/flush_cc_news.slurm
-#   sbatch --export=TMP=$TMP,FLUSH_WARCS=1 scripts/slurm/flush_cc_news.slurm   # also the cached WARCs
+#   sbatch --export=NONE scripts/slurm/flush_cc_news.slurm   # TMP comes from ~/.myrc
+#   sbatch --export=FLUSH_WARCS=1 scripts/slurm/flush_cc_news.slurm   # also the cached WARCs
 
 #SBATCH --partition=acpu
 #SBATCH --time=24:00:00

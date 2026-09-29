@@ -5,7 +5,7 @@
 # The queue and results live on scratch ($TMP). Run from the repo root.
 #
 # Usage:
-#   QUEUE_DIR=$TMP/wikipedia_queue/zh RESULTS_DIR=$TMP/wikipedia_results/zh PROCESSOR=fetch_status bash scripts/process_queue.sh
+#   QUEUE_DIR=$TMP/cc_news_queue RESULTS_DIR=$TMP/cc_news_results PROCESSOR=link_language bash scripts/process_queue.sh
 #   ... N_WORKERS=200 bash scripts/process_queue.sh
 #   ... N_WORKERS=1 MAX_SHARDS=1 bash scripts/process_queue.sh     # test: one shard
 

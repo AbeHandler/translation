@@ -34,6 +34,11 @@ def download_warcs_work_dir():
     return _tmp_dir('download_warcs')
 
 
+def link_language_cache_dir():
+    """Per-host language labels shared by the link_language queue workers (src/link_language/labeler.py)."""
+    return _tmp_dir('link_language_cache')
+
+
 def cc_news_queue_dir():
     """External links of CC-NEWS articles about AI, as a shard queue (scripts/cc_news_queue.py)."""
     return _tmp_dir('cc_news_queue')

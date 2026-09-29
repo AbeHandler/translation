@@ -8,7 +8,7 @@ many workers at once (e.g. hundreds of SLURM jobs), with no database or server:
                results_dir/<shard>.jsonl, one line per input row: the row, plus what process_row returned, or an
                "error" field. One worker is one process; to go faster, run more workers.
 
-process_row(row) -> dict is whatever the use needs (fetch the url, label its language, ...). A worker that dies
-leaves no partial result; its shard is redone by the next worker (release its lock if it was killed hard).
-scripts/process_queue.py runs a worker; scripts/process_queue.sh submits many.
+process_row(row) -> dict is whatever the use needs, e.g. src/link_language (fetch the url, label its language).
+A worker that dies leaves no partial result; its shard is redone by the next worker (release its lock if it was
+killed hard). scripts/process_queue.py runs a worker with a named processor; scripts/process_queue.sh submits many.
 """

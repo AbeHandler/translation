@@ -2,7 +2,7 @@
 # One worker of a shard queue (scripts/process_queue.py). scripts/process_queue.sh submits many.
 #
 # Usage (from the repo root; normally via scripts/process_queue.sh):
-#   sbatch --export=QUEUE_DIR=$TMP/wikipedia_queue/zh,RESULTS_DIR=$TMP/wikipedia_results/zh,PROCESSOR=fetch_status scripts/slurm/process_queue.slurm
+#   sbatch --export=QUEUE_DIR=$TMP/cc_news_queue,RESULTS_DIR=$TMP/cc_news_results,PROCESSOR=link_language scripts/slurm/process_queue.slurm
 #   optional: MAX_SHARDS=1 (test)
 
 #SBATCH --partition=acpu

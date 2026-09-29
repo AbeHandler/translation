@@ -17,8 +17,9 @@ two collection pipelines: CC-NEWS, and our own crawl of Chinese sites. Integrati
 
 - `scripts/go_wikipedia.sh` — Wikipedia (zh, en) from the dumps: every article saying "AI" → a filter
   (`config/wikipedia.yaml`) → their external links as a queue of `{srcpage, url}` shards in `$TMP/wikipedia_queue/`.
-- `scripts/process_queue.sh` — process any shard queue with many SLURM workers (`src/shard_queue`; a processor
-  per use in `src/shard_queue/processors.py`).
+- `scripts/process_queue.sh` — process any shard queue with many SLURM workers (`src/shard_queue`; processors
+  are named in `scripts/process_queue.py`, e.g. `link_language`: fetch each link and label its language,
+  `src/link_language`). `scripts/cc_news_queue.py` builds the queue of CC-NEWS AI articles' external links.
 
 Every step skips work already done, so any driver can be stopped and rerun.
 

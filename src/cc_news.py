@@ -37,7 +37,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from warcio.archiveiterator import ArchiveIterator
 
-from src.ai_mentions import mentions_ai
+from src.ai_mentions import mentions_ai_html
 from src.external_links import external_links
 from src.file_worker import claim_lock, slurm_job_id
 
@@ -150,7 +150,8 @@ LANGUAGES = ('en', 'zh')  # news-please two-letter codes; zh covers zh-cn, zh-tw
 
 class ArticleLinkExtractor:
     """Turns an HTML Parquet file (ArticleHtmlArchiver's) into one row per article:
-        {url, title, language, record_id, n_links, links: [{href, text, internal}]}
+        {url, title, language, record_id, ai_mentions, n_links, links: [{href, text, internal}]}
+    ai_mentions: times the page's visible text says "AI" (src/ai_mentions.py), for the link queue.
 
     readability trims each page to the article body, so nav/footer/sidebar links are dropped.
     """
@@ -190,7 +191,7 @@ class ArticleLinkExtractor:
             return None
         links = self._links(page['url'], body)
         return {'url': page['url'], 'title': title, 'language': page['language'], 'record_id': page['record_id'],
-                'n_links': len(links), 'links': links}
+                'ai_mentions': mentions_ai_html(page['html'])[0], 'n_links': len(links), 'links': links}
 
     def _links(self, page_url, body):
         """Links in the article body, with relative hrefs made absolute. Unparseable hrefs are skipped."""
@@ -360,19 +361,34 @@ def grep_links(paths, patterns):
                                    'language': article['language'], 'links_file': os.path.basename(path)}
 
 
-def ai_article_links(ner_path, links_path, min_ai_mentions=1):
-    """{srcpage, url} for each external body link (src/external_links.py) of the
-    articles in one WARC whose text says "AI" at least
-    min_ai_mentions times (src/ai_mentions.py). The text comes from the NER file (every language), the links from
-    the links file; they are joined on record_id, or on url for links files made before they had record_id."""
-    ner = pq.read_table(ner_path, columns=['record_id', 'url', 'text']).to_pydict()
-    by_id = dict(zip(ner['record_id'], ner['text']))
-    by_url = dict(zip(ner['url'], ner['text']))
+def ai_articles(html_path, min_ai_mentions=1):
+    """(record_ids, urls) of the pages in an HTML file whose visible text says "AI" at least min_ai_mentions
+    times (src/ai_mentions.py). Read in batches, so a whole file's HTML never sits in memory."""
+    ids, urls = set(), set()
+    for batch in pq.ParquetFile(html_path).iter_batches(batch_size=500, columns=['record_id', 'url', 'html']):
+        for record_id, url, html in zip(*batch.to_pydict().values()):
+            if mentions_ai_html(html)[0] >= min_ai_mentions:
+                ids.add(record_id)
+                urls.add(url)
+    return ids, urls
+
+
+def ai_article_links(html_path, links_path, min_ai_mentions=1):
+    """{srcpage, url} for each external body link (src/external_links.py) of the articles in one WARC whose
+    visible text says "AI" at least min_ai_mentions times. Links files record that count (ai_mentions); for older
+    ones without it, it is worked out from the HTML file (slower), joined on record_id, or on url for the oldest
+    links files, made before they had record_id. Needs only the html and links steps, not NER."""
+    ids = urls = None
     with open(links_path, encoding='utf-8') as f:
         for line in f:
             article = json.loads(line)
-            text = by_id.get(article['record_id']) if 'record_id' in article else by_url.get(article['url'])
-            if mentions_ai(text) < min_ai_mentions:
+            if 'ai_mentions' in article:
+                is_ai = article['ai_mentions'] >= min_ai_mentions
+            else:
+                if ids is None:
+                    ids, urls = ai_articles(html_path, min_ai_mentions)
+                is_ai = article['record_id'] in ids if 'record_id' in article else article['url'] in urls
+            if not is_ai:
                 continue
             for href in external_links(article['url'], (link['href'] for link in article['links'])):
                 yield {'srcpage': article['url'], 'url': href}

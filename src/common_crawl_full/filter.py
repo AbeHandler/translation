@@ -7,7 +7,6 @@ language tag).
 import io
 import logging
 import os
-import re
 import time
 import urllib.request
 
@@ -15,13 +14,11 @@ from langdetect import DetectorFactory, LangDetectException, detect
 from warcio.archiveiterator import ArchiveIterator
 from warcio.warcwriter import WARCWriter
 
-from src.ai_mentions import mentions_ai
+from src.ai_mentions import mentions_ai_html
 from src.common_crawl_full.index import DATA_URL, TIMEOUT
-from src.link_language.fetch import visible_text
 
 DetectorFactory.seed = 0
 logger = logging.getLogger(__name__)
-AI_BYTES = re.compile(rb'(?<![A-Za-z])AI(?![A-Za-z])')
 KEEP_HEADERS = ('WARC-Target-URI', 'WARC-Date', 'WARC-Record-ID', 'WARC-Payload-Digest', 'WARC-IP-Address',
                 'WARC-Identified-Payload-Type', 'WARC-Identified-Content-Language')
 LOG_EVERY = 10000  # records
@@ -29,13 +26,7 @@ LOG_EVERY = 10000  # records
 
 def is_english_ai_page(body):
     """(keep, n_ai): "AI" as a word in the visible text, and the text is English."""
-    if not AI_BYTES.search(body):
-        return False, 0
-    try:
-        _, text = visible_text(body.decode('utf-8', errors='replace'))
-    except Exception:  # unparseable HTML
-        return False, 0
-    n_ai = mentions_ai(text)
+    n_ai, text = mentions_ai_html(body)
     if not n_ai:
         return False, 0
     try:

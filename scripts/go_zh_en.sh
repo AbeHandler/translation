@@ -5,6 +5,9 @@
 #   cc_news_html     N_HTML_WORKERS workers: WARCs -> data/interim/cc_html/<warc>.parquet (raw en/zh HTML).
 #                    The only step that reads WARCs (cached in $TMP/cc_news_warcs and kept).
 #   cc_news_links    N_LINK_WORKERS workers, after the html workers: cc_html -> data/interim/cc_links/<warc>.jsonl
+#   cc_news_queue    one job, after the links workers: the external links of articles saying "AI" (checked on the
+#                    HTML; no NER needed) -> added to the news link queue ($TMP/cc_news_queue); then process it
+#                    with scripts/process_queue.sh news
 #   cc_news_ner      N_NER_WORKERS workers (8 CPUs, 16G each), also after the html workers: cc_html ->
 #                    data/interim/cc_ner/<warc>.parquet, each English article's text and spaCy entities
 #   filter_by_gazetteer  one job, after the ner workers: every story (in all NER files, not just this range)
@@ -26,6 +29,8 @@
 #   START_DATE=20260901 END_DATE=20260923 MATCH_ONLY=1 bash scripts/go_zh_en.sh      # rematch, e.g. after a new seed
 #   START_DATE=20260901 END_DATE=20260923 DOWNLOAD_ONLY=1 bash scripts/go_zh_en.sh   # just download the WARCs
 #   START_DATE=20260901 END_DATE=20260923 N_NER_WORKERS=0 bash scripts/go_zh_en.sh   # skip NER (and gazetteer, quotes)
+#   START_DATE=20230101 END_DATE=20260302 N_NER_WORKERS=0 N_HTML_WORKERS=50 N_LINK_WORKERS=20 PARTIAL=1 bash scripts/go_zh_en.sh
+#                                                        # every week: html + links + link queue, no NER
 #   START_DATE=20260901 END_DATE=20260923 N_HTML_WORKERS=0 N_NER_WORKERS=0 bash scripts/go_zh_en.sh   # links + match only
 #   START_DATE=20260923 END_DATE=20260923 N_HTML_WORKERS=1 N_LINK_WORKERS=1 MAX_WARCS=1 MAX_N=100 PARTIAL=1 bash scripts/go_zh_en.sh  # test
 #   LINKS_ONLY=1 bash scripts/go_zh_en.sh     # links for every HTML file there is (no dates, no match)
@@ -117,6 +122,9 @@ if [ "${MATCH_ONLY:-}" != 1 ]; then
     # afterany: a worker hitting its time limit shouldn't block the rest; the next step checks what's done
     LINK_JOBS=$(submit_step links "$N_LINK_WORKERS" "$(after "$HTML_JOBS")")
     echo "cc_news_links    $N_LINK_WORKERS workers (after the html workers)"
+    QUEUE_JOB=$(sbatch --parsable --dependency="$(after "$LINK_JOBS")" \
+        --export="START_DATE=$START_DATE,END_DATE=$END_DATE" scripts/slurm/cc_news_queue.slurm)
+    echo "cc_news_queue    $QUEUE_JOB (after the links workers; then: bash scripts/process_queue.sh news)"
     NER_JOBS=$(submit_step ner "$N_NER_WORKERS" "$(after "$HTML_JOBS")" --cpus-per-task=8 --mem=16G)
     echo "cc_news_ner      $N_NER_WORKERS workers (after the html workers)"
     if [ -n "$NER_JOBS" ]; then
@@ -139,7 +147,7 @@ echo "report_run_done  $REPORT_JOB (after the match and ner)"
 
 echo
 echo "Spot checks:"
-echo "  squeue -u \$USER --name=update_env,cc_news_html,cc_news_links,cc_news_ner,filter_by_gazetteer,extract_quotes,cc_news_match,report_run_done"
+echo "  squeue -u \$USER --name=update_env,cc_news_html,cc_news_links,cc_news_ner,filter_by_gazetteer,extract_quotes,cc_news_queue,cc_news_match,report_run_done"
 echo "  ls $TMP/extract_warc_html/*.done | wc -l      # WARCs with HTML"
 echo "  ls data/interim/cc_links/*.jsonl | wc -l      # WARCs with links"
 echo "  ls data/interim/cc_ner/*.parquet | wc -l      # WARCs with entities"

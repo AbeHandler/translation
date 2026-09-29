@@ -1,6 +1,7 @@
 #!/bin/bash
-# Add to $TMP/cc_news_queue (only links not queued yet): the external links of CC-NEWS articles about AI (scripts/cc_news_queue.py), for
-# scripts/process_queue.sh.
+# Add to $TMP/cc_news_queue (only links not queued or done yet): the external links of CC-NEWS articles saying
+# "AI" (scripts/cc_news_queue.py; needs cc_html and cc_links, not NER), for scripts/process_queue.sh news.
+# scripts/go_zh_en.sh submits it after its links workers.
 #
 # Usage (from the repo root):
 #   sbatch --export=NONE scripts/slurm/cc_news_queue.slurm      # TMP comes from ~/.myrc
@@ -8,10 +9,10 @@
 #   sbatch --export=FRESH=1,MIN_AI_MENTIONS=3 scripts/slurm/cc_news_queue.slurm   # delete the queue first, start over
 
 #SBATCH --partition=acpu
-#SBATCH --time=04:00:00
+#SBATCH --time=24:00:00
 #SBATCH --job-name=cc_news_queue
 #SBATCH --output=logs/scripts/slurm/%x_%j.out
-#SBATCH --mem=16G
+#SBATCH --mem=32G
 #SBATCH --qos=cpu-normal
 #SBATCH --nodes=1
 #SBATCH --ntasks=1

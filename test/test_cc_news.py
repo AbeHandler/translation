@@ -62,21 +62,27 @@ def test_warc_files_by_date_and_test_suffix(tmp_path):
         'CC-NEWS-20260923000000-00003.max100.parquet']
 
 
-def test_ai_article_links_joins_text_and_links_and_keeps_external_links(tmp_path):
+def test_ai_article_links_joins_html_and_links_and_keeps_external_links(tmp_path):
     from src.cc_news import ai_article_links
-    from src.ner_html import SCHEMA as NER_SCHEMA
-    ner = [{'record_id': 'r1', 'url': 'https://a.cn/1', 'language': 'en', 'text': 'New AI rules. AI chips.',
-            'ner_chars': 0, 'entities': None},
-           {'record_id': 'r2', 'url': 'https://a.cn/2', 'language': 'en', 'text': 'Football.', 'ner_chars': 0,
-            'entities': None}]
-    pq.write_table(pa.Table.from_pylist(ner, NER_SCHEMA), tmp_path / 'w.parquet')
-    links = [{'url': 'https://a.cn/1', 'record_id': 'r1', 'links': [
+    write_html(tmp_path / 'w.parquet', [('https://a.cn/1', b'<html><body><p>New AI rules. AI chips.</p></body></html>'),
+                                        ('https://a.cn/2', b'<html><body><p>Football.</p></body></html>')])
+    links = [{'url': 'https://a.cn/1', 'record_id': '<urn:uuid:0>', 'links': [
                  {'href': 'https://x.com/a', 'text': '', 'internal': False},
                  {'href': 'https://a.cn/other', 'text': '', 'internal': True},
                  {'href': 'https://x.com/a', 'text': '', 'internal': False}]},
-             {'url': 'https://a.cn/2', 'record_id': 'r2', 'links': [{'href': 'https://y.com', 'text': '',
-                                                                     'internal': False}]}]
+             {'url': 'https://a.cn/2', 'record_id': '<urn:uuid:1>', 'links': [{'href': 'https://y.com', 'text': '',
+                                                                              'internal': False}]}]
     (tmp_path / 'w.jsonl').write_text(''.join(json.dumps(r) + '\n' for r in links), encoding='utf-8')
     rows = list(ai_article_links(str(tmp_path / 'w.parquet'), str(tmp_path / 'w.jsonl')))
     assert rows == [{'srcpage': 'https://a.cn/1', 'url': 'https://x.com/a'}]
     assert len(list(ai_article_links(str(tmp_path / 'w.parquet'), str(tmp_path / 'w.jsonl'), 3))) == 0
+
+
+def test_links_rows_record_ai_mentions_and_the_queue_uses_them(tmp_path):
+    from src.cc_news import ai_article_links
+    write_html(tmp_path / 'w.parquet', [('https://a.cn/1', ARTICLE.replace(b'</article>', b'<p>AI AI</p></article>'))])
+    ArticleLinkExtractor().write(str(tmp_path / 'w.parquet'), str(tmp_path / 'w.jsonl'))
+    (row,) = [json.loads(line) for line in open(tmp_path / 'w.jsonl', encoding='utf-8')]
+    assert row['ai_mentions'] == 2
+    assert [r['url'] for r in ai_article_links('no-html-needed', str(tmp_path / 'w.jsonl'))] == [
+        'https://darioamodei.com/post/we-must-pace-the-frontier']

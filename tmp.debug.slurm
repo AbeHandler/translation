@@ -5,6 +5,7 @@
 #   Chinese-looking hosts (by address) among rows NOT labelled zh: are failures hiding Chinese links?
 #   the upper bound: every link to a Chinese-looking address, whatever the label
 #   the zh links by the citing article's language (from cc_ner): how many are really English -> Chinese
+#   is the "AI" filter too strict: articles kept by "AI" vs. by wider AI terms (artificial intelligence, LLM, ...)
 # Only reads. Python rather than jq.
 #
 # Usage (from the repo root):
@@ -28,8 +29,9 @@ module load anaconda
 conda activate translation
 
 python - <<'PY'
-import collections, glob, json, re
+import collections, glob, json, re, sys
 import pyarrow.parquet as pq
+sys.path.insert(0, ".")
 
 F = 'data/processed/news_link_languages.jsonl'
 CHINESE_HOST = re.compile(r'\.cn$|weixin|weibo|baidu|(^|\.)qq\.com|163\.com|sina\.|sohu|xinhua|news\.cn|people\.com|'
@@ -74,6 +76,25 @@ say(*[f'  {n:8d}  {v}' for v, n in collections.Counter(src_lang.get(r['srcpage']
 say('== the zh links')
 for r in zh:
     say(f'  [{src_lang.get(r["srcpage"], "?")}->zh] {r["srcpage"][:90]}', f'      -> {r["url"][:100]}  {r.get("title", "")[:60]}')
+
+# is the "AI" filter too strict? count articles each version of the rule would keep, over all NER text
+from src.ai_mentions import mentions_ai
+WIDER = re.compile(r'artificial intelligence|machine learning|large language model|\bLLMs?\b|chatbot|'
+                   r'OpenAI|ChatGPT|DeepSeek|人工智能|人工智慧|大模型', re.I)
+counts = collections.Counter()
+for path in glob.glob('data/interim/cc_ner/*.parquet'):
+    for batch in pq.ParquetFile(path).iter_batches(columns=['language', 'text'], batch_size=2000):
+        for lang, text in zip(*batch.to_pydict().values()):
+            if not text:
+                counts['no text'] += 1
+                continue
+            counts['articles with text'] += 1
+            n_ai = mentions_ai(text)
+            counts[f'"AI" >= 1 ({lang})'] += n_ai >= 1
+            counts['"AI" >= 3'] += n_ai >= 3
+            counts['wider AI terms, no "AI" word (missed by the filter)'] += n_ai == 0 and bool(WIDER.search(text))
+say('== is the "AI" filter too strict? articles in all cc_ner files')
+say(*[f'  {n:9d}  {k}' for k, n in sorted(counts.items())], '')
 
 with open('tmp_debug_report.txt', 'w', encoding='utf-8') as f:
     f.write('\n'.join(out) + '\n')

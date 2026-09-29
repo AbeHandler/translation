@@ -39,6 +39,11 @@ def link_language_cache_dir():
     return _tmp_dir('link_language_cache')
 
 
+def cc_full_dir():
+    """The regular Common Crawl's English AI pages: warc_paths.txt and <warc>.ai.warc.gz (src/common_crawl_full)."""
+    return _tmp_dir('cc_full')
+
+
 def cc_news_queue_dir():
     """External links of CC-NEWS articles about AI, as a shard queue (scripts/cc_news_queue.py)."""
     return _tmp_dir('cc_news_queue')

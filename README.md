@@ -17,6 +17,8 @@ two collection pipelines: CC-NEWS, and our own crawl of Chinese sites. Integrati
 
 - `scripts/go_wikipedia.sh` — Wikipedia (zh, en) from the dumps: every article saying "AI" → a filter
   (`config/wikipedia.yaml`) → their external links as a queue of `{srcpage, url}` shards in `$TMP/wikipedia_queue/`.
+- `scripts/go_cc_full.sh` — the regular Common Crawl since 2023 (not just news), each WARC streamed once in random
+  order, keeping English pages that say "AI" → `$TMP/cc_full/<warc>.ai.warc.gz` (`N_WORKERS=100` for many workers).
 - `scripts/process_queue.sh news|wikipedia_zh|wikipedia_en` — process a shard queue (results in
   `<queue>/results/`) with many SLURM workers, then collect them, deduplicated, into
   `data/processed/<queue>_link_languages.jsonl` (`COLLECT_ONLY=1` to just collect) (`src/shard_queue`; processors

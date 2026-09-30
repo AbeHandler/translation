@@ -75,9 +75,12 @@ class CCNewsIndex:
             keys += self._list_month(year, month)
         return [key for key in keys if start_date <= warc_date(key) <= end_date]
 
+    def cached_path(self, key):
+        return os.path.join(self.cache_dir, os.path.basename(key))
+
     def fetch(self, key):
         """Local path of the WARC, downloading it into the cache first if it isn't there."""
-        path = os.path.join(self.cache_dir, os.path.basename(key))
+        path = self.cached_path(key)
         if not os.path.exists(path):
             # A .part name unique to this process: if two workers (e.g. both pipelines) fetch the
             # same WARC at once, each downloads to its own file and the rename is atomic.
@@ -449,6 +452,9 @@ def with_max_n(name, max_n):
 
 # ---------------------------------------------------------------- the pipeline
 
+PROGRESS_EVERY = 10  # WARCs; counting what's left stats every .done file, so not after each one
+
+
 class WarcWorker:
     """The html step's loop: for each WARC not done and not claimed by another worker
     (in random order), fetch it (from the cache, or download it), run process(key, local_warc) -> info,
@@ -473,7 +479,9 @@ class WarcWorker:
     def process_all(self, keys, process):
         todo = [key for key in keys if not self.work_dir.is_done(key)]
         random.shuffle(todo)
+        logger.info('%d of %d WARCs to do; this worker starts at a random point in them', len(todo), len(keys))
         n_processed = 0
+        started = time.time()
         for key in todo:
             if self.work_dir.is_done(key) or not self.work_dir.claim(key):
                 continue
@@ -482,16 +490,24 @@ class WarcWorker:
             finally:
                 self.work_dir.release(key)  # also on failure, so a rerun can pick the WARC up
             n_processed += 1
+            if n_processed % PROGRESS_EVERY == 0:
+                logger.info('progress: this worker did %d WARCs (%.1f min each); %d of %d left in the range',
+                            n_processed, (time.time() - started) / n_processed / 60, self.n_not_done(keys),
+                            len(keys))
             if self.max_warcs and n_processed >= self.max_warcs:
                 break
         logger.info('this worker processed %d WARCs', n_processed)
 
     def _process_one(self, key, process):
+        cached = os.path.exists(self.index.cached_path(key))
+        started = time.time()
         local_warc = self.index.fetch(key)
+        fetched = time.time()
         info = process(key, local_warc)
         self.work_dir.mark_done(key, {'warc': key, **info, 'finished_at': datetime.datetime.now().isoformat(),
                                       'host': socket.gethostname(), 'slurm_job_id': slurm_job_id()})
-        logger.info('done %s %s', warc_name(key), info)
+        logger.info('done %s (%s in %.0fs, processed in %.0fs) %s', warc_name(key),
+                    'from cache' if cached else 'downloaded', fetched - started, time.time() - fetched, info)
 
 
 class HtmlArchivePipeline:

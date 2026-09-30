@@ -1,35 +1,97 @@
-# Sites to crawl with scrapy/ (scrapy/crawl_sites.sh). One bare domain per line, e.g. denverpost.com
-# (no scheme, no path; subdomains such as www. are followed automatically). '#' lines are ignored.
+# People's Daily 人民日报
+https://paper.people.com.cn/rmrb/paperindex.htm
 
-# Chinese tech / AI media
-jiqizhixin.com
-qbitai.com
-36kr.com
-huxiu.com
-tmtpost.com
-leiphone.com
-zhidx.com
-infoq.cn
-ithome.com
-pingwest.com
+# Guangzhou Daily 广州日报
+https://newspaper.gzdaily.cn/
 
-# Chinese news / business media
-thepaper.cn
-yicai.com
-jiemian.com
-21jingji.com
-bjnews.com.cn
-guancha.cn
-cls.cn
-nbd.com.cn
+# Southern Metropolis Daily 南方都市报
+https://www.oeeee.com/
 
-# Chinese state media
-xinhuanet.com
-news.cn
-people.com.cn
-chinadaily.com.cn
-huanqiu.com
-chinanews.com.cn
-gmw.cn
-stdaily.com
-cctv.com
+# Qianjiang Evening News 钱江晚报
+https://mqjwb.tidenews.com.cn/epaper/
+
+# Global Times 环球时报
+https://www.huanqiu.com/
+
+# Chutian Metropolis Daily / Jimu News 楚天都市报／极目新闻
+https://www.ctdsb.net/
+
+# Southern Daily 南方日报
+https://epaper.nfnews.com/
+
+# West China Metropolis Daily 华西都市报
+https://www.wccdaily.com.cn/shtml/index_hxdsb.shtml
+
+# Southern Weekly 南方周末
+https://www.infzm.com/
+
+# Economic Daily 经济日报
+http://paper.ce.cn/pc/layout/
+
+# Guangming Daily 光明日报
+https://epaper.gmw.cn/gmrbdb/
+
+# Xinmin Evening News 新民晚报
+https://paper.xinmin.cn/index/
+
+# Jinwanbao 今晚报
+https://jinwanbaoepaper.enorth.com.cn/jwb/paperindex.htm
+
+# Hubei Daily 湖北日报
+https://epaper.hubeidaily.net/pc/column/
+
+# Yangcheng Evening News 羊城晚报
+https://ep.ycwb.com/epaper/ycwb/
+
+# Zhejiang Daily 浙江日报
+https://zjrb.zjol.com.cn/
+
+# Jiangnan Metropolis Daily 江南都市报
+https://jndsb.jxnews.com.cn/
+
+# Beijing Evening News 北京晚报
+https://bjrbdzb.bjd.com.cn/bjwb/paperindex.htm
+
+# China Youth Daily 中国青年报
+https://zqb1.cyol.com/pc/layout/index.html
+
+# The Beijing News 新京报
+https://epaper.bjnews.com.cn/
+
+# Beijing Youth Daily 北京青年报
+https://app.bjtitle.com/
+
+# Qiushi 求是
+https://www.qstheory.cn/
+
+# Caixin Weekly 财新周刊
+https://www.caixin.com/
+
+# Sanlian Lifeweek 三联生活周刊
+https://www.lifeweek.com.cn/
+
+# Nanfeng Chuang 南风窗
+https://www.nfcmag.cn/
+
+# The Paper 澎湃新闻
+https://www.thepaper.cn/
+
+# Jiemian News 界面新闻
+https://www.jiemian.com/
+
+# Guancha 观察者网
+https://www.guancha.cn/
+
+# Caijing Magazine 财经
+https://www.caijing.com.cn/
+
+# China Business News / Yicai 第一财经
+https://www.yicai.com/
+
+## General News — Broadcast Programs (2)
+
+# Xinwen Lianbo 新闻联播
+https://tv.cctv.com/lm/xwlb/
+
+# Focus Report / Jiaodian Fangtan 焦点访谈
+https://tv.cctv.com/lm/jdft/

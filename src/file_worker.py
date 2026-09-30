@@ -9,6 +9,7 @@ import logging
 import os
 import random
 import socket
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -29,23 +30,34 @@ def slurm_job_id():
     return os.environ.get('SLURM_JOB_ID', f'pid{os.getpid()}')
 
 
+SHOW_TODO = 100  # the to-do list is logged in full up to this many files
+
+
 def process_files(in_paths, out_path_of, process, max_files=None):
     """Run process(in_path, out_path) -> info for every input without an output. Returns the number of files
-    this worker processed."""
+    this worker processed. Logs its to-do list at the start and 'start'/'done' per file, so a file that hangs
+    shows as a 'start' without a 'done'."""
     todo = [path for path in in_paths if not os.path.exists(out_path_of(path))]
     random.shuffle(todo)
-    logger.info('%d input files, %d without output', len(in_paths), len(todo))
+    logger.info('%d input files, %d without output (this worker\'s to-do list, in its order):', len(in_paths),
+                len(todo))
+    for path in todo[:SHOW_TODO]:
+        logger.info('  todo %s', path)
+    if len(todo) > SHOW_TODO:
+        logger.info('  ... and %d more', len(todo) - SHOW_TODO)
     n_done = 0
-    for in_path in todo:
+    for n, in_path in enumerate(todo, 1):
         out_path = out_path_of(in_path)
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         if os.path.exists(out_path) or not claim_lock(out_path + '.lock'):
             continue
+        logger.info('start %d/%d %s', n, len(todo), in_path)
+        started = time.time()
         try:
             info = process(in_path, out_path)
         finally:
             os.remove(out_path + '.lock')
-        logger.info('done %s %s', out_path, info)
+        logger.info('done %s in %.0fs %s', out_path, time.time() - started, info)
         n_done += 1
         if max_files and n_done >= max_files:
             break

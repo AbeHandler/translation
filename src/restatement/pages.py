@@ -51,13 +51,21 @@ def anchor_sentence(paragraph, anchor_text):
     return None
 
 
+MIN_MAIN_SENTENCES = 5
+
+
 def main_text(html):
-    """The page's main content (readability), without menus and sidebars; the whole page if that fails."""
+    """The page's main content (readability), without menus and sidebars. Falls back to all the page's visible
+    text when readability fails or keeps fewer than MIN_MAIN_SENTENCES Chinese sentences (e.g. the Taiwan
+    presidential gazette, whose text readability drops)."""
+    from src.link_language.fetch import visible_text
     try:
-        text = lxml.html.fromstring(Document(html).summary()).text_content()
+        text = ' '.join(lxml.html.fromstring(Document(html).summary()).text_content().split())
     except Exception:
-        text = lxml.html.fromstring(html).text_content()
-    return ' '.join(text.split())
+        text = ''
+    if len(chinese_sentences(text)) < MIN_MAIN_SENTENCES:
+        text = visible_text(html)[1]
+    return text
 
 
 def chinese_sentences(text):

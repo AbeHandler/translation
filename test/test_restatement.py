@@ -1,8 +1,10 @@
 """Run from the repo root: python -m pytest test/"""
+import lxml.html
 import numpy as np
 
 from src.restatement.align import Aligner, label
-from src.restatement.pages import anchor_sentence, chinese_sentences, citing_paragraphs, same_url
+from src.restatement.pages import (anchor_sentence, block_text, chinese_sentences, citing_paragraphs,
+                                   english_sentences, same_url)
 
 EN_PAGE = ('<html><body><nav><a href="https://www.163.com/dy/article/K.html">menu</a></nav><article>'
            '<p>Tencent built CodeBuddy. The company <a href="https://163.com/dy/article/K.html/">reported</a> that '
@@ -29,3 +31,9 @@ def test_alignment_labels_from_the_best_score():
     rows, best = Aligner(FakeModel()).align(['same en', 'other en'], ['same zh', 'x zh'])
     assert best == 1.0 and rows[0]['matches'][0]['zh'] == 'same zh' and label(best) == 'translation'
     assert label(0.7) == 'paraphrase' and label(0.3) == 'neither' and Aligner(FakeModel()).align([], ['a']) == ([], 0.0)
+
+
+def test_blocks_are_not_glued_and_chinese_quotes_are_not_english_sentences():
+    doc = lxml.html.fromstring('<div><p>That was even more annoying.</p><p>With Qoder, I made a big mistake.</p>'
+                               '<p>Frontiers推荐您使用在英语语言编辑和校对领域具有悠久历史的服务。</p></div>')
+    assert english_sentences(block_text(doc)) == ['That was even more annoying.', 'With Qoder, I made a big mistake.']

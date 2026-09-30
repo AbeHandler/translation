@@ -1,7 +1,10 @@
 #!/usr/bin/env python
 """
-For each (English article -> Chinese page) pair, how the article restates the page: its citing paragraph's
-sentences aligned with the page's sentences (src/restatement), labelled translation / paraphrase / neither.
+For each (English article -> Chinese page) pair, how the article restates the page: all the article's sentences
+aligned with the page's sentences (src/restatement), labelled translation / paraphrase / neither. The whole
+article, not just the paragraph with the link: a translated quote often follows it ("Guoguo roasted the tools:"
+then a blockquote). Sentences of the citing paragraph are flagged (citing: true), and the anchor sentence's score
+is kept separately.
 
 Input: a JSONL of link results with srcpage (the English article) and url (the Chinese page), e.g.
     jq -c 'select(.language == "zh")' data/processed/news_link_languages.jsonl > /tmp/zh_pairs.jsonl
@@ -14,13 +17,15 @@ import argparse
 import hashlib
 import json
 import os
+from collections import Counter
 
 import httpx
 from sentence_transformers import SentenceTransformer
 
 from src.link_language.fetch import HEADERS, decode
 from src.restatement.align import MODEL, Aligner, label
-from src.restatement.pages import anchor_sentence, chinese_sentences, citing_paragraphs, english_sentences, main_text
+from src.restatement.pages import (anchor_sentence, chinese_sentences, citing_paragraphs, english_sentences, main_text,
+                                   readable_text)
 
 
 def parse_args():
@@ -47,18 +52,25 @@ def fetch(url, cache_dir, client):
 def restatement(pair, aligner, cache_dir, client):
     en_html = fetch(pair['srcpage'], cache_dir, client)
     paragraphs = citing_paragraphs(en_html, pair['srcpage'], pair['url'])
+    citing = [s for p in paragraphs for s in english_sentences(p['paragraph'])]
+    en = list(dict.fromkeys(english_sentences(readable_text(en_html)) + citing))
     zh = chinese_sentences(main_text(fetch(pair['url'], cache_dir, client)))
-    en = [s for p in paragraphs for s in english_sentences(p['paragraph'])]
     rows, best = aligner.align(en, zh)
+    for row in rows:
+        row['citing'] = row['en'] in citing
     anchors = {anchor_sentence(p['paragraph'], p['anchor_text']) for p in paragraphs} - {None}
     anchor_best = max((r['matches'][0]['score'] for r in rows if r['en'] in anchors), default=0.0)
     if not rows:
         verdict = 'no_citing_text' if not paragraphs else 'no_chinese_text'
     else:
         verdict = label(best)
+    counts = Counter(label(r['matches'][0]['score']) for r in rows)
+    rows.sort(key=lambda r: -r['matches'][0]['score'])
     return {'srcpage': pair['srcpage'], 'url': pair['url'], 'label': verdict, 'best_score': round(best, 3),
+            'n_translation': counts['translation'], 'n_paraphrase': counts['paraphrase'],
             'anchor_label': label(anchor_best) if anchors and rows else None, 'anchor_score': round(anchor_best, 3),
-            'anchor_sentences': sorted(anchors), 'citing': paragraphs, 'n_zh_sentences': len(zh), 'alignment': rows}
+            'anchor_sentences': sorted(anchors), 'citing': paragraphs, 'n_en_sentences': len(en),
+            'n_zh_sentences': len(zh), 'alignment': rows}
 
 
 def main():
@@ -76,7 +88,8 @@ def main():
                 row = {'srcpage': pair['srcpage'], 'url': pair['url'], 'label': 'error',
                        'error': f'{type(exc).__name__}: {exc}'[:300]}
             out.write(json.dumps(row, ensure_ascii=False) + '\n')
-            print(f"{n}/{len(pairs)} {row['label']:15} {row.get('best_score', '')}  anchor: "
+            print(f"{n}/{len(pairs)} {row['label']:15} {row.get('best_score', '')} "
+                  f"({row.get('n_translation', 0)} tr, {row.get('n_paraphrase', 0)} pa)  anchor: "
                   f"{row.get('anchor_label')} {row.get('anchor_score', '')}  {pair['url'][:60]}", flush=True)
 
 

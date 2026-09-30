@@ -19,7 +19,10 @@ import random
 SHARD_SIZE = 1000
 
 
-def row_key(row):
+def row_key(row, fields=None):
+    """The row's identity: all its fields, or only these (so extra fields don't make a done row look new)."""
+    if fields is not None:
+        row = {field: row.get(field) for field in fields}
     return json.dumps(row, ensure_ascii=False, sort_keys=True)
 
 
@@ -42,21 +45,22 @@ def done_keys(queue_dir, fields):
     for path in glob.glob(os.path.join(results_dir(queue_dir), '*.jsonl')):
         for result in read_shard(path):
             if 'error' not in result:
-                keys.add(row_key({field: result.get(field) for field in fields}))
+                keys.add(row_key(result, fields))
     return keys
 
 
-def add_to_queue(rows, queue_dir, shard_size=SHARD_SIZE, seed=0):
+def add_to_queue(rows, queue_dir, shard_size=SHARD_SIZE, seed=0, key_fields=None):
     """Add the rows not already queued and not already done, shuffled (so any prefix of the work is a random
-    sample), as new shards. Returns (rows added, rows skipped: already queued or done)."""
+    sample), as new shards. Rows are the same when their key_fields are (default: all fields). Returns (rows
+    added, rows skipped: already queued or done)."""
     rows = list(rows)
     os.makedirs(queue_dir, exist_ok=True)
-    skip = {row_key(row) for path in shard_paths(queue_dir) for row in read_shard(path)}
+    skip = {row_key(row, key_fields) for path in shard_paths(queue_dir) for row in read_shard(path)}
     if rows:
-        skip |= done_keys(queue_dir, sorted(rows[0]))
+        skip |= done_keys(queue_dir, key_fields or sorted(rows[0]))
     new = {}
     for row in rows:
-        key = row_key(row)
+        key = row_key(row, key_fields)
         if key not in skip:
             new[key] = row
     new_rows = list(new.values())

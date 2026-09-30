@@ -377,10 +377,11 @@ def ai_articles(html_path, min_ai_mentions=1):
 
 
 def ai_article_links(html_path, links_path, min_ai_mentions=1):
-    """{srcpage, url} for each external body link (src/external_links.py) of the articles in one WARC whose
-    visible text says "AI" at least min_ai_mentions times. Links files record that count (ai_mentions); for older
-    ones without it, it is worked out from the HTML file (slower), joined on record_id, or on url for the oldest
-    links files, made before they had record_id. Needs only the html and links steps, not NER."""
+    """{srcpage, src_language, url} for each external body link (src/external_links.py) of the articles in one
+    WARC whose visible text says "AI" at least min_ai_mentions times; src_language is the article's language
+    (news-please, in the links file). Links files record the "AI" count (ai_mentions); for older ones without it,
+    it is worked out from the HTML file (slower), joined on record_id, or on url for the oldest links files, made
+    before they had record_id. Needs only the html and links steps, not NER."""
     ids = urls = None
     with open(links_path, encoding='utf-8') as f:
         for line in f:
@@ -394,7 +395,7 @@ def ai_article_links(html_path, links_path, min_ai_mentions=1):
             if not is_ai:
                 continue
             for href in external_links(article['url'], (link['href'] for link in article['links'])):
-                yield {'srcpage': article['url'], 'url': href}
+                yield {'srcpage': article['url'], 'src_language': article.get('language'), 'url': href}
 
 
 def match_seed_links(keys, links_path_of, patterns, matches_path, partial=False):

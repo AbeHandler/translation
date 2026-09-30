@@ -66,7 +66,7 @@ def test_ai_article_links_joins_html_and_links_and_keeps_external_links(tmp_path
     from src.cc_news import ai_article_links
     write_html(tmp_path / 'w.parquet', [('https://a.cn/1', b'<html><body><p>New AI rules. AI chips.</p></body></html>'),
                                         ('https://a.cn/2', b'<html><body><p>Football.</p></body></html>')])
-    links = [{'url': 'https://a.cn/1', 'record_id': '<urn:uuid:0>', 'links': [
+    links = [{'url': 'https://a.cn/1', 'record_id': '<urn:uuid:0>', 'language': 'zh', 'links': [
                  {'href': 'https://x.com/a', 'text': '', 'internal': False},
                  {'href': 'https://a.cn/other', 'text': '', 'internal': True},
                  {'href': 'https://x.com/a', 'text': '', 'internal': False}]},
@@ -74,7 +74,7 @@ def test_ai_article_links_joins_html_and_links_and_keeps_external_links(tmp_path
                                                                               'internal': False}]}]
     (tmp_path / 'w.jsonl').write_text(''.join(json.dumps(r) + '\n' for r in links), encoding='utf-8')
     rows = list(ai_article_links(str(tmp_path / 'w.parquet'), str(tmp_path / 'w.jsonl')))
-    assert rows == [{'srcpage': 'https://a.cn/1', 'url': 'https://x.com/a'}]
+    assert rows == [{'srcpage': 'https://a.cn/1', 'src_language': 'zh', 'url': 'https://x.com/a'}]
     assert len(list(ai_article_links(str(tmp_path / 'w.parquet'), str(tmp_path / 'w.jsonl'), 3))) == 0
 
 

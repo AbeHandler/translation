@@ -73,3 +73,9 @@ def test_collect_dedupes_by_key_and_prefers_success(tmp_path):
     rows = collect_results(str(tmp_path / 'q'), ['srcpage', 'url'])
     assert sorted((r['url'], r.get('language')) for r in rows) == [('u0', 'en'), ('u1', 'zh')]
     assert queue_status(str(tmp_path / 'q')) == {'shards': 1, 'done': 0, 'missing': 1, 'locks': 0}
+
+
+def test_key_fields_ignore_extra_fields(tmp_path):
+    add_to_queue([{'srcpage': 'p', 'url': 'u1'}], str(tmp_path / 'q'))
+    rows = [{'srcpage': 'p', 'src_language': 'en', 'url': 'u1'}, {'srcpage': 'p', 'src_language': 'en', 'url': 'u2'}]
+    assert add_to_queue(rows, str(tmp_path / 'q'), key_fields=('srcpage', 'url')) == (1, 1)

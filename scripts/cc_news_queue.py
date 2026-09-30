@@ -2,7 +2,8 @@
 """
 The external links of CC-NEWS articles about AI, as a shard queue (src/shard_queue) for scripts/process_queue.sh:
     data/interim/cc_html/<warc>.parquet (HTML) + cc_links/<warc>.jsonl (body links)
-        -> $TMP/cc_news_queue/shard_*.jsonl   {srcpage: the article's url, url: the link}, shuffled, 1000 per shard
+        -> $TMP/cc_news_queue/shard_*.jsonl   {srcpage: the article's url, src_language, url: the link},
+           shuffled, 1000 per shard
 An article counts as about AI when its visible text says "AI" as a word at least -min-ai-mentions times
 (src/ai_mentions.py, the rule the other queues use). Needs only the html and links steps, not NER. Only WARCs
 with both an HTML and a links file are read (it says how many have HTML but no links yet). Adds only links not
@@ -61,7 +62,8 @@ def main():
     queue_dir = args.queue_dir or str(cc_news_queue_dir())
     if args.fresh:
         clear_queue(queue_dir)
-    added, already = add_to_queue(rows, queue_dir, args.shard_size)
+    # keyed on (srcpage, url), so results from before src_language was added still count as done
+    added, already = add_to_queue(rows, queue_dir, args.shard_size, key_fields=('srcpage', 'url'))
     print(f'{len(pairs)} WARCs ({missing} with HTML but no links file yet): {len(rows)} links from '
           f'{len({r["srcpage"] for r in rows})} AI articles; {added} new ones queued '
           f'({already} already queued or done) in {queue_dir}')

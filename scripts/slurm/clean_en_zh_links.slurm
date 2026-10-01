@@ -3,13 +3,14 @@
 # Chinese sources, add story_id / story_size / is_press_release.
 #   data/processed/news_en_zh_links.jsonl -> data/processed/news_en_zh_links_clean.jsonl
 # Run the collect first (python -m scripts.collect_queue, or COLLECT_ONLY=1 bash scripts/process_queue.sh news).
-# The first run reads every cc_links file for source titles; later runs use the title cache.
+# The first run reads every cc_links file for source titles (~90 min for 21.7k files); later runs look up only
+# sources not in the title cache (but that still means one pass over the links files).
 #
 # Usage (from the repo root):
 #   sbatch --export=NONE scripts/slurm/clean_en_zh_links.slurm
 
 #SBATCH --partition=acpu
-#SBATCH --time=02:00:00
+#SBATCH --time=04:00:00
 #SBATCH --job-name=clean_en_zh_links
 #SBATCH --output=logs/scripts/slurm/%x_%j.out
 #SBATCH --mem=4G

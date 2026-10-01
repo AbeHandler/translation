@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 Collect a shard queue's results (src/shard_queue/collect.py): every result in <queue-dir>/results, deduplicated
-by -key (default srcpage,url; a success beats an error) -> -out (JSONL), only the rows matching -where (e.g.
+by -key (default srcpage,url; errors are counted, not written) -> -out (JSONL), only the rows matching -where (e.g.
 'src_language=en&language=zh': English articles' links to Chinese pages). Prints how complete the queue is and a
 count of each value of -count (default language) and of the error types, over all rows.
 scripts/process_queue.sh submits it after its workers; run it any time to see where things stand.
@@ -46,15 +46,13 @@ def main():
 
     def counted_and_kept(rows):  # counts every row as they stream past (never all in memory), keeps the matches
         for row in rows:
-            values[row.get(args.count, 'ERROR' if 'error' in row else None)] += 1
-            if 'error' in row:
-                errors[row['error'].split(':')[0]] += 1
+            values[row.get(args.count)] += 1
             if all(row.get(field) == value for field, value in where.items()):
                 yield row
-    n_kept = write_jsonl(counted_and_kept(collect_results(args.queue_dir, args.key.split(','))), args.out)
+    n_kept = write_jsonl(counted_and_kept(collect_results(args.queue_dir, args.key.split(','), errors)), args.out)
     print(f"queue: {status['done']} of {status['shards']} shards done, {status['missing']} missing, "
           f"{status['locks']} locked (in progress, or left by a killed worker)")
-    print(f'{sum(values.values())} unique rows ({sum(errors.values())} errors); {n_kept} '
+    print(f'{sum(values.values())} unique rows, {sum(errors.values())} error results; {n_kept} '
           f'{"matching " + args.where if where else ""} -> {args.out}')
     print(f'\n{args.count}:')
     for value, n in values.most_common():
@@ -63,7 +61,8 @@ def main():
     for value, n in errors.most_common(10):
         print(f'  {n:8d}  {value}')
     if status['missing'] or errors:
-        print('\nTo finish: rerun the workers for missing shards; rebuild the queue (FRESH=1) to retry the errors.')
+        print('\nTo finish: rerun the workers for missing shards; rebuild the queue to retry the errors '
+              '(done rows are skipped).')
 
 
 if __name__ == '__main__':

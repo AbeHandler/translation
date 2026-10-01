@@ -1,8 +1,8 @@
 """
 Collecting a shard queue's results (queue_dir/results/*.jsonl) into one deduplicated set. Results accumulate:
-a row can have several results (retries after errors, reprocessing), so they are merged by the row's key fields,
-a successful result winning over an error. Streams: tens of millions of results never sit in memory, only an
-8-byte hash per key. Also reports how complete the queue is.
+a row can have several results (retries after errors, reprocessing), so they are merged by the row's key fields:
+the first successful result is kept and errors are only counted. One streaming pass: tens of millions of
+results never sit in memory, only an 8-byte hash per key. Also reports how complete the queue is.
 """
 import glob
 import hashlib
@@ -30,25 +30,23 @@ def key_hash(result, key_fields):
     return hashlib.blake2b(key.encode(), digest_size=8).digest()
 
 
-def collect_results(queue_dir, key_fields):
-    """Yield one result per key (the tuple of key_fields), preferring a successful one over an error. Two passes
-    over the results: first the keys with a success, then the results to keep."""
+def collect_results(queue_dir, key_fields, errors=None):
+    """Yield the first successful result per key (the tuple of key_fields). Errors are not yielded: a row that
+    only failed has no result; errors (a Counter, if given) counts them by type."""
     paths = sorted(glob.glob(os.path.join(results_dir(queue_dir), '*.jsonl')))
-    succeeded = set()
-    for n, path in enumerate(paths, 1):
-        succeeded.update(key_hash(r, key_fields) for r in read_shard(path) if 'error' not in r)
-        if n % PROGRESS_EVERY == 0 or n == len(paths):
-            logger.info('pass 1/2 (keys with a result): %d/%d files, %d keys', n, len(paths), len(succeeded))
-    written = set()
+    seen = set()
     for n, path in enumerate(paths, 1):
         if n % PROGRESS_EVERY == 0 or n == len(paths):
-            logger.info('pass 2/2 (writing): %d/%d files, %d unique rows so far', n, len(paths), len(written))
+            logger.info('%d/%d result files read, %d unique rows so far', n, len(paths), len(seen))
         for result in read_shard(path):
-            key = key_hash(result, key_fields)
-            if key in written or ('error' in result and key in succeeded):
+            if 'error' in result:
+                if errors is not None:
+                    errors[result['error'].split(':')[0]] += 1
                 continue
-            written.add(key)
-            yield result
+            key = key_hash(result, key_fields)
+            if key not in seen:
+                seen.add(key)
+                yield result
 
 
 def write_jsonl(rows, out_path):

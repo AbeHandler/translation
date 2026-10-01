@@ -1,4 +1,5 @@
 """Run from the repo root: python -m pytest test/"""
+from collections import Counter
 import json
 
 from src.shard_queue.shards import add_to_queue, read_shard, shard_paths
@@ -70,8 +71,10 @@ def test_collect_dedupes_by_key_and_prefers_success(tmp_path):
                                      '{"srcpage": "p", "url": "u1", "language": "zh"}\n', encoding='utf-8')
     (results / 'b.jsonl').write_text('{"srcpage": "p", "url": "u0", "language": "en"}\n'
                                      '{"srcpage": "p", "url": "u1", "error": "timeout"}\n', encoding='utf-8')
-    rows = collect_results(str(tmp_path / 'q'), ['srcpage', 'url'])
+    errors = Counter()
+    rows = collect_results(str(tmp_path / 'q'), ['srcpage', 'url'], errors)
     assert sorted((r['url'], r.get('language')) for r in rows) == [('u0', 'en'), ('u1', 'zh')]
+    assert errors == {'timeout': 2}
     assert queue_status(str(tmp_path / 'q')) == {'shards': 1, 'done': 0, 'missing': 1, 'locks': 0}
 
 

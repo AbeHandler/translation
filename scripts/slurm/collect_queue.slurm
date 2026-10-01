@@ -3,7 +3,9 @@
 # scripts/process_queue.sh submits it after its workers; the summary is in this job's log.
 #
 # Usage (from the repo root):
-#   sbatch --export=QUEUE_DIR=$TMP/cc_news_queue,OUT=data/processed/news_link_languages.jsonl scripts/slurm/collect_queue.slurm
+#   sbatch --export="QUEUE_DIR=$TMP/cc_news_queue,OUT=data/processed/news_en_zh_links.jsonl,WHERE=src_language=en&language=zh" \
+#       scripts/slurm/collect_queue.slurm
+#   WHERE (optional): field=value&field=value, only the rows matching all of them are written
 
 #SBATCH --partition=acpu
 #SBATCH --time=12:00:00
@@ -27,4 +29,4 @@ fi
 module load anaconda
 conda activate translation
 
-python -m scripts.collect_queue -queue-dir "$QUEUE_DIR" -out "$OUT"
+python -m scripts.collect_queue -queue-dir "$QUEUE_DIR" -out "$OUT" -where "${WHERE:-}"

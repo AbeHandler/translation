@@ -42,8 +42,12 @@ def collect_results(queue_dir, key_fields):
 
 
 def write_jsonl(rows, out_path):
+    """Write rows (any iterable) atomically. Returns how many."""
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+    n = 0
     with open(out_path + '.part', 'w', encoding='utf-8') as f:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False) + '\n')
+            n += 1
     os.rename(out_path + '.part', out_path)
+    return n

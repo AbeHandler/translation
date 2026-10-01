@@ -5,10 +5,13 @@
 # After the workers, a collect job (scripts/slurm/collect_queue.slurm) merges all results, deduplicated, into one
 # file and emails when done; its log has the summary (shards done, languages, errors).
 # Name the queue; it lives under $TMP (from ~/.myrc), its results in <queue>/results/. Run from the repo root.
-#   news          $TMP/cc_news_queue       -> data/processed/news_link_languages.jsonl        (scripts/cc_news_queue.py)
+#   news          $TMP/cc_news_queue       -> data/processed/news_en_zh_links.jsonl  English articles -> Chinese pages
+#                                                                                       (scripts/cc_news_queue.py)
 #   wikipedia_zh  $TMP/wikipedia_queue/zh  -> data/processed/wikipedia_zh_link_languages.jsonl (wikipedia_pipeline.py)
 #   wikipedia_en  $TMP/wikipedia_queue/en  -> data/processed/wikipedia_en_link_languages.jsonl
-#   cc_full       $TMP/cc_full_queue       -> data/processed/cc_full_link_languages.jsonl     (scripts/cc_full.py)
+#   cc_full       $TMP/cc_full_queue       -> data/processed/cc_full_en_zh_links.jsonl (all English pages; -> Chinese)
+#                                                                                       (scripts/cc_full.py)
+# WHERE (set per queue below) keeps only those rows in the collected file; the summary counts every row.
 #   COLLECT_ONLY=1 bash scripts/process_queue.sh news    # just collect (and see the summary) now
 # PROCESSOR (default link_language) is a name from scripts/process_queue.py.
 #
@@ -26,10 +29,12 @@ if [ -z "${TMP:-}" ]; then
     exit 1
 fi
 case "${1:-}" in
-    news)          QUEUE_DIR=$TMP/cc_news_queue;      OUT=data/processed/news_link_languages.jsonl ;;
+    news)          QUEUE_DIR=$TMP/cc_news_queue;      OUT=data/processed/news_en_zh_links.jsonl
+                   WHERE='src_language=en&language=zh' ;;
     wikipedia_zh)  QUEUE_DIR=$TMP/wikipedia_queue/zh; OUT=data/processed/wikipedia_zh_link_languages.jsonl ;;
     wikipedia_en)  QUEUE_DIR=$TMP/wikipedia_queue/en; OUT=data/processed/wikipedia_en_link_languages.jsonl ;;
-    cc_full)       QUEUE_DIR=$TMP/cc_full_queue;      OUT=data/processed/cc_full_link_languages.jsonl ;;
+    cc_full)       QUEUE_DIR=$TMP/cc_full_queue;      OUT=data/processed/cc_full_en_zh_links.jsonl
+                   WHERE='language=zh' ;;
     "")            OUT=${OUT:-$QUEUE_DIR/collected.jsonl} ;;  # QUEUE_DIR given directly
     *)             echo "ERROR: unknown queue '$1'; use news, cc_full, wikipedia_zh or wikipedia_en"; exit 1 ;;
 esac
@@ -40,7 +45,7 @@ if [ -z "${QUEUE_DIR:-}" ]; then
 fi
 mkdir -p logs/scripts/slurm
 if [ "${COLLECT_ONLY:-}" = 1 ]; then
-    JOB=$(sbatch --parsable --export="QUEUE_DIR=$QUEUE_DIR,OUT=$OUT" scripts/slurm/collect_queue.slurm)
+    JOB=$(sbatch --parsable --export="QUEUE_DIR=$QUEUE_DIR,OUT=$OUT,WHERE=$WHERE" scripts/slurm/collect_queue.slurm)
     echo "collect_queue $JOB -> $OUT (summary in logs/scripts/slurm/collect_queue_$JOB.out)"
     exit 0
 fi
@@ -60,7 +65,7 @@ JOBS=""
 for ((i = 0; i < N_WORKERS; i++)); do
     JOBS+=":$(sbatch --parsable --export="$EXPORTS" scripts/slurm/process_queue.slurm)"
 done
-COLLECT_JOB=$(sbatch --parsable --dependency=afterany"$JOBS" --export="QUEUE_DIR=$QUEUE_DIR,OUT=$OUT" \
+COLLECT_JOB=$(sbatch --parsable --dependency=afterany"$JOBS" --export="QUEUE_DIR=$QUEUE_DIR,OUT=$OUT,WHERE=$WHERE" \
     scripts/slurm/collect_queue.slurm)
 echo "collect_queue $COLLECT_JOB after them -> $OUT (summary in logs/scripts/slurm/collect_queue_$COLLECT_JOB.out)"
 echo "process_queue: $N_WORKERS workers on $QUEUE_DIR ($N_SHARDS shards, $(count_shards "$RESULTS_DIR") done) -> $RESULTS_DIR"

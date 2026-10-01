@@ -187,8 +187,7 @@ class ArticleLinkExtractor:
     def row(self, page):
         """The row for one page ({url, language, record_id, html}), or None if it can't be parsed."""
         try:
-            doc = Document(page['html'])
-            title, body = doc.short_title(), lxml.html.fromstring(doc.summary())
+            title, body = readable_article(page['html'])
         except Exception as exc:  # empty/garbled pages are common in CC-NEWS
             self.counts['errors'] += 1
             logger.debug('parse failed for %s: %s', page['url'], exc)
@@ -423,6 +422,13 @@ def atomic_write(path):
     with open(path + '.part', 'w', encoding='utf-8') as f:
         yield f
     os.rename(path + '.part', path)
+
+
+def readable_article(html):
+    """(title, body element) of a page's article, by readability (no menus, sidebars, "related stories").
+    Raises on pages readability can't parse."""
+    doc = Document(html)
+    return doc.short_title(), lxml.html.fromstring(doc.summary())
 
 
 def write_jsonl(path, rows):

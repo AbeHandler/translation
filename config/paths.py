@@ -8,6 +8,7 @@ SEED_PATTERNS_PATH = REPO_ROOT / 'config' / 'seed_patterns.txt'
 CC_LINKS_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_links'
 CC_LINK_MATCHES_PATH = REPO_ROOT / 'data' / 'processed' / 'cc_link_matches.jsonl'
 CC_HTML_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_html'
+CC_NEWS_EMBEDDINGS_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_news_embeddings'  # src/news_embeddings.py
 CC_NER_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_ner'  # src/ner_html.py, one per cc_html file
 # trained by scripts/train_quote_extractor.py (config/quote_extraction.yaml); not in git
 QUOTE_MODEL_DIR = REPO_ROOT / 'results' / 'train_quote_extractor' / 'electra_small' / 'model'
@@ -59,6 +60,11 @@ def cc_news_queue_dir():
 def wikipedia_tmp_dir(name):
     """$TMP/wikipedia_<name>: dumps, queue, results (large, and fine to delete and rebuild)."""
     return _tmp_dir(f'wikipedia_{name}')
+
+
+def news_similarity_weights_path():
+    """The news-similarity model's weights (src/news_similarity.py), downloaded once."""
+    return _tmp_dir('models') / 'newsSimilarity' / 'state_dict.tar'
 
 
 def zh_docs_queue_dir():

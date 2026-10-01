@@ -95,3 +95,32 @@ https://tv.cctv.com/lm/xwlb/
 
 # Focus Report / Jiaodian Fangtan 焦点访谈
 https://tv.cctv.com/lm/jdft/
+
+## Earlier crawl list (from 5fb01ad; bjnews.com.cn left out: it 403s us)
+
+# Chinese tech / AI media
+jiqizhixin.com
+qbitai.com
+36kr.com
+huxiu.com
+tmtpost.com
+leiphone.com
+zhidx.com
+infoq.cn
+ithome.com
+pingwest.com
+
+# Chinese news / business media
+21jingji.com
+cls.cn
+nbd.com.cn
+
+# Chinese state media
+xinhuanet.com
+news.cn
+people.com.cn
+chinadaily.com.cn
+chinanews.com.cn
+gmw.cn
+stdaily.com
+cctv.com

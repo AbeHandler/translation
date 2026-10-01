@@ -40,3 +40,14 @@ def test_external_links_leave_the_site_and_skip_media():
     hrefs = ['https://cdn.example.com/a.js', 'https://www.xinhuanet.com/x', 'https://img.other.org/p.JPG',
              'https://www.xinhuanet.com/x', 'https://blog.example.com/post']
     assert external_links('https://www.example.com/page', hrefs) == ['https://www.xinhuanet.com/x']
+
+
+def test_a_warc_with_links_is_done_and_cleanup_deletes_only_linked_warcs(tmp_path):
+    from src.common_crawl_full.links import delete_linked_warcs
+    from src.common_crawl_full.worker import is_done
+    (tmp_path / 'A.ai.warc.gz').write_bytes(b'x' * 10)
+    (tmp_path / 'A.links.jsonl').write_text('')
+    (tmp_path / 'B.ai.warc.gz').write_bytes(b'y')
+    assert delete_linked_warcs(str(tmp_path)) == (1, 10)
+    assert sorted(p.name for p in tmp_path.iterdir()) == ['A.links.jsonl', 'B.ai.warc.gz']
+    assert is_done(str(tmp_path / 'A.ai.warc.gz')) and not is_done(str(tmp_path / 'C.ai.warc.gz'))

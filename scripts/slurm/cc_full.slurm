@@ -1,9 +1,10 @@
 #!/bin/bash
-# One job of scripts/cc_full.py (STEP=list|filter|all|links|queue): the regular Common Crawl's English pages saying "AI",
+# One job of scripts/cc_full.py (STEP=list|filter|all|links|queue|cleanup): the regular Common Crawl's English pages saying "AI",
 # in $TMP/cc_full/ (TMP from ~/.myrc). scripts/go_cc_full.sh submits the list job and the filter workers.
 #
 # Usage (from the repo root; normally via scripts/go_cc_full.sh):
 #   sbatch --job-name=cc_full_filter --export=STEP=filter scripts/slurm/cc_full.slurm
+#   sbatch --job-name=cc_full_cleanup --export=STEP=cleanup scripts/slurm/cc_full.slurm   # delete AI WARCs with links
 #   optional: MAX_WARCS=1 (test), SINCE_YEAR=2023
 
 #SBATCH --partition=acpu
@@ -21,7 +22,7 @@ set -eo pipefail  # no -u: ~/.myrc and conda activate reference unset vars
 source ~/.myrc
 
 if [ -z "${STEP:-}" ] || [ -z "${TMP:-}" ]; then
-    echo "ERROR: STEP (list|filter|all|links|queue) is required, and TMP (from ~/.myrc)"
+    echo "ERROR: STEP (list|filter|all|links|queue|cleanup) is required, and TMP (from ~/.myrc)"
     exit 1
 fi
 

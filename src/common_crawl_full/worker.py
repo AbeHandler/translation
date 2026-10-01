@@ -1,6 +1,7 @@
 """
 A worker over the WARC list: WARCs in random order, each done at most once across all workers. A WARC is done
-when <out_dir>/<name>.ai.warc.gz exists; a worker claims one with a .lock next to it (src/file_worker.py), so
+when <out_dir>/<name>.ai.warc.gz exists, or its <name>.links.jsonl does (the cleanup step deletes the AI WARC
+once its links are out, to save space); a worker claims one with a .lock next to it (src/file_worker.py), so
 workers never stream the same WARC. Existence is checked as the worker goes, not up front, since the list has
 millions of entries. A WARC that fails (network, throttling) is logged and left for later; too many failures in
 a row stop the worker.
@@ -20,6 +21,15 @@ def out_path(out_dir, path):
     return os.path.join(out_dir, os.path.basename(path).removesuffix('.warc.gz') + '.ai.warc.gz')
 
 
+def links_path(ai_warc_path):
+    """<name>.ai.warc.gz -> <name>.links.jsonl (its pages' links, src/common_crawl_full/links.py)"""
+    return ai_warc_path.removesuffix('.ai.warc.gz') + '.links.jsonl'
+
+
+def is_done(out):
+    return os.path.exists(out) or os.path.exists(links_path(out))
+
+
 def process_warcs(list_path, out_dir, process, max_warcs=None, seed=None):
     """Run process(warc path, out path) -> counts on WARCs from list_path in random order. Returns WARCs done."""
     with open(list_path) as f:
@@ -30,7 +40,7 @@ def process_warcs(list_path, out_dir, process, max_warcs=None, seed=None):
     n_done = failures = 0
     for path in paths:
         out = out_path(out_dir, path)
-        if os.path.exists(out) or not claim_lock(out + '.lock'):
+        if is_done(out) or not claim_lock(out + '.lock'):
             continue
         try:
             counts = process(path, out)

@@ -6,13 +6,14 @@
 # sample. Run from the repo root.
 #
 # `links`: N_WORKERS link workers (each .ai.warc.gz -> .links.jsonl), then a queue job adding their external
-# links to $TMP/cc_full_queue; then process it with scripts/process_queue.sh cc_full.
+# links to $TMP/cc_full_queue (then process it with scripts/process_queue.sh cc_full), and a cleanup job
+# deleting the AI WARCs that have links files (filter workers count those WARCs as done). KEEP_WARCS=1: no cleanup.
 #
 # Usage:
 #   bash scripts/go_cc_full.sh                     # one worker
 #   N_WORKERS=100 bash scripts/go_cc_full.sh
 #   N_WORKERS=1 MAX_WARCS=1 bash scripts/go_cc_full.sh   # test: one WARC
-#   N_WORKERS=10 bash scripts/go_cc_full.sh links  # links of the AI pages streamed so far, then the queue
+#   N_WORKERS=10 bash scripts/go_cc_full.sh links  # links of the AI pages streamed so far, then the queue + cleanup
 
 set -eo pipefail  # no -u: ~/.myrc references unset vars
 source ~/.myrc
@@ -36,6 +37,11 @@ if [ "${1:-}" = links ]; then
     QUEUE_JOB=$(sbatch --parsable --job-name=cc_full_queue --dependency=afterany"$JOBS" \
         --export="STEP=queue,$EXPORTS" scripts/slurm/cc_full.slurm)
     echo "cc_full_links   $N_WORKERS workers, then cc_full_queue $QUEUE_JOB"
+    if [ "${KEEP_WARCS:-}" != 1 ]; then
+        CLEANUP_JOB=$(sbatch --parsable --job-name=cc_full_cleanup --dependency=afterany"$JOBS" \
+            --export="STEP=cleanup,$EXPORTS" scripts/slurm/cc_full.slurm)
+        echo "cc_full_cleanup $CLEANUP_JOB (deletes AI WARCs that have links files)"
+    fi
     echo "  then: bash scripts/process_queue.sh cc_full"
     exit 0
 fi

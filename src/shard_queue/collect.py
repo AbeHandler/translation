@@ -1,9 +1,11 @@
 """
 Collecting a shard queue's results (queue_dir/results/*.jsonl) into one deduplicated set. Results accumulate:
 a row can have several results (retries after errors, reprocessing), so they are merged by the row's key fields,
-a successful result winning over an error. Also reports how complete the queue is.
+a successful result winning over an error. Streams: tens of millions of results never sit in memory, only an
+8-byte hash per key. Also reports how complete the queue is.
 """
 import glob
+import hashlib
 import json
 import os
 
@@ -19,15 +21,24 @@ def queue_status(queue_dir):
             'locks': len(glob.glob(os.path.join(out, '*.lock')))}
 
 
+def key_hash(result, key_fields):
+    key = json.dumps([result.get(field) for field in key_fields], ensure_ascii=False)
+    return hashlib.blake2b(key.encode(), digest_size=8).digest()
+
+
 def collect_results(queue_dir, key_fields):
-    """One result per key (the tuple of key_fields), preferring a successful one over an error."""
-    best = {}
-    for path in sorted(glob.glob(os.path.join(results_dir(queue_dir), '*.jsonl'))):
+    """Yield one result per key (the tuple of key_fields), preferring a successful one over an error. Two passes
+    over the results: first the keys with a success, then the results to keep."""
+    paths = sorted(glob.glob(os.path.join(results_dir(queue_dir), '*.jsonl')))
+    succeeded = {key_hash(r, key_fields) for path in paths for r in read_shard(path) if 'error' not in r}
+    written = set()
+    for path in paths:
         for result in read_shard(path):
-            key = tuple(result.get(field) for field in key_fields)
-            if key not in best or ('error' in best[key] and 'error' not in result):
-                best[key] = result
-    return list(best.values())
+            key = key_hash(result, key_fields)
+            if key in written or ('error' in result and key in succeeded):
+                continue
+            written.add(key)
+            yield result
 
 
 def write_jsonl(rows, out_path):

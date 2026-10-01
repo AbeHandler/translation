@@ -6,10 +6,10 @@
 #   sbatch --export=QUEUE_DIR=$TMP/cc_news_queue,OUT=data/processed/news_link_languages.jsonl scripts/slurm/collect_queue.slurm
 
 #SBATCH --partition=acpu
-#SBATCH --time=02:00:00
+#SBATCH --time=12:00:00
 #SBATCH --job-name=collect_queue
 #SBATCH --output=logs/scripts/slurm/%x_%j.out
-#SBATCH --mem=16G
+#SBATCH --mem=32G
 #SBATCH --qos=cpu-normal
 #SBATCH --nodes=1
 #SBATCH --ntasks=1

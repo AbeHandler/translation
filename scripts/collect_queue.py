@@ -26,17 +26,23 @@ def parse_args():
 def main():
     args = parse_args()
     status = queue_status(args.queue_dir)
-    rows = collect_results(args.queue_dir, args.key.split(','))
-    write_jsonl(rows, args.out)
-    errors = [row['error'] for row in rows if 'error' in row]
+    values, errors = Counter(), Counter()
+
+    def counted(rows):  # counts as the rows stream past, so they are never all in memory
+        for row in rows:
+            values[row.get(args.count, 'ERROR' if 'error' in row else None)] += 1
+            if 'error' in row:
+                errors[row['error'].split(':')[0]] += 1
+            yield row
+    write_jsonl(counted(collect_results(args.queue_dir, args.key.split(','))), args.out)
     print(f"queue: {status['done']} of {status['shards']} shards done, {status['missing']} missing, "
           f"{status['locks']} locked (in progress, or left by a killed worker)")
-    print(f'{len(rows)} unique rows ({len(errors)} errors) -> {args.out}')
+    print(f'{sum(values.values())} unique rows ({sum(errors.values())} errors) -> {args.out}')
     print(f'\n{args.count}:')
-    for value, n in Counter(row.get(args.count, 'ERROR' if 'error' in row else None) for row in rows).most_common():
+    for value, n in values.most_common():
         print(f'  {n:8d}  {value}')
     print('\nerrors:')
-    for value, n in Counter(error.split(':')[0] for error in errors).most_common(10):
+    for value, n in errors.most_common(10):
         print(f'  {n:8d}  {value}')
     if status['missing'] or errors:
         print('\nTo finish: rerun the workers for missing shards; rebuild the queue (FRESH=1) to retry the errors.')

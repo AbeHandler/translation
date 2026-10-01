@@ -16,8 +16,16 @@ set -eo pipefail  # no -u: ~/.myrc references unset vars
 source ~/.myrc
 
 SITES=config/sites.txt  # one bare domain or start URL per line
-DOMAINS=$(grep -v -e '^#' -e '^[[:space:]]*$' "$SITES" | shuf)
-if [ -z "$DOMAINS" ]; then
+# A line is a bare domain (denverpost.com) or a URL to start from (https://epaper.gmw.cn/gmrbdb/). A crawl's
+# name and output folder are its host without www.; URLs on the same host (tv.cctv.com/lm/xwlb/ and /lm/jdft/)
+# make one crawl with several start URLs. One "<host> <url|url|...>" line per crawl, in random order
+# (| not ,: sbatch --export splits on commas):
+CRAWLS=$(grep -v -e '^#' -e '^[[:space:]]*$' "$SITES" | awk '{
+    host = $1; sub(/^[a-zA-Z]+:\/\//, "", host); sub(/[\/?].*/, "", host); sub(/^www\./, "", host)
+    if (!(host in urls)) { urls[host] = ""; order[++n] = host }
+    if ($1 != host) urls[host] = urls[host] (urls[host] == "" ? "" : "|") $1
+} END { for (i = 1; i <= n; i++) print order[i], urls[order[i]] }' | shuf)
+if [ -z "$CRAWLS" ]; then
     echo "ERROR: no sites in $SITES (one bare domain per line)"
     exit 1
 fi
@@ -36,12 +44,7 @@ JOB_IDS=""
 n_submitted=0
 n_done=0
 n_running=0
-for site in $DOMAINS; do
-    # a line is a bare domain (denverpost.com) or a URL to start from (https://epaper.gmw.cn/gmrbdb/): the
-    # crawl's name and output folder are its host without www.
-    domain=$(echo "$site" | sed -E 's#^[a-zA-Z]+://##; s#[/?].*##; s#^www\.##')
-    START_URL=""
-    if [ "$site" != "$domain" ]; then START_URL=$site; fi
+while read -r domain START_URLS; do
     if [ -e "data/interim/site_crawls/$domain/done" ]; then
         n_done=$((n_done + 1))
         continue
@@ -51,10 +54,10 @@ for site in $DOMAINS; do
         continue
     fi
     JOB=$(sbatch --parsable --dependency="$DEPENDENCY" --kill-on-invalid-dep=yes --comment="$domain" \
-        --export="DOMAIN=$domain,START_URL=$START_URL,MAX_PAGES=$MAX_PAGES" scrapy/slurm/crawl_site.slurm)
+        --export="DOMAIN=$domain,START_URLS=$START_URLS,MAX_PAGES=$MAX_PAGES" scrapy/slurm/crawl_site.slurm)
     JOB_IDS+=":$JOB"
     n_submitted=$((n_submitted + 1))
-done
+done <<< "$CRAWLS"
 echo "crawl_site  $n_submitted submitted, $n_done already done, $n_running already queued or running"
 
 echo

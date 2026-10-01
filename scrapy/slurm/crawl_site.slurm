@@ -10,7 +10,7 @@
 # Usage (from the repo root; normally via scrapy/crawl_sites.sh):
 #   sbatch --export=DOMAIN=denverpost.com scrapy/slurm/crawl_site.slurm
 #   sbatch --export=DOMAIN=denverpost.com,MAX_PAGES=50 scrapy/slurm/crawl_site.slurm   # test
-#   sbatch --export=DOMAIN=epaper.gmw.cn,START_URL=https://epaper.gmw.cn/gmrbdb/ scrapy/slurm/crawl_site.slurm
+#   sbatch --export="DOMAIN=tv.cctv.com,START_URLS=https://tv.cctv.com/lm/xwlb/|https://tv.cctv.com/lm/jdft/" scrapy/slurm/crawl_site.slurm
 
 #SBATCH --partition=acpu
 #SBATCH --time=24:00:00
@@ -47,7 +47,7 @@ cd scrapy  # scrapy finds its project through scrapy.cfg in the working director
 touch "$OUT_DIR/pages.jsonl"
 PAGES_BEFORE=$(wc -l < "$OUT_DIR/pages.jsonl")
 # -o appends, so a resumed crawl adds to the same pages.jsonl
-scrapy crawl site -a domain="$DOMAIN" -a start_url="${START_URL:-}" \
+scrapy crawl site -a domain="$DOMAIN" -a start_urls="${START_URLS:-}" \
     -o "$OUT_DIR/pages.jsonl" \
     -s JOBDIR="$OUT_DIR/jobdir" \
     -s HTML_DIR="$OUT_DIR/html" \

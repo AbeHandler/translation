@@ -9,8 +9,8 @@ The regular Common Crawl since -since-year, streamed once, keeping English pages
     -step links   a worker: each <warc>.ai.warc.gz without links yet -> <warc>.links.jsonl (the pages' body links)
     -step queue   each links file without a queue shard -> $TMP/cc_full_queue/shard_<warc>.jsonl (its external
                   links); process them with: bash scripts/process_queue.sh cc_full
-    -step cleanup deletes every <warc>.ai.warc.gz that has its links file, to save space. Filter workers count a
-                  WARC with a links file as done, so it is never streamed again. The links are kept.
+    -step cleanup empties every <warc>.ai.warc.gz that has its links file, to save space. The empty file still
+                  marks the WARC done for every filter worker, so it is never streamed again. The links are kept.
 
 Run as a module from the repo root:
     python -m scripts.cc_full -step list
@@ -71,7 +71,7 @@ def main():
         print('Process them: bash scripts/process_queue.sh cc_full')
     if args.step == 'cleanup':
         n, freed = delete_linked_warcs(out_dir)
-        print(f'deleted {n} AI WARCs that have links files ({freed / 1e9:.1f} GB freed) in {out_dir}')
+        print(f'emptied {n} AI WARCs that have links files ({freed / 1e9:.1f} GB freed) in {out_dir}')
 
 
 if __name__ == '__main__':

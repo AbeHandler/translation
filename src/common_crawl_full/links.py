@@ -5,12 +5,13 @@ The links of the English AI pages kept from the regular Common Crawl (filter.py)
     queue_shards each links file -> one shard of the cc_full queue, shard_<warc>.jsonl: {srcpage, url} for every
                  external link (src/external_links.py). One shard per WARC, written once, so the queue grows as
                  WARCs get links and never needs all links in memory (55k WARCs: ~100M links)
-    delete_linked_warcs  the cleanup step: deletes each AI WARC whose links file exists (the links are all that
-                 is used downstream; the filter workers count a WARC with a links file as done)
+    delete_linked_warcs  the cleanup step: empties each AI WARC whose links file exists (the links are all that
+                 is used downstream; the empty file keeps marking the WARC done)
 """
 import glob
 import json
 import os
+import re
 
 from warcio.archiveiterator import ArchiveIterator
 
@@ -50,10 +51,17 @@ def queue_rows(links_path):
     return list(rows.values())
 
 
+LEGACY_SHARD = re.compile(r'shard_[0-9a-f]{16}\.jsonl$')  # content-hash shards of the old, all-in-memory queue
+
+
 def queue_shards(out_dir, queue_dir):
     """Write queue_dir/shard_<warc>.jsonl for every links file in out_dir that has no shard (or result) yet.
-    Returns (shards written, links in them)."""
+    First deletes old content-hash shards without results: their links are in the per-WARC shards. Returns
+    (shards written, links in them)."""
     os.makedirs(queue_dir, exist_ok=True)
+    for name in os.listdir(queue_dir):
+        if LEGACY_SHARD.match(name) and not os.path.exists(os.path.join(results_dir(queue_dir), name)):
+            os.remove(os.path.join(queue_dir, name))
     n_shards = n_rows = 0
     for path in sorted(glob.glob(os.path.join(out_dir, '*.links.jsonl'))):
         name = 'shard_' + os.path.basename(path).removesuffix('.links.jsonl') + '.jsonl'
@@ -67,6 +75,8 @@ def queue_shards(out_dir, queue_dir):
 
 
 def delete_linked_warcs(out_dir):
-    """Delete every <name>.ai.warc.gz in out_dir that has its <name>.links.jsonl. Returns (deleted, bytes)."""
+    """Empty every <name>.ai.warc.gz in out_dir that has its <name>.links.jsonl: the space is freed, and the empty
+    file still tells every filter worker (also ones started before links files counted as done) that the WARC is
+    done. Returns (emptied, bytes freed)."""
     paths = [os.path.join(out_dir, name) for name in os.listdir(out_dir) if name.endswith('.ai.warc.gz')]
-    return delete_done_inputs(paths, links_path)
+    return delete_done_inputs(paths, links_path, keep_empty=True)

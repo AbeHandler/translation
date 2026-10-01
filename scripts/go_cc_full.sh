@@ -5,15 +5,16 @@
 # skips WARCs done or claimed, so rerun or add workers any time. ~3.6M WARCs: whatever gets done is a random
 # sample. Run from the repo root.
 #
-# `links`: N_WORKERS link workers (each .ai.warc.gz -> .links.jsonl), then a queue job writing one shard per
-# links file to $TMP/cc_full_queue (then process it with scripts/process_queue.sh cc_full), and a cleanup job
-# deleting the AI WARCs that have links files (filter workers count those WARCs as done). KEEP_WARCS=1: no cleanup.
+# `links`: N_WORKERS (default 50) link workers (each .ai.warc.gz -> .links.jsonl), then a queue job writing one
+# shard per links file to $TMP/cc_full_queue (then: bash scripts/process_queue.sh cc_full), and a cleanup job
+# emptying the AI WARCs that have links files (the empty file keeps them marked done). KEEP_WARCS=1: no cleanup.
+# Rerun it whenever more WARCs are done: only new ones get links and shards.
 #
 # Usage:
 #   bash scripts/go_cc_full.sh                     # one worker
 #   N_WORKERS=100 bash scripts/go_cc_full.sh
 #   N_WORKERS=1 MAX_WARCS=1 bash scripts/go_cc_full.sh   # test: one WARC
-#   N_WORKERS=10 bash scripts/go_cc_full.sh links  # links of the AI pages streamed so far, then the queue + cleanup
+#   bash scripts/go_cc_full.sh links               # links of the AI pages streamed so far, then the queue + cleanup
 
 set -eo pipefail  # no -u: ~/.myrc references unset vars
 source ~/.myrc
@@ -22,7 +23,7 @@ if [ -z "${TMP:-}" ]; then
     echo "ERROR: \$TMP is not set (in ~/.myrc); the output goes in \$TMP/cc_full"
     exit 1
 fi
-N_WORKERS=${N_WORKERS:-1}
+if [ "${1:-}" = links ]; then N_WORKERS=${N_WORKERS:-50}; else N_WORKERS=${N_WORKERS:-1}; fi
 mkdir -p logs/scripts/slurm
 EXPORTS="SINCE_YEAR=$SINCE_YEAR,MAX_WARCS=$MAX_WARCS"
 
@@ -40,7 +41,7 @@ if [ "${1:-}" = links ]; then
     if [ "${KEEP_WARCS:-}" != 1 ]; then
         CLEANUP_JOB=$(sbatch --parsable --job-name=cc_full_cleanup --dependency=afterany"$JOBS" \
             --export="STEP=cleanup,$EXPORTS" scripts/slurm/cc_full.slurm)
-        echo "cc_full_cleanup $CLEANUP_JOB (deletes AI WARCs that have links files)"
+        echo "cc_full_cleanup $CLEANUP_JOB (empties AI WARCs that have links files)"
     fi
     echo "  then: bash scripts/process_queue.sh cc_full"
     exit 0

@@ -7,9 +7,13 @@ a successful result winning over an error. Streams: tens of millions of results 
 import glob
 import hashlib
 import json
+import logging
 import os
 
 from src.shard_queue.shards import read_shard, results_dir, shard_paths
+
+logger = logging.getLogger(__name__)
+PROGRESS_EVERY = 500  # files
 
 
 def queue_status(queue_dir):
@@ -30,9 +34,15 @@ def collect_results(queue_dir, key_fields):
     """Yield one result per key (the tuple of key_fields), preferring a successful one over an error. Two passes
     over the results: first the keys with a success, then the results to keep."""
     paths = sorted(glob.glob(os.path.join(results_dir(queue_dir), '*.jsonl')))
-    succeeded = {key_hash(r, key_fields) for path in paths for r in read_shard(path) if 'error' not in r}
+    succeeded = set()
+    for n, path in enumerate(paths, 1):
+        succeeded.update(key_hash(r, key_fields) for r in read_shard(path) if 'error' not in r)
+        if n % PROGRESS_EVERY == 0 or n == len(paths):
+            logger.info('pass 1/2 (keys with a result): %d/%d files, %d keys', n, len(paths), len(succeeded))
     written = set()
-    for path in paths:
+    for n, path in enumerate(paths, 1):
+        if n % PROGRESS_EVERY == 0 or n == len(paths):
+            logger.info('pass 2/2 (writing): %d/%d files, %d unique rows so far', n, len(paths), len(written))
         for result in read_shard(path):
             key = key_hash(result, key_fields)
             if key in written or ('error' in result and key in succeeded):

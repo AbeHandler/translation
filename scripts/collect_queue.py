@@ -13,6 +13,7 @@ English articles' links to Chinese pages. Run as a module from the repo root:
         -where language=zh
 """
 import argparse
+import logging
 from collections import Counter
 
 from config.paths import NEWS_EN_ZH_LINKS_PATH, cc_news_queue_dir
@@ -36,6 +37,7 @@ def parse_where(where):
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s', datefmt='%H:%M:%S')
     args = parse_args()
     args.queue_dir = args.queue_dir or str(cc_news_queue_dir())
     status = queue_status(args.queue_dir)

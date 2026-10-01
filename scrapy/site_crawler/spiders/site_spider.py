@@ -15,6 +15,7 @@ PYTHONPATH=.. so `src` (at the repo root) imports:
         -s CLOSESPIDER_PAGECOUNT=20
 """
 import datetime
+import re
 from urllib.parse import urlparse
 
 import scrapy
@@ -145,10 +146,18 @@ def recency_priority(lastmod):
     return -min(max(age, 0), 36500)
 
 
+JS_REDIRECT = re.compile(r'location(?:\.href)?\s*=\s*["\']([^"\']+)["\']')
+
+
 def absolute_links(response):
-    """http(s) hrefs on the page, made absolute. Skips malformed ones (e.g. 'Invalid IPv6 URL')."""
+    """http(s) hrefs on the page, made absolute: links, image-map areas (e-paper page maps) and JavaScript
+    redirects to a fixed URL (location.href="/nfdaily/html/index.html", common on e-paper front doors).
+    Skips malformed ones (e.g. 'Invalid IPv6 URL')."""
     links = []
-    for href in response.css('a::attr(href)').getall():
+    hrefs = response.css('a::attr(href), area::attr(href)').getall()
+    for script in response.css('script::text').getall():
+        hrefs += JS_REDIRECT.findall(script)
+    for href in hrefs:
         try:
             url = response.urljoin(href.strip())
         except ValueError:

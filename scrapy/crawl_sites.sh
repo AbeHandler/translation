@@ -1,6 +1,7 @@
 #!/bin/bash
 # Submit one scrapy crawl per site in config/sites.txt (scrapy/slurm/crawl_site.slurm), in random order,
-# after update_env. Sites with a done marker are skipped, so rerunning resumes unfinished crawls.
+# after update_env. Sites with a done marker, or with a crawl_site job already queued or running, are skipped,
+# so rerunning resumes unfinished crawls.
 # Output: data/interim/site_crawls/<domain>/pages.jsonl (one line per page: url, title, pubdate, links)
 #         and <domain>/html/*.parquet (raw HTML, same format as CC-NEWS data/interim/cc_html).
 # Logs: logs/scrapy/<domain>.log and logs/scrapy/slurm/. Clean slate: sbatch --export=NONE scrapy/slurm/flush_crawls.slurm
@@ -29,9 +30,12 @@ if [ -z "${DEPENDENCY:-}" ]; then
     DEPENDENCY=afterok:$ENV_JOB
 fi
 
+# sites with a crawl already queued or running (its domain is in the job's comment), so none is crawled twice
+RUNNING=$(squeue -u "$USER" -h -n crawl_site -o '%k')
 JOB_IDS=""
 n_submitted=0
 n_done=0
+n_running=0
 for site in $DOMAINS; do
     # a line is a bare domain (denverpost.com) or a URL to start from (https://epaper.gmw.cn/gmrbdb/): the
     # crawl's name and output folder are its host without www.
@@ -42,12 +46,16 @@ for site in $DOMAINS; do
         n_done=$((n_done + 1))
         continue
     fi
-    JOB=$(sbatch --parsable --dependency="$DEPENDENCY" --kill-on-invalid-dep=yes \
+    if grep -qxF "$domain" <<< "$RUNNING"; then
+        n_running=$((n_running + 1))
+        continue
+    fi
+    JOB=$(sbatch --parsable --dependency="$DEPENDENCY" --kill-on-invalid-dep=yes --comment="$domain" \
         --export="DOMAIN=$domain,START_URL=$START_URL,MAX_PAGES=$MAX_PAGES" scrapy/slurm/crawl_site.slurm)
     JOB_IDS+=":$JOB"
     n_submitted=$((n_submitted + 1))
 done
-echo "crawl_site  $n_submitted submitted, $n_done already done"
+echo "crawl_site  $n_submitted submitted, $n_done already done, $n_running already queued or running"
 
 echo
 echo "Spot checks:"

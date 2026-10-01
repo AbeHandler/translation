@@ -24,6 +24,13 @@ def script_counts(text):
             'latin': len(LATIN.findall(text))}
 
 
+def han_share(text):
+    """Han characters' share of the text's letters (0 when it has none), e.g. to tell a Chinese title."""
+    counts = script_counts(text)
+    letters = sum(counts.values())
+    return counts['han'] / letters if letters else 0.0
+
+
 def langdetect_language(text):
     try:
         return detect(text[:LANGDETECT_CHARS]).split('-')[0]  # zh-cn -> zh

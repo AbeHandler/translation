@@ -204,6 +204,7 @@ ENGINES = {
     'baidu': Baidu,
     'deepl': DeepL,
     'openai': lambda: OpenAICompatLLM('openai', 'gpt-4o', 'https://api.openai.com/v1', 'OPENAI_API_KEY'),
+    'openai_mini': lambda: OpenAICompatLLM('openai_mini', 'gpt-4o-mini', 'https://api.openai.com/v1', 'OPENAI_API_KEY'),
     'deepseek': lambda: OpenAICompatLLM('deepseek', 'deepseek-chat', 'https://api.deepseek.com/v1',
                                         'DEEPSEEK_API_KEY'),
     'qwen': lambda: OpenAICompatLLM('qwen', 'qwen-max', 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',

@@ -1,5 +1,6 @@
 """
 One generic spider for any site: `-a domain=denverpost.com` crawls that domain (and its subdomains),
+starting from its homepage, and also from `-a start_url=...` when given (e.g. an e-paper's index page),
 writing one item per HTML page with the page's outgoing links and publication date to pages.jsonl, and its
 raw HTML to Parquet (site_crawler/pipelines.py).
 
@@ -31,13 +32,14 @@ USUAL_SITEMAPS = ('sitemap.xml', 'sitemap_index.xml')  # tried on every site, as
 class SiteSpider(scrapy.Spider):
     name = 'site'
 
-    def __init__(self, domain, *args, **kwargs):
+    def __init__(self, domain, start_url='', *args, **kwargs):
         super().__init__(*args, **kwargs)
         if any(c in domain for c in '/: '):
             raise ValueError(f'domain must be bare, e.g. denverpost.com, not {domain!r}')
         self.allowed_domains = [domain]
         # Both, because many sites only resolve at one of them (e.g. huxiu.com has no DNS, www.huxiu.com does).
         self.start_urls = [f'https://{domain}/', f'https://www.{domain}/']
+        self.start_url = start_url
         # Many sites serve the same pages at both, so the crawl sticks to the first to answer with links (home_host):
         # links to the other are rewritten to it, so no page is crawled twice.
         self.host_pair = {domain, f'www.{domain}'}
@@ -53,7 +55,7 @@ class SiteSpider(scrapy.Spider):
                 for request in self.sitemap_request(url + path):
                     yield request
         # Deduplicated (unlike the default start), so homepages aren't refetched via their own links or on resume.
-        for url in self.start_urls:
+        for url in ([self.start_url] if self.start_url else []) + self.start_urls:
             yield scrapy.Request(url, self.parse)
 
     def parse_robots(self, response):

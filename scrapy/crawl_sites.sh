@@ -14,7 +14,7 @@
 set -eo pipefail  # no -u: ~/.myrc references unset vars
 source ~/.myrc
 
-SITES=config/sites.txt
+SITES=config/sites.txt  # one bare domain or start URL per line
 DOMAINS=$(grep -v -e '^#' -e '^[[:space:]]*$' "$SITES" | shuf)
 if [ -z "$DOMAINS" ]; then
     echo "ERROR: no sites in $SITES (one bare domain per line)"
@@ -32,13 +32,18 @@ fi
 JOB_IDS=""
 n_submitted=0
 n_done=0
-for domain in $DOMAINS; do
+for site in $DOMAINS; do
+    # a line is a bare domain (denverpost.com) or a URL to start from (https://epaper.gmw.cn/gmrbdb/): the
+    # crawl's name and output folder are its host without www.
+    domain=$(echo "$site" | sed -E 's#^[a-zA-Z]+://##; s#[/?].*##; s#^www\.##')
+    START_URL=""
+    if [ "$site" != "$domain" ]; then START_URL=$site; fi
     if [ -e "data/interim/site_crawls/$domain/done" ]; then
         n_done=$((n_done + 1))
         continue
     fi
     JOB=$(sbatch --parsable --dependency="$DEPENDENCY" --kill-on-invalid-dep=yes \
-        --export="DOMAIN=$domain,MAX_PAGES=$MAX_PAGES" scrapy/slurm/crawl_site.slurm)
+        --export="DOMAIN=$domain,START_URL=$START_URL,MAX_PAGES=$MAX_PAGES" scrapy/slurm/crawl_site.slurm)
     JOB_IDS+=":$JOB"
     n_submitted=$((n_submitted + 1))
 done

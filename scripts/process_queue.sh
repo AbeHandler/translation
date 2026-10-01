@@ -44,7 +44,10 @@ if [ "${COLLECT_ONLY:-}" = 1 ]; then
     echo "collect_queue $JOB -> $OUT (summary in logs/scripts/slurm/collect_queue_$JOB.out)"
     exit 0
 fi
-if ! ls "$QUEUE_DIR"/shard_*.jsonl > /dev/null 2>&1; then
+# find, not ls shard_*.jsonl: a big queue (34k shards) is too many arguments for one command
+count_shards() { find "$1" -maxdepth 1 -name 'shard_*.jsonl' 2>/dev/null | wc -l; }
+N_SHARDS=$(count_shards "$QUEUE_DIR")
+if [ "$N_SHARDS" -eq 0 ]; then
     echo "ERROR: no shards in $QUEUE_DIR: build the queue first (or everything in it is done: see $QUEUE_DIR/results)"
     exit 1
 fi
@@ -60,10 +63,10 @@ done
 COLLECT_JOB=$(sbatch --parsable --dependency=afterany"$JOBS" --export="QUEUE_DIR=$QUEUE_DIR,OUT=$OUT" \
     scripts/slurm/collect_queue.slurm)
 echo "collect_queue $COLLECT_JOB after them -> $OUT (summary in logs/scripts/slurm/collect_queue_$COLLECT_JOB.out)"
-echo "process_queue: $N_WORKERS workers on $QUEUE_DIR ($(ls "$QUEUE_DIR"/shard_*.jsonl | wc -l) shards) -> $RESULTS_DIR"
+echo "process_queue: $N_WORKERS workers on $QUEUE_DIR ($N_SHARDS shards, $(count_shards "$RESULTS_DIR") done) -> $RESULTS_DIR"
 echo
 echo "Spot checks:"
 echo "  squeue -u \$USER --name=process_queue | wc -l"
-echo "  ls $RESULTS_DIR/shard_*.jsonl | wc -l          # shards done"
+echo "  find $RESULTS_DIR -name 'shard_*.jsonl' | wc -l          # shards done"
 echo "  ls $RESULTS_DIR/*.lock                         # in progress (stale if no worker is running)"
-echo "  cat $RESULTS_DIR/shard_*.jsonl | jq -r '.error // \"ok\"' | cut -c1-60 | sort | uniq -c | sort -rn | head"
+echo "  find $RESULTS_DIR -name 'shard_*.jsonl' | shuf -n 50 | xargs cat | jq -r '.error // .language' | cut -c1-60 | sort | uniq -c | sort -rn | head"

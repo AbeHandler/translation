@@ -39,8 +39,16 @@ def visible_text(html):
     return ' '.join(title.split()), ' '.join((body if body is not None else doc).text_content().split())
 
 
-def fetch_page(url, client):
-    """Fetch url (following redirects) with an httpx.Client. Non-HTML pages (PDFs, images) get no text."""
+@dataclass
+class RawPage:
+    status: int
+    final_url: str
+    content_type: str
+    html: str  # '' for non-HTML pages (PDFs, images) and empty bodies
+
+
+def fetch_html(url, client):
+    """Fetch url (following redirects) with an httpx.Client: at most MAX_BYTES of HTML, decoded."""
     with client.stream('GET', url, headers=HEADERS, follow_redirects=True, timeout=TIMEOUT) as response:
         content_type = response.headers.get('content-type', '')
         body = b''
@@ -49,7 +57,12 @@ def fetch_page(url, client):
                 body += chunk
                 if len(body) >= MAX_BYTES:
                     break
-        title, text = ('', '')
-        if body.strip():
-            title, text = visible_text(decode(body[:MAX_BYTES], response.charset_encoding))
-        return Page(response.status_code, str(response.url), content_type, title, text)
+        html = decode(body[:MAX_BYTES], response.charset_encoding) if body.strip() else ''
+        return RawPage(response.status_code, str(response.url), content_type, html)
+
+
+def fetch_page(url, client):
+    """Fetch url (following redirects) with an httpx.Client. Non-HTML pages (PDFs, images) get no text."""
+    raw = fetch_html(url, client)
+    title, text = visible_text(raw.html) if raw.html else ('', '')
+    return Page(raw.status, raw.final_url, raw.content_type, title, text)

@@ -6,6 +6,7 @@
 #   sbatch --export="QUEUE_DIR=$TMP/cc_news_queue,OUT=data/processed/news_en_zh_links.jsonl,WHERE=src_language=en&language=zh" \
 #       scripts/slurm/collect_queue.slurm
 #   WHERE (optional): field=value&field=value, only the rows matching all of them are written
+#   KEY (default srcpage,url): fields identifying a row; COUNT (default language): field to count values of
 
 #SBATCH --partition=acpu
 #SBATCH --time=12:00:00
@@ -29,4 +30,5 @@ fi
 module load anaconda
 conda activate translation
 
-python -m scripts.collect_queue -queue-dir "$QUEUE_DIR" -out "$OUT" -where "${WHERE:-}"
+python -m scripts.collect_queue -queue-dir "$QUEUE_DIR" -out "$OUT" -where "${WHERE:-}" \
+    -key "${KEY:-srcpage,url}" -count "${COUNT:-language}"

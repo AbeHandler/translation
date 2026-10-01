@@ -11,6 +11,8 @@
 #   wikipedia_en  $TMP/wikipedia_queue/en  -> data/processed/wikipedia_en_link_languages.jsonl
 #   cc_full       $TMP/cc_full_queue       -> data/processed/cc_full_en_zh_links.jsonl (all English pages; -> Chinese)
 #                                                                                       (scripts/cc_full.py)
+#   zh_docs       $TMP/zh_docs_queue       -> data/processed/zh_docs.jsonl  the linked Chinese pages as documents
+#                                                                           (scripts/zh_docs_queue.py, src/zh_docs.py)
 # WHERE (set per queue below) keeps only those rows in the collected file; the summary counts every row.
 #   COLLECT_ONLY=1 bash scripts/process_queue.sh news    # just collect (and see the summary) now
 # PROCESSOR (default link_language) is a name from scripts/process_queue.py.
@@ -35,17 +37,20 @@ case "${1:-}" in
     wikipedia_en)  QUEUE_DIR=$TMP/wikipedia_queue/en; OUT=data/processed/wikipedia_en_link_languages.jsonl ;;
     cc_full)       QUEUE_DIR=$TMP/cc_full_queue;      OUT=data/processed/cc_full_en_zh_links.jsonl
                    WHERE='language=zh' ;;
+    zh_docs)       QUEUE_DIR=$TMP/zh_docs_queue;      OUT=data/processed/zh_docs.jsonl
+                   PROCESSOR=${PROCESSOR:-zh_doc}; KEY=url; COUNT=is_document ;;
     "")            OUT=${OUT:-$QUEUE_DIR/collected.jsonl} ;;  # QUEUE_DIR given directly
-    *)             echo "ERROR: unknown queue '$1'; use news, cc_full, wikipedia_zh or wikipedia_en"; exit 1 ;;
+    *)             echo "ERROR: unknown queue '$1'; use news, cc_full, zh_docs, wikipedia_zh or wikipedia_en"; exit 1 ;;
 esac
 PROCESSOR=${PROCESSOR:-link_language}
 if [ -z "${QUEUE_DIR:-}" ]; then
-    echo "ERROR: name a queue (news, cc_full, wikipedia_zh, wikipedia_en), or set QUEUE_DIR"
+    echo "ERROR: name a queue (news, cc_full, zh_docs, wikipedia_zh, wikipedia_en), or set QUEUE_DIR"
     exit 1
 fi
 mkdir -p logs/scripts/slurm
 if [ "${COLLECT_ONLY:-}" = 1 ]; then
-    JOB=$(sbatch --parsable --export="QUEUE_DIR=$QUEUE_DIR,OUT=$OUT,WHERE=$WHERE" scripts/slurm/collect_queue.slurm)
+    JOB=$(sbatch --parsable --export="QUEUE_DIR=$QUEUE_DIR,OUT=$OUT,WHERE=$WHERE,KEY=$KEY,COUNT=$COUNT" \
+        scripts/slurm/collect_queue.slurm)
     echo "collect_queue $JOB -> $OUT (summary in logs/scripts/slurm/collect_queue_$JOB.out)"
     exit 0
 fi
@@ -65,7 +70,8 @@ JOBS=""
 for ((i = 0; i < N_WORKERS; i++)); do
     JOBS+=":$(sbatch --parsable --export="$EXPORTS" scripts/slurm/process_queue.slurm)"
 done
-COLLECT_JOB=$(sbatch --parsable --dependency=afterany"$JOBS" --export="QUEUE_DIR=$QUEUE_DIR,OUT=$OUT,WHERE=$WHERE" \
+COLLECT_EXPORTS="QUEUE_DIR=$QUEUE_DIR,OUT=$OUT,WHERE=$WHERE,KEY=$KEY,COUNT=$COUNT"
+COLLECT_JOB=$(sbatch --parsable --dependency=afterany"$JOBS" --export="$COLLECT_EXPORTS" \
     scripts/slurm/collect_queue.slurm)
 echo "collect_queue $COLLECT_JOB after them -> $OUT (summary in logs/scripts/slurm/collect_queue_$COLLECT_JOB.out)"
 echo "process_queue: $N_WORKERS workers on $QUEUE_DIR ($N_SHARDS shards, $(count_shards "$RESULTS_DIR") done) -> $RESULTS_DIR"

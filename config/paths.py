@@ -22,6 +22,7 @@ MT_SOURCES_DIR = REPO_ROOT / 'data' / 'raw' / 'mt_sources'  # <id>.html and <id>
 WIKIPEDIA_CONFIG = REPO_ROOT / 'config' / 'wikipedia.yaml'
 WIKIPEDIA_DIR = REPO_ROOT / 'data' / 'interim' / 'wikipedia'  # <lang>/pages/chunk_*.parquet, <lang>/ai_pages.parquet
 NEWS_EN_ZH_LINKS_PATH = REPO_ROOT / 'data' / 'processed' / 'news_en_zh_links.jsonl'  # scripts/collect_queue.py
+ZH_DOCS_PATH = REPO_ROOT / 'data' / 'processed' / 'zh_docs.jsonl'  # the fetched Chinese documents (src/zh_docs.py)
 TRANSLATIONS_DB = REPO_ROOT / 'data' / 'processed' / 'translations.sqlite'  # src/translation/store.py
 
 
@@ -58,6 +59,16 @@ def cc_news_queue_dir():
 def wikipedia_tmp_dir(name):
     """$TMP/wikipedia_<name>: dumps, queue, results (large, and fine to delete and rebuild)."""
     return _tmp_dir(f'wikipedia_{name}')
+
+
+def zh_docs_queue_dir():
+    """The queue of linked Chinese pages to fetch as documents (scripts/zh_docs_queue.py, src/zh_docs.py)."""
+    return _tmp_dir('zh_docs_queue')
+
+
+def zh_docs_html_dir():
+    """Raw HTML of the fetched Chinese documents, <sha1 of url>.html.gz (src/zh_docs.py)."""
+    return _tmp_dir('zh_docs_html')
 
 
 def extract_warc_html_work_dir():

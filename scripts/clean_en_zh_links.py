@@ -2,7 +2,8 @@
 """
 Clean the collected English -> Chinese CC-NEWS links (src/en_zh_links.py): drop links whose fetch failed (error
 pages labelled Chinese) and links from sources whose title is Chinese (mislabelled as English), and give every
-row a story_id (syndicated copies of one story share it) and story_size (how many source articles it has).
+row a story_id (syndicated copies of one story share it), story_size (how many source articles it has) and
+is_press_release (the source is a press-release wire or a wire copy).
 Count and sample by story_id, not by article.
     data/processed/news_en_zh_links.jsonl -> data/processed/news_en_zh_links_clean.jsonl
 Source titles are read from data/interim/cc_links (all ~21k links files: slow) and kept in -titles, so a rerun
@@ -20,7 +21,7 @@ from collections import Counter
 from urllib.parse import urlparse
 
 from config.paths import CC_LINKS_DIR, NEWS_EN_ZH_LINKS_PATH
-from src.en_zh_links import chinese_title, fetch_failed, source_titles, story_ids
+from src.en_zh_links import chinese_title, fetch_failed, is_press_release, source_titles, story_ids
 from src.shard_queue.collect import write_jsonl
 
 
@@ -73,9 +74,11 @@ def main():
     for row in kept:
         row['story_id'] = stories[row['srcpage']]
         row['story_size'] = story_size[row['story_id']]
+        row['is_press_release'] = is_press_release(row['srcpage'])
     write_jsonl(kept, args.out)
     print(f'{len(rows)} links -> {len(kept)} kept -> {args.out}')
-    print(f"  {len({r['srcpage'] for r in kept})} source articles in {len(story_size)} stories")
+    print(f"  {len({r['srcpage'] for r in kept})} source articles in {len(story_size)} stories, "
+          f"{len({r['story_id'] for r in kept if r['is_press_release']})} of them press releases")
     for reason, n in dropped.most_common():
         print(f'  {n:7d} dropped: {reason}')
     chinese_sources = Counter(urlparse(r['srcpage']).hostname for r in rows
@@ -91,6 +94,7 @@ def main():
     print(f"  shuf -n 5 {args.out} | jq -c '{{src_title, url}}'")
     print(f"  jq -r 'select(.src_title == \"\") | .srcpage' {args.out} | wc -l   # sources with no title found")
     print(f"  jq -r 'select(.story_size > 1) | [.story_id, .srcpage] | @tsv' {args.out} | sort | head -20  # copies")
+    print(f"  jq -c 'select(.is_press_release | not)' {args.out} | wc -l   # links not from press releases")
 
 
 if __name__ == '__main__':

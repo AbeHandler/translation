@@ -10,6 +10,8 @@ and of one kind of double counting:
                     same Chinese URL with the same normalised title or the same URL slug are copies of one story.
                     Only articles sharing a link are compared, so different stories on the same event, or
                     generic titles ("Morning briefing"), aren't merged.
+and flags press releases (is_press_release): mostly written by the Chinese company itself, so they cite its own
+pages rather than restate someone else's; most syndication is press releases on local TV sites (/prnewswire/).
 Source titles come from the CC-NEWS links files (src/cc_news.py ArticleLinkExtractor rows: {url, title, ...}).
 """
 import hashlib
@@ -105,3 +107,20 @@ def story_ids(rows, titles):
                 else:
                     first[key] = page
     return {page: hashlib.sha1(root(page).encode()).hexdigest()[:12] for page in parent}
+
+
+PRESS_RELEASE_SITES = {  # registered domains of press-release wires
+    'prnewswire.com', 'prnewswire.co.uk', 'newswire.ca', 'globenewswire.com', 'businesswire.com', 'accesswire.com',
+    'einpresswire.com', 'acnnewswire.com', 'send2press.com', 'prweb.com', 'newsfilecorp.com', 'openpr.com',
+    'issuewire.com', 'exclusivepress.net', 'express-press-release.net'}
+PRESS_RELEASE_PATHS = {  # path segments of wire copies on other sites (wsaz.com/prnewswire/2023/...)
+    'prnewswire', 'globenewswire', 'businesswire', 'accesswire', 'news-releases', 'news-release', 'press-releases',
+    'press-release', 'aapreleases'}
+
+
+def is_press_release(url):
+    """True for a page on a press-release wire, or a wire copy (by its path) on another site."""
+    host = (urlparse(url).hostname or '').removeprefix('www.')
+    segments = set(urlparse(url).path.lower().split('/'))
+    return any(host == site or host.endswith('.' + site) for site in PRESS_RELEASE_SITES) or bool(
+        segments & PRESS_RELEASE_PATHS)

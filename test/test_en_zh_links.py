@@ -1,7 +1,8 @@
 """Run from the repo root: python -m pytest test/"""
 import json
 
-from src.en_zh_links import chinese_title, fetch_failed, line_url, slug_key, source_titles, story_ids, title_key
+from src.en_zh_links import (chinese_title, fetch_failed, is_press_release, line_url, slug_key, source_titles,
+                             story_ids, title_key)
 
 
 def test_failed_fetches_and_chinese_titles():
@@ -42,3 +43,11 @@ def test_syndicated_copies_citing_the_same_url_are_one_story():
     assert title_key('Trump and Xi meet at moment of global consequence | WSKG') == (
         'trump and xi meet at moment of global consequence')
     assert slug_key('https://www.oeeee.com/html/202610/01/1748403.html') == ''
+
+
+def test_press_releases_by_wire_site_or_wire_path():
+    assert is_press_release('https://www.prnewswire.com/news-releases/chipmos-reports-302695386.html')
+    assert is_press_release('https://en.acnnewswire.com/article.asp?art_id=105366')
+    assert is_press_release('https://www.wsaz.com/prnewswire/2023/10/16/profet-ai-amplifies-international-presence/')
+    assert not is_press_release('https://www.chinatalk.media/p/what-are-chinese-people-vibecoding')
+    assert not is_press_release('https://www.wired.com/story/china-ai/')

@@ -1,4 +1,5 @@
 """Run from the repo root: python -m pytest test/"""
+import json
 import os
 
 from src.common_crawl_full.filter import is_english_ai_page
@@ -51,3 +52,16 @@ def test_a_warc_with_links_is_done_and_cleanup_deletes_only_linked_warcs(tmp_pat
     assert delete_linked_warcs(str(tmp_path)) == (1, 10)
     assert sorted(p.name for p in tmp_path.iterdir()) == ['A.links.jsonl', 'B.ai.warc.gz']
     assert is_done(str(tmp_path / 'A.ai.warc.gz')) and not is_done(str(tmp_path / 'C.ai.warc.gz'))
+
+
+def test_one_queue_shard_per_links_file_written_once(tmp_path):
+    from src.common_crawl_full.links import queue_shards
+    out, queue = tmp_path / 'cc_full', tmp_path / 'queue'
+    out.mkdir()
+    page = {'url': 'https://a.com/p', 'links': [{'href': 'https://www.qq.com/x'}, {'href': 'https://www.qq.com/x'},
+                                                {'href': 'https://a.com/internal'}]}
+    (out / 'CC-MAIN-1.links.jsonl').write_text(json.dumps(page) + '\n', encoding='utf-8')
+    assert queue_shards(str(out), str(queue)) == (1, 1)
+    assert [json.loads(line) for line in (queue / 'shard_CC-MAIN-1.jsonl').open()] == [
+        {'srcpage': 'https://a.com/p', 'url': 'https://www.qq.com/x'}]
+    assert queue_shards(str(out), str(queue)) == (0, 0)  # already queued

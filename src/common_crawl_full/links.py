@@ -2,7 +2,9 @@
 The links of the English AI pages kept from the regular Common Crawl (filter.py), for the link queue:
     page_links   <warc>.ai.warc.gz -> <warc>.links.jsonl: each page's body links (readability, as for CC-NEWS:
                  src/cc_news.py ArticleLinkExtractor), one line per page {url, record_id, n_links, links}
-    queue_rows   links files -> {srcpage, url} for every external link (src/external_links.py)
+    queue_shards each links file -> one shard of the cc_full queue, shard_<warc>.jsonl: {srcpage, url} for every
+                 external link (src/external_links.py). One shard per WARC, written once, so the queue grows as
+                 WARCs get links and never needs all links in memory (55k WARCs: ~100M links)
     delete_linked_warcs  the cleanup step: deletes each AI WARC whose links file exists (the links are all that
                  is used downstream; the filter workers count a WARC with a links file as done)
 """
@@ -16,6 +18,7 @@ from src.cc_news import ArticleLinkExtractor, write_jsonl
 from src.common_crawl_full.worker import links_path
 from src.external_links import external_links
 from src.file_worker import delete_done_inputs
+from src.shard_queue.shards import results_dir
 
 
 def page_links(ai_warc_path, out_path):
@@ -36,14 +39,31 @@ def page_links(ai_warc_path, out_path):
     return {'pages': n_pages, 'parsed': len(rows), 'links': sum(r['n_links'] for r in rows)}
 
 
-def queue_rows(out_dir):
-    """{srcpage, url} for every external link in every links file of out_dir."""
+def queue_rows(links_path):
+    """{srcpage, url} for every external link in one links file, each once."""
+    rows = {}
+    with open(links_path, encoding='utf-8') as f:
+        for line in f:
+            page = json.loads(line)
+            for href in external_links(page['url'], (link['href'] for link in page['links'])):
+                rows[(page['url'], href)] = {'srcpage': page['url'], 'url': href}
+    return list(rows.values())
+
+
+def queue_shards(out_dir, queue_dir):
+    """Write queue_dir/shard_<warc>.jsonl for every links file in out_dir that has no shard (or result) yet.
+    Returns (shards written, links in them)."""
+    os.makedirs(queue_dir, exist_ok=True)
+    n_shards = n_rows = 0
     for path in sorted(glob.glob(os.path.join(out_dir, '*.links.jsonl'))):
-        with open(path, encoding='utf-8') as f:
-            for line in f:
-                page = json.loads(line)
-                for href in external_links(page['url'], (link['href'] for link in page['links'])):
-                    yield {'srcpage': page['url'], 'url': href}
+        name = 'shard_' + os.path.basename(path).removesuffix('.links.jsonl') + '.jsonl'
+        shard = os.path.join(queue_dir, name)
+        if os.path.exists(shard) or os.path.exists(os.path.join(results_dir(queue_dir), name)):
+            continue
+        rows = queue_rows(path)
+        write_jsonl(shard, rows)
+        n_shards, n_rows = n_shards + 1, n_rows + len(rows)
+    return n_shards, n_rows
 
 
 def delete_linked_warcs(out_dir):

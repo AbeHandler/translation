@@ -7,8 +7,8 @@ The regular Common Crawl since -since-year, streamed once, keeping English pages
                   or claimed by another worker. Start many (scripts/go_cc_full.sh).
     -step all     list, then filter (the one-worker version)
     -step links   a worker: each <warc>.ai.warc.gz without links yet -> <warc>.links.jsonl (the pages' body links)
-    -step queue   every links file's external links -> the cc_full queue ($TMP/cc_full_queue), adding only links
-                  not queued or done yet; process it with: bash scripts/process_queue.sh cc_full
+    -step queue   each links file without a queue shard -> $TMP/cc_full_queue/shard_<warc>.jsonl (its external
+                  links); process them with: bash scripts/process_queue.sh cc_full
     -step cleanup deletes every <warc>.ai.warc.gz that has its links file, to save space. Filter workers count a
                   WARC with a links file as done, so it is never streamed again. The links are kept.
 
@@ -27,10 +27,9 @@ import os
 from config.paths import cc_full_dir, cc_full_queue_dir
 from src.common_crawl_full.filter import filter_warc
 from src.common_crawl_full.index import write_warc_list
-from src.common_crawl_full.links import delete_linked_warcs, page_links, queue_rows
+from src.common_crawl_full.links import delete_linked_warcs, page_links, queue_shards
 from src.common_crawl_full.worker import links_path, process_warcs
 from src.file_worker import process_files
-from src.shard_queue.shards import add_to_queue
 from src.warc_worker_cli import optional_int, setup_worker_process
 
 
@@ -66,11 +65,9 @@ def main():
         n_links = len(glob.glob(os.path.join(out_dir, '*.links.jsonl')))
         print(f'this worker did {n_done}; {n_links} WARCs have links ({len(ai_warcs)} AI WARCs on disk)')
     if args.step == 'queue':
-        rows = list(queue_rows(out_dir))
         queue_dir = args.queue_dir or str(cc_full_queue_dir())
-        added, skipped = add_to_queue(rows, queue_dir)
-        print(f'{len(rows)} external links from {len({r["srcpage"] for r in rows})} AI pages: {added} new ones '
-              f'queued ({skipped} already queued or done) in {queue_dir}')
+        n_shards, n_rows = queue_shards(out_dir, queue_dir)
+        print(f'{n_shards} new shards ({n_rows} external links) in {queue_dir}')
         print('Process them: bash scripts/process_queue.sh cc_full')
     if args.step == 'cleanup':
         n, freed = delete_linked_warcs(out_dir)

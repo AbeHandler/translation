@@ -5,8 +5,8 @@
 # skips WARCs done or claimed, so rerun or add workers any time. ~3.6M WARCs: whatever gets done is a random
 # sample. Run from the repo root.
 #
-# `links`: N_WORKERS link workers (each .ai.warc.gz -> .links.jsonl), then a queue job adding their external
-# links to $TMP/cc_full_queue (then process it with scripts/process_queue.sh cc_full), and a cleanup job
+# `links`: N_WORKERS link workers (each .ai.warc.gz -> .links.jsonl), then a queue job writing one shard per
+# links file to $TMP/cc_full_queue (then process it with scripts/process_queue.sh cc_full), and a cleanup job
 # deleting the AI WARCs that have links files (filter workers count those WARCs as done). KEEP_WARCS=1: no cleanup.
 #
 # Usage:

@@ -10,7 +10,7 @@
 #   sbatch --export=NONE scripts/slurm/clean_en_zh_links.slurm
 
 #SBATCH --partition=acpu
-#SBATCH --time=04:00:00
+#SBATCH --time=08:00:00
 #SBATCH --job-name=clean_en_zh_links
 #SBATCH --output=logs/scripts/slurm/%x_%j.out
 #SBATCH --mem=4G

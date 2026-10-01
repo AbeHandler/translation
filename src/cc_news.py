@@ -37,7 +37,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from warcio.archiveiterator import ArchiveIterator
 
-from src.ai_mentions import mentions_ai_html
+from src.ai_mentions import mentions_ai, mentions_ai_html
 from src.external_links import external_links
 from src.file_worker import claim_lock, slurm_job_id
 
@@ -153,7 +153,8 @@ LANGUAGES = ('en', 'zh')  # news-please two-letter codes; zh covers zh-cn, zh-tw
 
 class ArticleLinkExtractor:
     """Turns an HTML Parquet file (ArticleHtmlArchiver's) into one row per article:
-        {url, title, language, record_id, ai_mentions, n_links, links: [{href, text, internal}]}
+        {url, title, language, record_id, ai_mentions, body_ai_mentions, n_links, links: [{href, text, internal}]}
+        (ai_mentions: "AI" in the page's visible text; body_ai_mentions: in the article body only)
     ai_mentions: times the page's visible text says "AI" (src/ai_mentions.py), for the link queue.
 
     readability trims each page to the article body, so nav/footer/sidebar links are dropped.
@@ -194,7 +195,8 @@ class ArticleLinkExtractor:
             return None
         links = self._links(page['url'], body)
         return {'url': page['url'], 'title': title, 'language': page['language'], 'record_id': page['record_id'],
-                'ai_mentions': mentions_ai_html(page['html'])[0], 'n_links': len(links), 'links': links}
+                'ai_mentions': mentions_ai_html(page['html'])[0], 'body_ai_mentions': mentions_ai(body.text_content()),
+                'n_links': len(links), 'links': links}
 
     def _links(self, page_url, body):
         """Links in the article body, with relative hrefs made absolute. Unparseable hrefs are skipped."""

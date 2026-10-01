@@ -1,8 +1,8 @@
 """Run from the repo root: python -m pytest test/"""
 import json
 
-from src.en_zh_links import (chinese_title, fetch_failed, is_press_release, line_url, slug_key, source_titles,
-                             story_ids, title_key)
+from src.en_zh_links import (body_ai_mentions, chinese_title, fetch_failed, is_press_release, line_url, slug_key,
+                             source_info, story_ids, title_key)
 
 
 def test_failed_fetches_and_chinese_titles():
@@ -14,15 +14,28 @@ def test_failed_fetches_and_chinese_titles():
     assert not chinese_title(None)
 
 
-def test_source_titles_reads_only_the_wanted_articles(tmp_path):
+def test_source_info_reads_only_the_wanted_articles(tmp_path):
     rows = [{'url': 'https://a.com/1', 'title': 'One', 'links': []},
             {'url': 'https://a.com/q?x=中', 'title': '中文标题', 'links': []},
             {'url': 'https://b.com/2', 'title': 'Two', 'links': []}]
     path = tmp_path / 'w.jsonl'
     path.write_text(''.join(json.dumps(r) + '\n' for r in rows), encoding='utf-8')
     assert line_url(json.dumps(rows[1]) + '\n') == 'https://a.com/q?x=中'
-    assert source_titles([str(path)], {'https://a.com/1', 'https://a.com/q?x=中'}) == {
-        'https://a.com/1': 'One', 'https://a.com/q?x=中': '中文标题'}
+    info = source_info([str(path)], {'https://a.com/1', 'https://a.com/q?x=中'})
+    assert {url: i['title'] for url, i in info.items()} == {'https://a.com/1': 'One', 'https://a.com/q?x=中': '中文标题'}
+    assert info['https://a.com/1']['links_file'] == 'w.jsonl' and info['https://a.com/1']['body_ai_mentions'] is None
+
+
+def test_body_ai_mentions_ignore_menus_and_sidebars(tmp_path):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    para = '<p>TSMC engineers allegedly shared photos of the 2nm process with a Japanese firm, prosecutors say.</p>'
+    tsmc = f'<html><body><nav>AI | Gaming | Hardware</nav><article>{para * 8}</article></body></html>'
+    ai = tsmc.replace('2nm process', '2nm process used for AI chips')
+    pq.write_table(pa.table({'url': ['https://p.com/tsmc', 'https://p.com/ai'], 'html': [tsmc, ai]}),
+                   tmp_path / 'w.parquet', row_group_size=1)
+    assert body_ai_mentions(str(tmp_path / 'w.parquet'), {'https://p.com/tsmc', 'https://p.com/ai'}) == {
+        'https://p.com/tsmc': 0, 'https://p.com/ai': 8}
 
 
 def test_syndicated_copies_citing_the_same_url_are_one_story():

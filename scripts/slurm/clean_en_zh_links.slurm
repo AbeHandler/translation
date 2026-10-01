@@ -1,10 +1,11 @@
 #!/bin/bash
 # Clean the collected English -> Chinese CC-NEWS links (scripts/clean_en_zh_links.py): drop failed fetches and
-# Chinese sources, add story_id / story_size / is_press_release.
+# Chinese sources and sources whose article body doesn't say "AI", add story_id / story_size / is_press_release.
 #   data/processed/news_en_zh_links.jsonl -> data/processed/news_en_zh_links_clean.jsonl
 # Run the collect first (python -m scripts.collect_queue, or COLLECT_ONLY=1 bash scripts/process_queue.sh news).
-# The first run reads every cc_links file for source titles (~90 min for 21.7k files); later runs look up only
-# sources not in the title cache (but that still means one pass over the links files).
+# The first run reads every cc_links file for source info (~90 min for 21.7k files), then counts "AI" in the
+# bodies of sources from older links files from their cc_html Parquet; later runs look up only sources not in the
+# cache (data/processed/news_en_zh_sources.jsonl), which still means one pass over the links files.
 #
 # Usage (from the repo root):
 #   sbatch --export=NONE scripts/slurm/clean_en_zh_links.slurm

@@ -1,6 +1,8 @@
 """The shared "is this about AI" rule: "AI" as a word of its own. Not inside other Latin words ("MAIL", "Aida",
 "OpenAI"), but it may touch Chinese characters ("AI芯片"), so plain \\b word boundaries (which treat CJK as word
-characters) aren't used. For HTML, count it in the page's visible text, after a cheap check on the raw bytes."""
+characters) aren't used. For HTML, count it in the page's visible text, after a cheap check on the raw bytes;
+or only in the article body (mentions_ai_body: readability's main content, without menus, sidebars and "related
+stories", which put "AI" on pages that aren't about it)."""
 import re
 
 AI = re.compile(r'(?<![A-Za-z])AI(?![A-Za-z])')
@@ -25,3 +27,17 @@ def mentions_ai_html(html):
     except Exception:
         return 0, ''
     return mentions_ai(text), text
+
+
+def mentions_ai_body(html):
+    """Times "AI" appears as a word in the article body (readability); 0 for unparseable pages."""
+    import lxml.html  # imported here so plain-text users don't need them
+    from readability import Document
+    if isinstance(html, bytes):
+        html = html.decode('utf-8', errors='replace')
+    if not AI.search(html or ''):
+        return 0
+    try:
+        return mentions_ai(lxml.html.fromstring(Document(html).summary()).text_content())
+    except Exception:
+        return 0

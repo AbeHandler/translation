@@ -12,15 +12,23 @@ and of one kind of double counting:
                     generic titles ("Morning briefing"), aren't merged.
 and flags press releases (is_press_release): mostly written by the Chinese company itself, so they cite its own
 pages rather than restate someone else's; most syndication is press releases on local TV sites (/prnewswire/).
-Source titles come from the CC-NEWS links files (src/cc_news.py ArticleLinkExtractor rows: {url, title, ...}).
+and of sources not about AI: the queue kept articles saying "AI" anywhere on the page (menus, sidebars, "related
+stories"); body_ai_mentions counts it in the article body only, so a TSMC story with an AI ticker can be dropped.
+Source info (title, links file, body_ai_mentions) comes from the CC-NEWS links files (src/cc_news.py
+ArticleLinkExtractor rows); for links files older than body_ai_mentions it is counted from the article's HTML
+(cc_html/<warc>.parquet, reading only the row groups holding the wanted articles).
 """
 import hashlib
 import json
 import logging
+import os
 import re
 from collections import defaultdict
 from urllib.parse import urlparse
 
+import pyarrow.parquet as pq
+
+from src.ai_mentions import mentions_ai_body
 from src.link_language.script import ZH_MIN, han_share
 
 logger = logging.getLogger(__name__)
@@ -46,18 +54,33 @@ def line_url(line):
     return json.loads(line)['url'] if '\\' in url else url
 
 
-def source_titles(links_paths, urls):
-    """{url: title} for the articles in urls, read from the links files (only matching lines are parsed)."""
-    urls, titles = set(urls), {}
+def source_info(links_paths, urls):
+    """{url: {title, links_file, body_ai_mentions}} for the articles in urls, read from the links files (only
+    matching lines are parsed). body_ai_mentions is None for links files made before it was recorded."""
+    urls, info = set(urls), {}
     for n, path in enumerate(links_paths, 1):
         with open(path, encoding='utf-8') as f:
             for line in f:
                 if line_url(line) in urls:
-                    titles[line_url(line)] = json.loads(line).get('title', '')
+                    row = json.loads(line)
+                    info[row['url']] = {'title': row.get('title', ''), 'links_file': os.path.basename(path),
+                                        'body_ai_mentions': row.get('body_ai_mentions')}
         if n % PROGRESS_EVERY == 0 or n == len(links_paths):
-            logger.info('%d/%d links files read, %d of %d source titles found', n, len(links_paths), len(titles),
-                        len(urls))
-    return titles
+            logger.info('%d/%d links files read, %d of %d sources found', n, len(links_paths), len(info), len(urls))
+    return info
+
+
+def body_ai_mentions(html_path, urls):
+    """{url: times "AI" is in the article body} for the articles in urls in one cc_html Parquet file, reading
+    the HTML of only the row groups that hold one of them."""
+    parquet, urls, counts = pq.ParquetFile(html_path), set(urls), {}
+    for group in range(parquet.num_row_groups):
+        if not urls.intersection(parquet.read_row_group(group, columns=['url']).column('url').to_pylist()):
+            continue
+        for row in parquet.read_row_group(group, columns=['url', 'html']).to_pylist():
+            if row['url'] in urls:
+                counts[row['url']] = mentions_ai_body(row['html'])
+    return counts
 
 
 TITLE_SEPARATORS = re.compile(r'\s+[|\-–—:]\s+')  # "Title - WSKG", "WVPE | Title"

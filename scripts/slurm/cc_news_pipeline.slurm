@@ -1,5 +1,5 @@
 #!/bin/bash
-# One step of scripts/cc_news_pipeline.py (STEP=download|html|links|ner|match). All but match run as many
+# One step of scripts/cc_news_pipeline.py (STEP=download|html|links|ner|match|cleanup). All but match run as many
 # workers that share the work; match runs once, after links. scripts/go_zh_en.sh submits them in order, named
 # cc_news_<step>, and gives ner more CPUs and memory (--cpus-per-task, --mem on the sbatch line).
 #
@@ -25,7 +25,7 @@ source ~/.myrc  # first, so $TMP etc. from ~/.myrc are set before the checks bel
 
 AWS=${AWS:-/home/abha4861/bin/v2/2.5.4/bin/aws}  # aws CLI v2 on Alpine (an alias there, so not on PATH in jobs)
 if [ -z "${STEP:-}" ] || [ -z "${TMP:-}" ]; then
-    echo "ERROR: STEP (download|html|links|ner|match) is required, and TMP (from ~/.myrc);"
+    echo "ERROR: STEP (download|html|links|ner|match|cleanup) is required, and TMP (from ~/.myrc);"
     echo "       START_DATE and END_DATE (YYYYMMDD) too, except for links and ner"
     exit 1
 fi

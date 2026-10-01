@@ -62,3 +62,18 @@ def process_files(in_paths, out_path_of, process, max_files=None):
         if max_files and n_done >= max_files:
             break
     return n_done
+
+
+def delete_done_inputs(in_paths, out_path_of):
+    """Delete each input whose output exists (and isn't locked: still being written), in random order: a cleanup
+    for big inputs (WARCs) that nothing reads once their output is made. Returns (deleted, bytes freed)."""
+    in_paths = list(in_paths)
+    random.shuffle(in_paths)
+    n, freed = 0, 0
+    for path in in_paths:
+        out = out_path_of(path)
+        if os.path.exists(out) and not os.path.exists(out + '.lock'):
+            freed += os.path.getsize(path)
+            os.remove(path)
+            n += 1
+    return n, freed

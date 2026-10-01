@@ -9,13 +9,13 @@ The links of the English AI pages kept from the regular Common Crawl (filter.py)
 import glob
 import json
 import os
-import random
 
 from warcio.archiveiterator import ArchiveIterator
 
 from src.cc_news import ArticleLinkExtractor, write_jsonl
 from src.common_crawl_full.worker import links_path
 from src.external_links import external_links
+from src.file_worker import delete_done_inputs
 
 
 def page_links(ai_warc_path, out_path):
@@ -47,14 +47,6 @@ def queue_rows(out_dir):
 
 
 def delete_linked_warcs(out_dir):
-    """Delete every <name>.ai.warc.gz in out_dir that has its <name>.links.jsonl (and no .lock: not being read),
-    in random order. Returns (deleted, bytes freed)."""
+    """Delete every <name>.ai.warc.gz in out_dir that has its <name>.links.jsonl. Returns (deleted, bytes)."""
     paths = [os.path.join(out_dir, name) for name in os.listdir(out_dir) if name.endswith('.ai.warc.gz')]
-    random.shuffle(paths)
-    n, freed = 0, 0
-    for path in paths:
-        if os.path.exists(links_path(path)) and not os.path.exists(links_path(path) + '.lock'):
-            freed += os.path.getsize(path)
-            os.remove(path)
-            n += 1
-    return n, freed
+    return delete_done_inputs(paths, links_path)

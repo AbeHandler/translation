@@ -11,6 +11,8 @@ The CC-NEWS pipeline for a date range, in steps (-step), each reading only the p
     match  cc_links -> data/processed/cc_link_matches.jsonl   links to the seeds in config/seed_patterns.txt,
            including URL-encoded redirect links. Refuses unless every WARC in the range has its links file
            (-partial to match what there is).
+    cleanup  deletes each cached WARC in $TMP/cc_news_warcs that has its links file (so its HTML too). The html
+           and download steps record done WARCs in .done files, so they don't fetch these again.
 
 download, html, links and ner are worker steps: scripts/go_zh_en.sh submits many copies to SLURM, which share
 the work through .lock/.done files. Every step skips work already done, so it is safe to stop and rerun; a new
@@ -23,6 +25,7 @@ Run as a module from the repo root, so `src` and `config` import:
     python -m scripts.cc_news_pipeline -step links -start-date 20260901 -end-date 20260923
     python -m scripts.cc_news_pipeline -step links      # every HTML file there is (links and ner: dates optional)
     python -m scripts.cc_news_pipeline -step match -start-date 20260901 -end-date 20260923
+    python -m scripts.cc_news_pipeline -step cleanup
     python -m scripts.cc_news_pipeline -step html -start-date 20260923 -end-date 20260923 -max-warcs 1 -max-n 100
 """
 import argparse
@@ -33,10 +36,10 @@ from config.paths import (CC_HTML_DIR, CC_LINK_MATCHES_PATH, CC_LINKS_DIR, CC_NE
                           download_warcs_work_dir, extract_warc_html_work_dir, warc_cache_dir)
 from src.cc_news import (ArticleHtmlArchiver, ArticleLinkExtractor, CCNewsIndex, HtmlArchivePipeline, WarcWorker,
                          WorkDir, match_seed_links, read_patterns, warc_files, warc_name, with_max_n)
-from src.file_worker import process_files
+from src.file_worker import delete_done_inputs, process_files
 from src.warc_worker_cli import add_warc_worker_args, setup_worker_process
 
-STEPS = ('download', 'html', 'links', 'ner', 'match')
+STEPS = ('download', 'html', 'links', 'ner', 'match', 'cleanup')
 ALL_DATES = (datetime.date(1900, 1, 1), datetime.date(2999, 12, 31))  # links and ner without dates: every file
 
 
@@ -129,10 +132,21 @@ def match(args):
     print(f"  jq -c '{{href, decoded, url, language}}' {matches_path} | head")
 
 
+def cleanup(args):
+    cache_dir = args.warc_cache_dir or str(warc_cache_dir())
+    warcs = [os.path.join(cache_dir, name) for name in os.listdir(cache_dir) if name.endswith('.warc.gz')]
+
+    def links_path(warc):
+        return os.path.join(args.links_dir, with_max_n(warc_name(warc), args.max_n) + '.jsonl')
+    n, freed = delete_done_inputs(warcs, links_path)
+    print(f'deleted {n} of {len(warcs)} cached WARCs that have links files ({freed / 1e9:.1f} GB freed) in {cache_dir}')
+
+
 def main():
     setup_worker_process()
     args = parse_args()
-    {'download': download, 'html': html, 'links': links, 'ner': ner, 'match': match}[args.step](args)
+    {'download': download, 'html': html, 'links': links, 'ner': ner, 'match': match,
+     'cleanup': cleanup}[args.step](args)
 
 
 if __name__ == '__main__':

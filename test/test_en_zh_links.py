@@ -1,7 +1,7 @@
 """Run from the repo root: python -m pytest test/"""
 import json
 
-from src.en_zh_links import chinese_title, fetch_failed, line_url, source_titles
+from src.en_zh_links import chinese_title, fetch_failed, line_url, slug_key, source_titles, story_ids, title_key
 
 
 def test_failed_fetches_and_chinese_titles():
@@ -22,3 +22,23 @@ def test_source_titles_reads_only_the_wanted_articles(tmp_path):
     assert line_url(json.dumps(rows[1]) + '\n') == 'https://a.com/q?x=中'
     assert source_titles([str(path)], {'https://a.com/1', 'https://a.com/q?x=中'}) == {
         'https://a.com/1': 'One', 'https://a.com/q?x=中': '中文标题'}
+
+
+def test_syndicated_copies_citing_the_same_url_are_one_story():
+    zh = 'https://www.news.cn/20260923/0fc9/c.html'
+    rows = [{'srcpage': 'https://www.wskg.org/npr-news/2026-09-23/trump-and-xi-meet-at-moment-of-global-consequence',
+             'url': zh},
+            {'srcpage': 'https://www.ksut.org/2026-09-23/trump-and-xi-meet-at-moment-of-global-consequence', 'url': zh},
+            {'srcpage': 'https://a.com/news/12345', 'url': zh},
+            {'srcpage': 'https://b.com/story/987', 'url': zh},
+            {'srcpage': 'https://c.com/other', 'url': 'https://www.news.cn/other.html'}]
+    titles = {'https://a.com/news/12345': 'Morning briefing - A News',
+              'https://b.com/story/987': 'B | Morning briefing', 'https://c.com/other': 'Morning briefing'}
+    ids = story_ids(rows, titles)
+    assert ids[rows[0]['srcpage']] == ids[rows[1]['srcpage']]                # same slug
+    assert ids['https://a.com/news/12345'] == ids['https://b.com/story/987']  # same title, same link
+    assert ids['https://c.com/other'] != ids['https://a.com/news/12345']      # same title, different link
+    assert ids[rows[0]['srcpage']] != ids['https://a.com/news/12345']
+    assert title_key('Trump and Xi meet at moment of global consequence | WSKG') == (
+        'trump and xi meet at moment of global consequence')
+    assert slug_key('https://www.oeeee.com/html/202610/01/1748403.html') == ''

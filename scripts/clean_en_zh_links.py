@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 """
 Clean the collected English -> Chinese CC-NEWS links (src/en_zh_links.py): drop links whose fetch failed (error
-pages labelled Chinese) and links from sources whose title is Chinese (mislabelled as English).
+pages labelled Chinese) and links from sources whose title is Chinese (mislabelled as English), and give every
+row a story_id (syndicated copies of one story share it) and story_size (how many source articles it has).
+Count and sample by story_id, not by article.
     data/processed/news_en_zh_links.jsonl -> data/processed/news_en_zh_links_clean.jsonl
 Source titles are read from data/interim/cc_links (all ~21k links files: slow) and kept in -titles, so a rerun
 only looks up sources it hasn't seen.
@@ -18,7 +20,7 @@ from collections import Counter
 from urllib.parse import urlparse
 
 from config.paths import CC_LINKS_DIR, NEWS_EN_ZH_LINKS_PATH
-from src.en_zh_links import chinese_title, fetch_failed, source_titles
+from src.en_zh_links import chinese_title, fetch_failed, source_titles, story_ids
 from src.shard_queue.collect import write_jsonl
 
 
@@ -66,8 +68,14 @@ def main():
             dropped['Chinese source title'] += 1
         else:
             kept.append({**row, 'src_title': titles.get(row['srcpage'], '')})
+    stories = story_ids(kept, titles)
+    story_size = Counter(stories.values())
+    for row in kept:
+        row['story_id'] = stories[row['srcpage']]
+        row['story_size'] = story_size[row['story_id']]
     write_jsonl(kept, args.out)
     print(f'{len(rows)} links -> {len(kept)} kept -> {args.out}')
+    print(f"  {len({r['srcpage'] for r in kept})} source articles in {len(story_size)} stories")
     for reason, n in dropped.most_common():
         print(f'  {n:7d} dropped: {reason}')
     chinese_sources = Counter(urlparse(r['srcpage']).hostname for r in rows
@@ -75,9 +83,14 @@ def main():
     print('\nsources dropped for Chinese titles, most links first:')
     for host, n in chinese_sources.most_common(10):
         print(f'  {n:7d}  {host}')
+    print('\nmost syndicated stories (source articles):')
+    for story, n in story_size.most_common(10):
+        example = next(r for r in kept if r['story_id'] == story)
+        print(f"  {n:5d}  {example['src_title'][:70] or example['srcpage'][:70]}")
     print('\nSpot checks:')
     print(f"  shuf -n 5 {args.out} | jq -c '{{src_title, url}}'")
     print(f"  jq -r 'select(.src_title == \"\") | .srcpage' {args.out} | wc -l   # sources with no title found")
+    print(f"  jq -r 'select(.story_size > 1) | [.story_id, .srcpage] | @tsv' {args.out} | sort | head -20  # copies")
 
 
 if __name__ == '__main__':

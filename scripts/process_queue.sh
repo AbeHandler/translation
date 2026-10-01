@@ -22,6 +22,8 @@
 #   N_WORKERS=200 bash scripts/process_queue.sh wikipedia_zh
 #   N_WORKERS=1 MAX_SHARDS=1 bash scripts/process_queue.sh news       # test: one shard
 #   QUEUE_DIR=... bash scripts/process_queue.sh                       # any other queue
+#   DEPENDENCY=afterok:<job id> bash scripts/process_queue.sh zh_docs  # workers wait for a job (e.g. the one
+#                                                                       # building the queue: scripts/go_zh_docs.sh)
 
 set -eo pipefail  # no -u: ~/.myrc references unset vars
 source ~/.myrc
@@ -57,7 +59,7 @@ fi
 # find, not ls shard_*.jsonl: a big queue (34k shards) is too many arguments for one command
 count_shards() { find "$1" -maxdepth 1 -name 'shard_*.jsonl' 2>/dev/null | wc -l; }
 N_SHARDS=$(count_shards "$QUEUE_DIR")
-if [ "$N_SHARDS" -eq 0 ]; then
+if [ "$N_SHARDS" -eq 0 ] && [ -z "${DEPENDENCY:-}" ]; then  # with a DEPENDENCY, the queue may not be built yet
     echo "ERROR: no shards in $QUEUE_DIR: build the queue first (or everything in it is done: see $QUEUE_DIR/results)"
     exit 1
 fi
@@ -68,7 +70,8 @@ mkdir -p logs/scripts/slurm "$RESULTS_DIR"
 EXPORTS="QUEUE_DIR=$QUEUE_DIR,PROCESSOR=$PROCESSOR,MAX_SHARDS=$MAX_SHARDS"
 JOBS=""
 for ((i = 0; i < N_WORKERS; i++)); do
-    JOBS+=":$(sbatch --parsable --export="$EXPORTS" scripts/slurm/process_queue.slurm)"
+    JOBS+=":$(sbatch --parsable ${DEPENDENCY:+--dependency=$DEPENDENCY --kill-on-invalid-dep=yes} \
+        --export="$EXPORTS" scripts/slurm/process_queue.slurm)"
 done
 COLLECT_EXPORTS="QUEUE_DIR=$QUEUE_DIR,OUT=$OUT,WHERE=$WHERE,KEY=$KEY,COUNT=$COUNT"
 COLLECT_JOB=$(sbatch --parsable --dependency=afterany"$JOBS" --export="$COLLECT_EXPORTS" \

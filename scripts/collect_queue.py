@@ -6,23 +6,27 @@ by -key (default srcpage,url; a success beats an error) -> -out (JSONL), only th
 count of each value of -count (default language) and of the error types, over all rows.
 scripts/process_queue.sh submits it after its workers; run it any time to see where things stand.
 
-Run as a module from the repo root:
-    python -m scripts.collect_queue -queue-dir $TMP/cc_news_queue -out data/processed/news_en_zh_links.jsonl \
-        -where 'src_language=en&language=zh'
+The defaults are the CC-NEWS queue ($TMP/cc_news_queue) -> data/processed/news_en_zh_links.jsonl, keeping
+English articles' links to Chinese pages. Run as a module from the repo root:
+    python -m scripts.collect_queue
+    python -m scripts.collect_queue -queue-dir $TMP/cc_full_queue -out data/processed/cc_full_en_zh_links.jsonl \
+        -where language=zh
 """
 import argparse
 from collections import Counter
 
+from config.paths import NEWS_EN_ZH_LINKS_PATH, cc_news_queue_dir
 from src.shard_queue.collect import collect_results, queue_status, write_jsonl
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Collect a shard queue's results, deduplicated")
-    parser.add_argument('-queue-dir', required=True)
-    parser.add_argument('-out', required=True, help='JSONL of the deduplicated results')
+    parser.add_argument('-queue-dir', default='', help='default $TMP/cc_news_queue')
+    parser.add_argument('-out', default=str(NEWS_EN_ZH_LINKS_PATH), help='JSONL of the deduplicated results')
     parser.add_argument('-key', default='srcpage,url', help='fields that identify a row')
     parser.add_argument('-count', default='language', help='field to count the values of')
-    parser.add_argument('-where', default='', help="field=value&field=value: keep only rows matching all; '' = all")
+    parser.add_argument('-where', default='src_language=en&language=zh',
+                        help="field=value&field=value: keep only rows matching all; '' = all")
     return parser.parse_args()
 
 
@@ -33,6 +37,7 @@ def parse_where(where):
 
 def main():
     args = parse_args()
+    args.queue_dir = args.queue_dir or str(cc_news_queue_dir())
     status = queue_status(args.queue_dir)
     where = parse_where(args.where)
     values, errors = Counter(), Counter()

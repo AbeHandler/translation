@@ -21,6 +21,7 @@ MT_SOURCES_CONFIG = REPO_ROOT / 'config' / 'mt_sources.yaml'
 MT_SOURCES_DIR = REPO_ROOT / 'data' / 'raw' / 'mt_sources'  # <id>.html and <id>.txt per fetched source
 WIKIPEDIA_CONFIG = REPO_ROOT / 'config' / 'wikipedia.yaml'
 WIKIPEDIA_DIR = REPO_ROOT / 'data' / 'interim' / 'wikipedia'  # <lang>/pages/chunk_*.parquet, <lang>/ai_pages.parquet
+NEWS_EN_ZH_LINKS_PATH = REPO_ROOT / 'data' / 'processed' / 'news_en_zh_links.jsonl'  # scripts/collect_queue.py
 TRANSLATIONS_DB = REPO_ROOT / 'data' / 'processed' / 'translations.sqlite'  # src/translation/store.py
 
 

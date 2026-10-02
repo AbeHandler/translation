@@ -1,85 +1,60 @@
 # model1: does English document i transmit Chinese document j?
 
-Frozen 2026-10-02. Part of [[Translation]]. Context: `Translation.em.md` (notes). Code: `src/transmission/`
-(data layer `pairs.py`, model layer `model1.py`), `scripts/build_transmission_pairs.py`, `scripts/fit_model1.py`.
+2026-10-02. Part of [[Translation]]. Context: `Translation.em.md` (notes).
+Code: `src/features/` (candidates, features), `src/model/model1.py` (the model), `scripts/build_transmission_pairs.py`, `scripts/fit_model1.py`.
 
 ## Purpose
 
-For each (English document i, Chinese document j) pair, estimate the probability that i transmits information from j. A hyperlink to j is a noisy prior. A direct copy of Chinese text from j is a high-precision signal. A few hand labels anchor the model.
+Discover transmission: for (English document i, Chinese document j), the probability that i transmits information from j. The main output is z, latent because we can't observe it; a high posterior on a pair without a link is a discovered link.
 
-## Variables
+## Generative story (latent class / naive Bayes)
 
-| Symbol | Type | Meaning |
+    z ~ Bernoulli(π)                                          i transmits j, or not
+    x_k | z ~ Categorical(θ_k[z])    for each feature k       independent given z
+
+Every feature is weak evidence of transmission:
+
+| Feature | Codes | Status |
 |---|---|---|
-| z_ij ∈ {0,1} | latent | 1 if English doc i transmits information from Chinese doc j |
-| L_ij ∈ {0,1} | observed | 1 if i hyperlinks to j |
-| c_ij ∈ {0,1} | observed | 1 if i copies at least one Chinese string (≥ 4 characters) that also appears in j |
-| y_ij ∈ {0,1} or missing | partial label | hand label for z_ij (sparse) |
+| link: i links to j | 0/1 | built |
+| copy: i contains a run of ≥ 4 Chinese characters that also appears in j (runs in more than `max_df` Chinese documents don't count) | 0/1 | built |
+| screenshot: i shows an image of j | 0/1 | not built |
+| similarity: cosine of the documents' embeddings (LaBSE, title + start), binned at 0.3 / 0.4 / 0.5 / 0.6 | 0-4 | built (whole documents; parts of documents later) |
+| date_gap: days from j's publication to i's, binned < 0, 0-3, 4-30, 31-365, > 365 | 0-4 | built |
 
-## Model
+-1 = missing: the feature is left out of that pair's likelihood. Hand labels y fix z where given.
 
-L is a covariate: the model is conditional on it and does not generate it.
+## What EM gets us
 
-- Prior from the link: p(z=1 | L=l) = π_l, for l ∈ {0,1}
-- Copy given z: c | z ~ Bernoulli(γ_z)
-- γ₀ is fixed at a small ε (default 0.001). Chance copying of a Chinese string of ≥ 4 characters is near zero.
-- γ₁ is free: the share of true transmitters that copy.
-- Parameters: **π₀, π₁, γ₁** (3 free parameters)
+Every feature describes the positive class. The negative class comes for free: nearly all pairs are non-transmissions, so θ_k[0] is close to the features' distribution over pairs. EM learns θ_k[1], what transmitters look like, from the excess of co-occurring signals, and the likelihood ratio θ_k[1]/θ_k[0] says how much each signal is worth. The posterior r = p(z=1 | x) combines them, so a pair with no link but a copy, close dates and high similarity can outrank a linked pair with nothing else.
 
-Pairs are independent given the parameters.
+With three or more features that are independent given z, a two-class latent model is identifiable without labels (latent class analysis); labels then check and anchor it.
 
-## Likelihood (the quantity EM increases)
+## Candidates
 
-Let θ = (π₀, π₁, γ₁), with ε fixed. For pair ij, write π_L = π₁ if L_ij = 1 and π₀ otherwise, and
+A pair enters the feature matrix if any feature fires for it (a link, a copy, a screenshot, similar embeddings, close dates), each found without comparing all pairs (copy index, nearest-neighbour search, date blocking). **For now the candidates are the linked pairs only.** π is then the transmission rate among candidates, and link is constant until other candidate sources are added.
 
-- a_ij = γ₁^c (1 − γ₁)^(1−c) = p(c_ij | z=1)
-- b_ij = ε^c (1 − ε)^(1−c) = p(c_ij | z=0)
+## Algorithm
 
-**ℓ(θ) = Σ_{labelled, y=1} log( π_L a_ij ) + Σ_{labelled, y=0} log( (1 − π_L) b_ij ) + Σ_{unlabelled} log( π_L a_ij + (1 − π_L) b_ij )**
-
-**Guarantee.** Each EM iteration satisfies ℓ(θ_{t+1}) ≥ ℓ(θ_t). The E-step sets r_ij = p(z=1 | L, c, θ_t) (or y_ij for labelled pairs) and builds Q(θ | θ_t) = Σ_ij [ r_ij log(π_L a_ij) + (1 − r_ij) log((1 − π_L) b_ij) ]; the M-step maximizes Q exactly. `fit()` records ℓ at every iteration. Convergence is to a local maximum or a saddle point.
-
-## Algorithm (EM)
-
-Initialize π₀ = 0.05, π₁ = 0.5, γ₁ = 0.2, or from the labelled pairs if there are enough (≥ 30 positives).
-
-- **E-step.** r_ij = π_L a_c / [π_L a_c + (1 − π_L) b_c] for unlabelled pairs; r_ij = y_ij for labelled pairs.
-- **M-step.** π_l = mean of r_ij over pairs with L_ij = l; γ₁ = Σ r_ij c_ij / Σ r_ij.
-
-Iterate until the log-likelihood changes by less than 1e-8, or for at most 200 iterations.
-
-## Identifiability
-
-The data alone give only P(c=1 | L=l) = π_l γ₁ + (1−π_l) ε: two numbers for three parameters. **Hand-labelled pairs with y = 1 are required**: they pin γ₁, and π_l follow. Aim for at least 30 labelled positives and a handful of labelled negatives.
-
-## Inputs
-
-- A pair table `doc_en, doc_zh, L, c, y` (y blank when unlabelled).
-- The pair universe: the linked documents plus each English document's nearest Chinese documents by embedding.
-- c: Chinese character runs of ≥ 4 characters in the English text, tested for membership in the Chinese text.
-
-## Outputs
-
-- r_ij = P(i transmits j). A high r on an unlinked pair (L = 0) is a candidate missing link.
-- π₁, π₀: transmission rate among linked and unlinked pairs.
-- γ₁: share of true transmitters that copy Chinese text.
-
-## Evaluation
-
-- Hold out labelled pairs grouped by English document (or outlet), treat them as unlabelled, compare r to y: precision and recall at r > 0.5, plus calibration.
-- Report the fraction of pairs with 0.1 < r < 0.9. If it is large, the features are too weak.
+- Initialize θ_k[0] uniform and θ_k[1] leaning towards the levels that suggest transmission (link = 1, copy = 1, top similarity, gap 0-3 days); this also names the positive class so the components can't swap.
+- E-step: r = π ∏ θ_k[1][x_k] / (π ∏ θ_k[1][x_k] + (1 − π) ∏ θ_k[0][x_k]); r = y for labelled pairs.
+- M-step: π = weighted mean of r; θ_k[z] = weighted counts of each level under r (z=1) and 1 − r (z=0), plus a small Dirichlet α = 0.01.
+- Identical rows are fit once with a weight. Stop when the log-likelihood changes by < 1e-8 (at most 500 iterations); it never decreases (up to the tiny Dirichlet term).
+- Any θ_k[z] can be fixed, e.g. copy under z = 0 at a small ε.
 
 ## Assumptions and limits
 
-- A link is not transmission; π₁ is estimated.
-- Copying is evidence for transmission but not necessary (γ₁ small: high precision, low recall).
-- With ε fixed, a single false copy forces r near 1, so keep ε above 0; if false copies show up in the labelled negatives, raise ε.
-- Only two observed signals: posteriors for pairs with L = 0 and c = 0 are driven by π₀.
+- Independence given z. Correlated features (copy and quotes, similarity and topical overlap) double-count evidence; merge them or model the dependence.
+- With linked candidates only, the data are small and link is constant, so EM can fit odd clusters; it needs the other candidate sources and some labels.
+- A link is not transmission; its rate among transmitters is estimated.
 
-## Deferred (not in model1)
+## Evaluation
 
-- Date gap, bag-of-words cosine, shared anchors, LaBSE cosine as extra features
-- Title copy vs. body copy
-- Sentence- and provision-level alignment (z, a), quote vs. paraphrase
-- Per-outlet rates
-- The link as a noisy label, p(L | z), instead of a covariate
+Hold out labelled pairs grouped by English document or outlet; compare r with y (precision and recall at 0.5, calibration). Report the share of ambiguous pairs (0.1 < r < 0.9).
+
+## Next
+
+- Candidate sources beyond links: the copy index, embedding nearest neighbours, date blocking.
+- Screenshots.
+- Similarity of parts of documents (sentences, quotes).
+- Labels from the annotator.

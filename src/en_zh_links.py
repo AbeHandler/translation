@@ -26,9 +26,8 @@ import re
 from collections import defaultdict
 from urllib.parse import urlparse
 
-import pyarrow.parquet as pq
-
 from src.ai_mentions import mentions_ai_body
+from src.cc_news import html_rows
 from src.link_language.script import ZH_MIN, han_share
 
 logger = logging.getLogger(__name__)
@@ -73,14 +72,7 @@ def source_info(links_paths, urls):
 def body_ai_mentions(html_path, urls):
     """{url: times "AI" is in the article body} for the articles in urls in one cc_html Parquet file, reading
     the HTML of only the row groups that hold one of them."""
-    parquet, urls, counts = pq.ParquetFile(html_path), set(urls), {}
-    for group in range(parquet.num_row_groups):
-        if not urls.intersection(parquet.read_row_group(group, columns=['url']).column('url').to_pylist()):
-            continue
-        for row in parquet.read_row_group(group, columns=['url', 'html']).to_pylist():
-            if row['url'] in urls:
-                counts[row['url']] = mentions_ai_body(row['html'])
-    return counts
+    return {row['url']: mentions_ai_body(row['html']) for row in html_rows(html_path, urls)}
 
 
 TITLE_SEPARATORS = re.compile(r'\s+[|\-–—:]\s+')  # "Title - WSKG", "WVPE | Title"

@@ -424,6 +424,18 @@ def atomic_write(path):
     os.rename(path + '.part', path)
 
 
+def html_rows(html_path, urls, columns=('url', 'html')):
+    """Rows ({column: value}) of one cc_html Parquet file for the given urls, reading the HTML of only the row
+    groups that hold one of them."""
+    parquet, urls = pq.ParquetFile(html_path), set(urls)
+    for group in range(parquet.num_row_groups):
+        if not urls.intersection(parquet.read_row_group(group, columns=['url']).column('url').to_pylist()):
+            continue
+        for row in parquet.read_row_group(group, columns=list(columns)).to_pylist():
+            if row['url'] in urls:
+                yield row
+
+
 def readable_article(html):
     """(title, body element) of a page's article, by readability (no menus, sidebars, "related stories").
     Raises on pages readability can't parse."""

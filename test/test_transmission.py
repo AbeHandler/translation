@@ -63,3 +63,19 @@ def test_em_objective_never_decreases_with_labels_missing_values_weights_and_fix
         _, _, history = fit(X, y, n_levels, w=w, positive_hint={0: [1], 1: [1], 2: [1], 3: [3]},
                             fixed={1: {0: [0.999, 0.001]}})       # copy under z=0 fixed at eps
         assert len(history) > 2 and (np.diff(history) >= -1e-9).all()   # log-likelihood + log-prior
+
+
+def test_english_articles_come_from_cc_html_via_their_links_file(tmp_path):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from src.cc_news import ArticleHtmlArchiver
+    from src.features.english_articles import articles_from_cc_html
+    para = '<p>China has released “<a href="https://www.cac.gov.cn/x.htm">interim measures</a>” for AI.</p>'
+    html = f'<html><body><article>{para * 6}</article></body></html>'.encode()
+    rows = [{'url': f'https://n.com/{i}', 'language': 'en', 'warc_date': '2023-12-11T10:00:00Z',
+             'content_type': 'text/html', 'record_id': str(i), 'html': html} for i in range(3)]
+    pq.write_table(pa.Table.from_pylist(rows, ArticleHtmlArchiver.SCHEMA), tmp_path / 'W.parquet', row_group_size=1)
+    found = articles_from_cc_html({'https://n.com/1': 'W.jsonl', 'https://n.com/9': 'missing.jsonl'}, str(tmp_path))
+    assert list(found) == ['https://n.com/1']
+    article = found['https://n.com/1']
+    assert article['pubdate'] == '2023-12-11' and 'interim measures' in article['text'] and '<a href' in article['html']

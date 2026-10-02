@@ -10,6 +10,7 @@ CC_LINK_MATCHES_PATH = REPO_ROOT / 'data' / 'processed' / 'cc_link_matches.jsonl
 CC_HTML_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_html'
 CC_NEWS_EMBEDDINGS_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_news_embeddings'  # src/news_embeddings.py
 CC_NEWS_PUBDATES_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_news_pubdates'  # src/news_pubdates.py
+MEDIA_STORMS_DIR = REPO_ROOT / 'data' / 'interim' / 'media_storms'  # scripts/media_storms.py
 CC_NER_DIR = REPO_ROOT / 'data' / 'interim' / 'cc_ner'  # src/ner_html.py, one per cc_html file
 # trained by scripts/train_quote_extractor.py (config/quote_extraction.yaml); not in git
 QUOTE_MODEL_DIR = REPO_ROOT / 'results' / 'train_quote_extractor' / 'electra_small' / 'model'

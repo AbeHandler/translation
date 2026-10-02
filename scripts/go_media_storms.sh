@@ -16,20 +16,20 @@ N_WORKERS=${N_WORKERS:-100}
 workers() {   # workers <step> <dependency or ''> <cpus> <mem>: prints :id:id...
     local ids=""
     for ((i = 0; i < N_WORKERS; i++)); do
-        ids+=":$(sbatch --parsable ${2:+--dependency=$2} --job-name="media_storms_$1" --cpus-per-task="$3" --mem="$4" \
+        ids+=":$(sbatch --parsable ${2:+--dependency=$2} --cpus-per-task="$3" --mem="$4" \
             --export="STEP=$1,MAX_FILES=$MAX_FILES,REDO_EDGES=$REDO_EDGES" scripts/slurm/media_storms.slurm)"
     done
     echo "$ids"
 }
 BY_DAY=$(workers by_day "" 1 8G)
 EDGES=$(workers edges "afterany$BY_DAY" 8 32G)
-CLUSTER=$(sbatch --parsable --dependency="afterany$EDGES" --job-name=media_storms_cluster --cpus-per-task=1 --mem=64G \
+CLUSTER=$(sbatch --parsable --dependency="afterany$EDGES" --cpus-per-task=1 --mem=64G \
     --time=08:00:00 --export="STEP=cluster" scripts/slurm/media_storms.slurm)
-STORMS=$(sbatch --parsable --dependency="afterok:$CLUSTER" --job-name=media_storms_storms --cpus-per-task=1 --mem=64G \
+STORMS=$(sbatch --parsable --dependency="afterok:$CLUSTER" --cpus-per-task=1 --mem=64G \
     --time=08:00:00 --mail-type=END,FAIL --export="STEP=storms" scripts/slurm/media_storms.slurm)
 echo "media_storms: $N_WORKERS by_day, then $N_WORKERS edges, then cluster $CLUSTER, then storms $STORMS"
 echo
 echo "Spot checks:"
-echo "  squeue -u \$USER -o '%j %T' | grep media_storms | sort | uniq -c"
+echo "  squeue -u \$USER --name=media_storms | wc -l"
 echo "  ls data/interim/media_storms/edges | wc -l              # days with edges"
-echo "  tail -25 \$(ls -t logs/scripts/slurm/media_storms_storms_*.out | head -1)   # the storms, largest first"
+echo "  tail -25 logs/scripts/slurm/media_storms_$STORMS.out      # the storms, largest first (when done)"

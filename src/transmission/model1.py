@@ -2,7 +2,9 @@
 model1: does English document i transmit information from Chinese document j? Semi-supervised EM over pairs
 (spec: docs/model1.md). The model layer: arrays in, parameters and posteriors out; no files, no pair building.
 
-Per pair: L (link, a covariate), c (copied Chinese string, observed), y (hand label for z, NaN if none).
+Per pair: L (link, a covariate), c (copied Chinese string, observed), y (hand label for z, NaN if none), and a
+weight w: a row can stand for w identical pairs (the background of unlinked, uncopied, unlabelled pairs,
+src/data/transmission_pairs.py), which counts w times in the likelihood and the M-step.
     p(z=1 | L=l) = pi_l          c | z ~ Bernoulli(gamma_z), gamma_0 = eps fixed, gamma_1 free
 Free parameters: pi0, pi1, gamma1. EM never decreases the conditional log-likelihood of c given L, with z
 clamped to y where labelled; fit() records it at every iteration.
@@ -41,11 +43,12 @@ def _terms(params, L, c, eps):
     return pi, a, b
 
 
-def loglik(params, L, c, y, eps=EPS):
-    """log p(c | L), summing z out for unlabelled pairs and fixing z = y for labelled ones."""
+def loglik(params, L, c, y, eps=EPS, w=None):
+    """log p(c | L), summing z out for unlabelled pairs and fixing z = y for labelled ones; rows weighted by w."""
     pi, a, b = _terms(params, L, c, eps)
     labelled = np.where(y == 1, np.log(pi * a), np.log((1 - pi) * b))
-    return float(np.where(np.isnan(y), np.log(pi * a + (1 - pi) * b), labelled).sum())
+    terms = np.where(np.isnan(y), np.log(pi * a + (1 - pi) * b), labelled)
+    return float((terms * (np.ones_like(terms) if w is None else w)).sum())
 
 
 def posterior(params, L, c, y, eps=EPS):
@@ -58,26 +61,29 @@ def _clip(v):
     return float(np.clip(v, TINY, 1 - TINY))
 
 
-def m_step(r, L, c, params):
-    return Params(pi0=_clip(r[L == 0].mean()) if (L == 0).any() else params.pi0,
-                  pi1=_clip(r[L == 1].mean()) if (L == 1).any() else params.pi1,
-                  gamma1=_clip((r * c).sum() / r.sum()) if r.sum() > 0 else params.gamma1)
+def m_step(r, L, c, params, w):
+    def mean(mask):
+        return (r * w)[mask].sum() / w[mask].sum()
+    return Params(pi0=_clip(mean(L == 0)) if w[L == 0].sum() > 0 else params.pi0,
+                  pi1=_clip(mean(L == 1)) if w[L == 1].sum() > 0 else params.pi1,
+                  gamma1=_clip((r * c * w).sum() / (r * w).sum()) if (r * w).sum() > 0 else params.gamma1)
 
 
-def fit(L, c, y, init=None, eps=EPS, tol=1e-8, max_iter=200):
+def fit(L, c, y, init=None, eps=EPS, tol=1e-8, max_iter=200, w=None):
     """EM. Returns (params, r, log-likelihood after each iteration, starting with the initial one)."""
     L, c, y = (np.asarray(v, dtype=float) for v in (L, c, y))
+    w = np.ones_like(L) if w is None else np.asarray(w, dtype=float)
     params = init or Params.from_labels(L, c, y)
-    history = [loglik(params, L, c, y, eps)]
+    history = [loglik(params, L, c, y, eps, w)]
     for _ in range(max_iter):
-        params = m_step(posterior(params, L, c, y, eps), L, c, params)
-        history.append(loglik(params, L, c, y, eps))
+        params = m_step(posterior(params, L, c, y, eps), L, c, params, w)
+        history.append(loglik(params, L, c, y, eps, w))
         if abs(history[-1] - history[-2]) < tol:
             break
     return params, posterior(params, L, c, y, eps), np.array(history)
 
 
-def evaluate(L, c, y, groups, eps=EPS, n_folds=5, seed=0):
+def evaluate(L, c, y, groups, eps=EPS, n_folds=5, seed=0, w=None):
     """Held-out check: labelled pairs of one group fold at a time (groups: e.g. English doc or outlet) are
     treated as unlabelled, the model is refit, and their r is compared with y. Returns precision and recall at
     r > 0.5, the mean |r - y| (calibration), and the share of unlabelled pairs with 0.1 < r < 0.9."""
@@ -89,16 +95,17 @@ def evaluate(L, c, y, groups, eps=EPS, n_folds=5, seed=0):
     r_held = np.full(len(y), np.nan)
     for fold in np.array_split(names, min(n_folds, len(names))):
         held = labelled & np.isin(groups, fold)
-        _, r, _ = fit(L, c, np.where(held, np.nan, y), eps=eps)
+        _, r, _ = fit(L, c, np.where(held, np.nan, y), eps=eps, w=w)
         r_held[held] = r[held]
     pred, truth = r_held[labelled] > 0.5, y[labelled] == 1
-    _, r_all, _ = fit(L, c, y, eps=eps)
-    unlabelled = r_all[~labelled]
+    _, r_all, _ = fit(L, c, y, eps=eps, w=w)
+    weights = np.ones_like(L) if w is None else np.asarray(w, dtype=float)
+    ambiguous = ((r_all > 0.1) & (r_all < 0.9) & ~labelled)
     return {'labelled': int(labelled.sum()),
             'precision': float((pred & truth).sum() / max(pred.sum(), 1)),
             'recall': float((pred & truth).sum() / max(truth.sum(), 1)),
             'mean_abs_error': float(np.abs(r_held[labelled] - y[labelled]).mean()),
-            'ambiguous_share': float(((unlabelled > 0.1) & (unlabelled < 0.9)).mean()) if len(unlabelled) else 0.0}
+            'ambiguous_share': float(weights[ambiguous].sum() / max(weights[~labelled].sum(), 1))}
 
 
 def fake_data(n=3000, n_labelled=300, pi0=0.05, pi1=0.6, gamma1=0.25, eps=EPS, seed=0):

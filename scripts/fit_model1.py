@@ -2,7 +2,7 @@
 """
 Fit model1 (src/transmission/model1.py, docs/model1.md) to a pair table and write each pair's posterior r_ij =
 P(English doc i transmits Chinese doc j).
-    -pairs  CSV doc_en, doc_zh, L, c, y (scripts/build_transmission_pairs.py)
+    -pairs  CSV doc_en, doc_zh, L, c, y, w (scripts/build_transmission_pairs.py; w: how many pairs a row stands for)
     -out    the same CSV plus r
 Prints the parameters, whether the log-likelihood ever decreased, and a held-out check of the labels (grouped by
 English document, so a document's pairs are never split across folds).
@@ -16,8 +16,8 @@ import argparse
 import numpy as np
 
 from config.paths import TRANSMISSION_PAIRS_PATH
+from src.data.transmission_pairs import read_pairs, write_pairs
 from src.transmission.model1 import EPS, evaluate, fake_data, fit
-from src.transmission.pairs import read_pairs, write_pairs
 
 
 def parse_args():
@@ -33,12 +33,12 @@ def main():
     args = parse_args()
     if args.fake:
         L, c, y, truth = fake_data(eps=args.eps)
-        rows, groups = None, np.arange(len(y)) // 10
+        rows, groups, w = None, np.arange(len(y)) // 10, np.ones_like(L)
     else:
-        rows, L, c, y = read_pairs(args.pairs)
+        rows, L, c, y, w = read_pairs(args.pairs)
         truth, groups = None, np.array([r['doc_en'] for r in rows])
 
-    params, r, history = fit(L, c, y, eps=args.eps)
+    params, r, history = fit(L, c, y, eps=args.eps, w=w)
     steps = np.diff(history)
     print(f'{len(history) - 1} iterations; log-likelihood {history[0]:.2f} -> {history[-1]:.2f}; '
           f'never decreased: {bool((steps >= -1e-9).all())}')
@@ -47,12 +47,12 @@ def main():
     print(f'gamma1 p(copies | transmits)   {params.gamma1:.3f}')
     unlabelled = np.isnan(y)
     print(f'{int(((r > 0.5) & unlabelled & (L == 0)).sum())} unlinked, unlabelled pairs with r > 0.5 '
-          f'(candidate missing links); {int(((r > 0.1) & (r < 0.9) & unlabelled).sum())} ambiguous (0.1 < r < 0.9)')
+          f'(candidate missing links); {int(w[(r > 0.1) & (r < 0.9) & unlabelled].sum()):,} ambiguous (0.1 < r < 0.9)')
     if truth is not None:
         print(f'fake data, true values pi0 0.05, pi1 0.60, gamma1 0.25; accuracy on unlabelled pairs: '
               f'{((r[unlabelled] > 0.5) == truth[unlabelled]).mean():.1%}')
     if (~unlabelled).sum() >= 2:
-        print('held-out labels:', {k: round(v, 3) for k, v in evaluate(L, c, y, groups, eps=args.eps).items()})
+        print('held-out labels:', {k: round(v, 3) for k, v in evaluate(L, c, y, groups, eps=args.eps, w=w).items()})
     if rows is not None:
         out = args.out or args.pairs.replace('.csv', '.r.csv')
         write_pairs([{**row, 'r': f'{ri:.4f}'} for row, ri in zip(rows, r)], out)

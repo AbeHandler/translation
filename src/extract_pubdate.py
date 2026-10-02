@@ -17,8 +17,9 @@ from newspaper.parsers import fromstring
 NEWSPAPER_PUBDATE = PubdateExtractor(Configuration())
 
 
-def extract_pubdate(html, url):
-    """(ISO date string, source), where source says which step above found it, or (None, None)."""
+def extract_pubdate(html, url, extensive=True):
+    """(ISO date string, source), where source says which step above found it, or (None, None). extensive=False
+    skips step 3 (slow, and a guess on pages that aren't articles)."""
     doc = fromstring(html)
     found = NEWSPAPER_PUBDATE.parse(url, doc) if doc is not None else None
     if found:
@@ -26,7 +27,7 @@ def extract_pubdate(html, url):
     found = find_date(html, url=url, original_date=True, extensive_search=False)
     if found:
         return found, 'htmldate'
-    found = find_date(html, url=url, original_date=True, extensive_search=True)
+    found = find_date(html, url=url, original_date=True, extensive_search=True) if extensive else None
     if found:
         return found, 'htmldate_extensive'
     return None, None

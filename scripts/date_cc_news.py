@@ -13,6 +13,7 @@ Run as a module from the repo root:
 import argparse
 import glob
 import os
+import warnings
 
 from config.paths import CC_HTML_DIR, CC_NEWS_EMBEDDINGS_DIR, CC_NEWS_PUBDATES_DIR
 from src.file_worker import process_files
@@ -31,6 +32,7 @@ def parse_args():
 
 def main():
     setup_worker_process()  # logging; SIGTERM (scancel, time limit) exits cleanly and releases the WARC's lock
+    warnings.filterwarnings('ignore', message='tzname .* identified but not understood')  # EDT, IST: day kept
     args = parse_args()
     paths = sorted(glob.glob(os.path.join(args.embeddings_dir, '*.parquet')))
     os.makedirs(args.out_dir, exist_ok=True)

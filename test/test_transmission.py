@@ -42,3 +42,14 @@ def test_candidates_and_their_feature_codes():
     vec = {'e1': np.array([1.0, 0.0]), 'e2': np.array([0.0, 1.0]), 'z1': np.array([0.8, 0.6])}
     X = feature_matrix(pairs, links, {'e2': {'z1': {'具有合法来源'}}}, vec, vec, {'e1': 100, 'e2': None}, {'z1': 98})
     assert X.tolist() == [[1, 0, 4, 1], [0, 1, 4, -1]]   # cosines 0.8, 0.6: top bin (>= 0.6); gap 2 days; no date
+
+
+def test_log_likelihood_never_decreases_with_labels_missing_values_weights_and_fixed_theta():
+    for seed in range(5):
+        X, y, _, n_levels, _ = fake_data(n=3000, n_labelled=100, seed=seed)
+        rng = np.random.default_rng(seed)
+        X[rng.random(X.shape) < 0.1] = -1                        # missing values
+        w = rng.integers(1, 5, len(y)).astype(float)              # weighted rows
+        _, _, history = fit(X, y, n_levels, w=w, positive_hint={0: [1], 1: [1], 2: [1], 3: [3]},
+                            fixed={1: {0: [0.999, 0.001]}})       # copy under z=0 fixed at eps
+        assert len(history) > 2 and (np.diff(history) >= -1e-6).all()

@@ -1,6 +1,7 @@
 # big / generated files
 *.warc.gz
-/data/   # the repo-root data folder only (src/data is code)
+# the repo-root data folder only (src/data is code)
+/data/
 __pycache__/
 logs/
 

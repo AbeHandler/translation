@@ -4,8 +4,8 @@ Fit model1 (src/model/model1.py, docs/model1.md), the latent-class model of tran
 feature matrix and write each pair's posterior r = P(English doc transmits Chinese doc).
     -pairs  CSV doc_en, doc_zh, link, copy, similarity, date_gap, y (scripts/build_transmission_pairs.py)
     -out    the same CSV plus r
-Prints the prior, each feature's distribution given z and its likelihood ratios, and whether the likelihood ever
-decreased. Identical rows are fit once, with a weight.
+Prints the prior, each feature's distribution given z and its likelihood ratios, and whether EM's objective
+(log-likelihood + log-prior) ever decreased. Identical rows are fit once, with a weight.
 
 Run as a module from the repo root:
     python -m scripts.fit_model1 -pairs /tmp/transmission_pairs.csv
@@ -42,7 +42,7 @@ def main():
     params, r_unique, history = fit(Xu, yu, n_levels, w=w, positive_hint=hint)
     r = r_unique[row_of]
     print(f'{len(y)} pairs ({len(w)} distinct rows), {int((~np.isnan(y)).sum())} labelled; '
-          f'{len(history) - 1} iterations, never decreased: {bool((np.diff(history) >= -1e-6).all())}')
+          f'{len(history) - 1} iterations, objective never decreased: {bool((np.diff(history) >= -1e-9).all())}')
     print(f'pi = p(transmits) {params.pi:.3f}')
     for name, th, ratio in zip(names, params.theta, likelihood_ratios(params)):
         print(f'  {name:11} p(x|z=0) {np.round(th[0], 3).tolist()}  p(x|z=1) {np.round(th[1], 3).tolist()}  '

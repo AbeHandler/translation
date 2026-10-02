@@ -67,6 +67,14 @@ def loglik(params, X, y, w):
     return float((terms * w).sum())
 
 
+def objective(params, X, y, w, fixed, alpha=ALPHA):
+    """What EM increases: the log-likelihood plus the log of the Dirichlet(1 + alpha) prior on the free theta
+    (the M-step adds alpha to the expected counts, so it maximizes this, not the bare log-likelihood)."""
+    prior = sum(alpha * np.log(th[z]).sum() for k, th in enumerate(params.theta) for z in (0, 1)
+                if z not in fixed.get(k, {}))
+    return loglik(params, X, y, w) + prior
+
+
 def m_step(r, X, w, n_levels, fixed, alpha=ALPHA):
     pi = float(np.clip((r * w).sum() / w.sum(), TINY, 1 - TINY))
     theta = []
@@ -84,9 +92,8 @@ def m_step(r, X, w, n_levels, fixed, alpha=ALPHA):
 
 def fit(X, y, n_levels, w=None, init=None, fixed=None, positive_hint=None, tol=1e-8, max_iter=500):
     """EM. X: (n, n_features) int codes, -1 missing; y: labels with NaN; fixed: {feature: {z: probs}}.
-    Returns (params, r, log-likelihood after each iteration, starting with the initial one). With ALPHA > 0 EM
-    maximizes the likelihood times a weak Dirichlet prior, so it is that (not the bare likelihood) that never
-    decreases; the difference is negligible for counts this large."""
+    Returns (params, r, the objective (log-likelihood + log-prior, see objective()) after each iteration,
+    starting with the initial one). The objective never decreases."""
     X = np.asarray(X, dtype=int)
     y = np.asarray(y, dtype=float)
     w = np.ones(len(y)) if w is None else np.asarray(w, dtype=float)
@@ -95,10 +102,10 @@ def fit(X, y, n_levels, w=None, init=None, fixed=None, positive_hint=None, tol=1
     for k, by_z in fixed.items():
         for z, probs in by_z.items():
             params.theta[k][z] = np.asarray(probs, dtype=float)
-    history = [loglik(params, X, y, w)]
+    history = [objective(params, X, y, w, fixed)]
     for _ in range(max_iter):
         params = m_step(posterior(params, X, y), X, w, n_levels, fixed)
-        history.append(loglik(params, X, y, w))
+        history.append(objective(params, X, y, w, fixed))
         if abs(history[-1] - history[-2]) < tol:
             break
     return params, posterior(params, X, y), np.array(history)

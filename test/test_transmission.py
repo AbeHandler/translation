@@ -10,7 +10,7 @@ from src.model.model1 import fake_data, fit
 def test_em_without_labels_recovers_the_latent_class_model():
     X, y, z, n_levels, truth = fake_data(n=40000, seed=1)
     params, r, history = fit(X, y, n_levels, positive_hint={0: [1], 1: [1], 2: [1], 3: [3]})
-    assert (np.diff(history) >= -1e-6).all()
+    assert (np.diff(history) >= -1e-9).all()
     assert abs(params.pi - 0.02) < 0.005
     for th, true in zip(params.theta, truth):
         assert np.abs(th - true).max() < 0.08
@@ -44,7 +44,7 @@ def test_candidates_and_their_feature_codes():
     assert X.tolist() == [[1, 0, 4, 1], [0, 1, 4, -1]]   # cosines 0.8, 0.6: top bin (>= 0.6); gap 2 days; no date
 
 
-def test_log_likelihood_never_decreases_with_labels_missing_values_weights_and_fixed_theta():
+def test_em_objective_never_decreases_with_labels_missing_values_weights_and_fixed_theta():
     for seed in range(5):
         X, y, _, n_levels, _ = fake_data(n=3000, n_labelled=100, seed=seed)
         rng = np.random.default_rng(seed)
@@ -52,4 +52,4 @@ def test_log_likelihood_never_decreases_with_labels_missing_values_weights_and_f
         w = rng.integers(1, 5, len(y)).astype(float)              # weighted rows
         _, _, history = fit(X, y, n_levels, w=w, positive_hint={0: [1], 1: [1], 2: [1], 3: [3]},
                             fixed={1: {0: [0.999, 0.001]}})       # copy under z=0 fixed at eps
-        assert len(history) > 2 and (np.diff(history) >= -1e-6).all()
+        assert len(history) > 2 and (np.diff(history) >= -1e-9).all()   # log-likelihood + log-prior

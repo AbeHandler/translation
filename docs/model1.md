@@ -39,7 +39,7 @@ A pair enters the feature matrix if any feature fires for it (a link, a copy, a 
 - Initialize θ_k[0] uniform and θ_k[1] leaning towards the levels that suggest transmission (link = 1, copy = 1, top similarity, gap 0-3 days); this also names the positive class so the components can't swap.
 - E-step: r = π ∏ θ_k[1][x_k] / (π ∏ θ_k[1][x_k] + (1 − π) ∏ θ_k[0][x_k]); r = y for labelled pairs.
 - M-step: π = weighted mean of r; θ_k[z] = weighted counts of each level under r (z=1) and 1 − r (z=0), plus a small Dirichlet α = 0.01.
-- Identical rows are fit once with a weight. Stop when the log-likelihood changes by < 1e-8 (at most 500 iterations); it never decreases (up to the tiny Dirichlet term).
+- Identical rows are fit once with a weight. Stop when the objective changes by < 1e-8 (at most 500 iterations). Because of the Dirichlet term, the quantity EM never decreases is the log-likelihood plus the log-prior (`objective()`), not the bare log-likelihood; `fit()` records it and the tests check it.
 - Any θ_k[z] can be fixed, e.g. copy under z = 0 at a small ε.
 
 ## Assumptions and limits

@@ -9,16 +9,13 @@ Under model1 a pair only matters through its cell (L, c, y): every unlabelled pa
         pairs in the universe
 Every row has a weight w (1 for real pairs), and the model sums log-likelihood terms times w.
 
-The universe is all (English doc, Chinese doc) pairs published within `window_days` of each other (the English
-doc no earlier than window_days before the Chinese one): it is counted from the two documents' dates, not
-enumerated.
+The universe is every (English doc, Chinese doc) pair: n_english x n_chinese, a count, never enumerated.
 
 Copies are found without comparing every pair: an inverted index maps each 4-character Chinese shingle to the
 Chinese documents containing it; a run in an English text is looked up through its shingles and confirmed by
 substring search. Runs that occur in more than `max_df` Chinese documents (common words: 人工智能, 社会治理)
 don't count as copies: they would make chance copying far likelier than gamma_0 = eps assumes.
 """
-import bisect
 import csv
 import re
 from collections import defaultdict
@@ -71,12 +68,6 @@ class CopyIndex:
             for url in self.documents_with(run):
                 out[url].add(run)
         return out
-
-
-def universe_size(en_dates, zh_dates, window_days):
-    """Number of (English, Chinese) date pairs with 0 <= en - zh <= window_days (dates as day numbers)."""
-    zh_sorted = sorted(zh_dates)
-    return sum(bisect.bisect_right(zh_sorted, d) - bisect.bisect_left(zh_sorted, d - window_days) for d in en_dates)
 
 
 def build_pairs(links, en_texts, copy_index, labels, n_universe):

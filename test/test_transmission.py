@@ -2,7 +2,7 @@
 import numpy as np
 
 from src.transmission.model1 import Params, fake_data, fit, loglik
-from src.data.transmission_pairs import CopyIndex, build_pairs, chinese_runs, universe_size
+from src.data.transmission_pairs import CopyIndex, build_pairs, chinese_runs
 
 
 def test_em_never_decreases_the_likelihood_and_recovers_the_parameters():
@@ -34,7 +34,6 @@ def test_pairs_are_sparse_plus_a_background_count_and_weights_count_in_the_fit()
                        labels={('e1', 'z2'): 1}, n_universe=100)
     assert [(r['doc_en'], r['doc_zh'], r['L'], r['c'], r['y'], r['w']) for r in rows] == [
         ('e1', 'z2', 1, 0, 1, 1), ('e2', 'z1', 0, 1, '', 1), ('*', '*', 0, 0, '', 98)]
-    assert universe_size([10, 20], [5, 10, 30], window_days=10) == 3    # 10-5, 10-10, 20-10
     L, c, y, _ = fake_data(n=4000, seed=2)
     background = (L == 0) & (c == 0) & np.isnan(y)
     keep = ~background

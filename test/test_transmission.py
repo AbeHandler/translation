@@ -4,6 +4,7 @@ import numpy as np
 from src.features.candidates import mine_candidates
 from src.features.copying import CopyIndex, chinese_runs
 from src.features.pairs import aggregate, feature_matrix
+from src.features.quoting import quoted_anchor
 from src.model.model1 import fake_data, fit
 
 
@@ -40,8 +41,17 @@ def test_candidates_and_their_feature_codes():
     pairs = mine_candidates(links, copies={'e2': {'z1': {'具有合法来源'}}})
     assert pairs == [('e1', 'z1'), ('e2', 'z1')]
     vec = {'e1': np.array([1.0, 0.0]), 'e2': np.array([0.0, 1.0]), 'z1': np.array([0.8, 0.6])}
-    X = feature_matrix(pairs, links, {'e2': {'z1': {'具有合法来源'}}}, vec, vec, {'e1': 100, 'e2': None}, {'z1': 98})
-    assert X.tolist() == [[1, 0, 4, 1], [0, 1, 4, -1]]   # cosines 0.8, 0.6: top bin (>= 0.6); gap 2 days; no date
+    X = feature_matrix(pairs, links, {('e1', 'z1'): 1}, {'e2': {'z1': {'具有合法来源'}}}, vec, vec,
+                       {'e1': 100, 'e2': None}, {'z1': 98})
+    assert X.tolist() == [[1, 1, 0, 4, 1], [0, -1, 1, 4, -1]]   # cosines 0.8, 0.6: top bin (>= 0.6); gap 2 days
+
+
+def test_a_link_in_quotation_marks():
+    p = 'This “umbrella governance” first establishes the legal central authority.'
+    assert quoted_anchor(p, 'umbrella governance') == 1
+    assert quoted_anchor('China, meanwhile, has released “ interim measures ” for managing AI', 'interim measures') == 1
+    assert quoted_anchor('The rules, published by the CAC, apply to services', 'published') == 0
+    assert quoted_anchor('text', 'not there') == -1
 
 
 def test_em_objective_never_decreases_with_labels_missing_values_weights_and_fixed_theta():

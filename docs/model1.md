@@ -17,6 +17,7 @@ Every feature is weak evidence of transmission:
 | Feature | Codes | Status |
 |---|---|---|
 | link: i links to j | 0/1 | built |
+| quote_link: i's link to j is in quotation marks (marks inside the anchor or right around it) | 0/1, −1 without a link or the English HTML | built |
 | copy: i contains a run of ≥ 4 Chinese characters that also appears in j (runs in more than `max_df` Chinese documents don't count) | 0/1 | built |
 | screenshot: i shows an image of j | 0/1 | not built |
 | similarity: cosine of the documents' embeddings (LaBSE, title + start), binned at 0.3 / 0.4 / 0.5 / 0.6 | 0-4 | built (whole documents; parts of documents later) |
@@ -36,7 +37,7 @@ A pair enters the feature matrix if any feature fires for it (a link, a copy, a 
 
 ## Algorithm
 
-- Initialize θ_k[0] uniform and θ_k[1] leaning towards the levels that suggest transmission (link = 1, copy = 1, top similarity, gap 0-3 days); this also names the positive class so the components can't swap.
+- Initialize θ_k[0] uniform and θ_k[1] leaning towards the levels that suggest transmission (link = 1, quoted link, copy = 1, top similarity, gap 0-3 days); this also names the positive class so the components can't swap.
 - E-step: r = π ∏ θ_k[1][x_k] / (π ∏ θ_k[1][x_k] + (1 − π) ∏ θ_k[0][x_k]); r = y for labelled pairs.
 - M-step: π = weighted mean of r; θ_k[z] = weighted counts of each level under r (z=1) and 1 − r (z=0), plus a small Dirichlet α = 0.01.
 - Identical rows are fit once with a weight. Stop when the objective changes by < 1e-8 (at most 500 iterations). Because of the Dirichlet term, the quantity EM never decreases is the log-likelihood plus the log-prior (`objective()`), not the bare log-likelihood; `fit()` records it and the tests check it.

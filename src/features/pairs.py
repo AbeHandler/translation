@@ -2,6 +2,8 @@
 The feature matrix of candidate pairs (src/features/candidates.py) for the transmission model: one row per
 (English doc, Chinese doc) pair, small integer codes per feature, -1 = missing.
     link        1 if the English doc links to the Chinese doc
+    quote_link  1 if that link is in quotation marks (src/features/quoting.py), 0 if not, -1 if no link or the
+                English page's HTML isn't at hand
     copy        1 if it copies a Chinese run from it (src/features/copying.py)
     similarity  cosine of the two documents' embeddings, binned (SIM_EDGES)
     date_gap    days from the Chinese doc's publication to the English doc's, binned (DATE_EDGES)
@@ -13,9 +15,9 @@ import numpy as np
 
 SIM_EDGES = [0.3, 0.4, 0.5, 0.6]             # similarity levels: < 0.3, 0.3-0.4, 0.4-0.5, 0.5-0.6, >= 0.6
 DATE_EDGES = [0, 4, 31, 366]                 # gap levels: English first (< 0), 0-3, 4-30, 31-365, > 365 days
-FEATURES = ['link', 'copy', 'similarity', 'date_gap']
-N_LEVELS = [2, 2, len(SIM_EDGES) + 1, len(DATE_EDGES) + 1]
-POSITIVE_HINT = {0: [1], 1: [1], 2: [len(SIM_EDGES)], 3: [1]}   # levels that suggest transmission (initial EM)
+FEATURES = ['link', 'quote_link', 'copy', 'similarity', 'date_gap']
+N_LEVELS = [2, 2, 2, len(SIM_EDGES) + 1, len(DATE_EDGES) + 1]
+POSITIVE_HINT = {0: [1], 1: [1], 2: [1], 3: [len(SIM_EDGES)], 4: [1]}   # levels that suggest transmission
 
 
 def binned(values, edges):
@@ -24,17 +26,19 @@ def binned(values, edges):
     return np.where(np.isnan(values), -1, np.digitize(values, edges)).astype(int)
 
 
-def feature_matrix(pairs, links, copies, en_vectors, zh_vectors, en_days, zh_days):
-    """X: (len(pairs), len(FEATURES)) codes. links: set of (en, zh); copies: {en: {zh: runs}}; *_vectors: {url:
-    unit vector} (missing -> similarity -1); *_days: {url: day number} (missing -> date_gap -1)."""
+def feature_matrix(pairs, links, quoted, copies, en_vectors, zh_vectors, en_days, zh_days):
+    """X: (len(pairs), len(FEATURES)) codes. links: set of (en, zh); quoted: {(en, zh): 1/0/-1}; copies: {en:
+    {zh: runs}}; *_vectors: {url: unit vector} (missing -> similarity -1); *_days: {url: day number} (missing ->
+    date_gap -1)."""
     rows = []
     for en, zh in pairs:
         sim = float(en_vectors[en] @ zh_vectors[zh]) if en in en_vectors and zh in zh_vectors else np.nan
         gap = en_days[en] - zh_days[zh] if en_days.get(en) is not None and zh_days.get(zh) is not None else np.nan
-        rows.append([int((en, zh) in links), int(zh in copies.get(en, {})), sim, gap])
-    raw = np.array(rows, dtype=float).reshape(len(pairs), 4)
-    return np.column_stack([raw[:, 0], raw[:, 1], binned(raw[:, 2], SIM_EDGES), binned(raw[:, 3], DATE_EDGES)]
-                           ).astype(int)
+        quote = quoted.get((en, zh), -1) if (en, zh) in links else -1
+        rows.append([int((en, zh) in links), quote, int(zh in copies.get(en, {})), sim, gap])
+    raw = np.array(rows, dtype=float).reshape(len(pairs), 5)
+    return np.column_stack([raw[:, 0], raw[:, 1], raw[:, 2], binned(raw[:, 3], SIM_EDGES),
+                            binned(raw[:, 4], DATE_EDGES)]).astype(int)
 
 
 def aggregate(X, y):

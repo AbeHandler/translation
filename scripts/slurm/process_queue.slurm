@@ -9,7 +9,7 @@
 #SBATCH --time=24:00:00
 #SBATCH --job-name=process_queue
 #SBATCH --output=logs/scripts/slurm/%x_%j.out
-#SBATCH --mem=4G
+#SBATCH --mem=8G
 #SBATCH --qos=cpu-normal
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -26,5 +26,9 @@ fi
 
 module load anaconda
 conda activate translation
+
+export HF_HOME=$TMP/huggingface          # models (zh_images: CLIP), shared cache
+export TESSDATA_PREFIX=$TMP/tessdata     # OCR language files (zh_images; scripts/slurm/update_env.slurm fetches them)
+export TOKENIZERS_PARALLELISM=false
 
 python -m scripts.process_queue -queue-dir "$QUEUE_DIR" -processor "$PROCESSOR" -max-shards "$MAX_SHARDS"

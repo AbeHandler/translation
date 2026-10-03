@@ -30,3 +30,4 @@ datasets==3.5.0      # quote extraction training (src/quote_extraction)
 accelerate==1.15.0
 seqeval==1.2.2
 tldextract==5.3.0    # registered domains (src/cc_news.py); newer API: top_domain_under_public_suffix
+pytesseract==0.3.13  # OCR of screenshots in Chinese articles (src/clip.py); the tesseract program comes from conda

@@ -8,9 +8,13 @@ fetching them into memory with the article as Referer (many Chinese image hosts 
 screen_article(): a high-recall pass over one article that keeps a small row per image (never the image itself):
 its class, and, for anything that may be a screenshot of text, the OCR'd text and its share of Latin letters.
 """
+import gzip
+import hashlib
 import io
+import os
 from urllib.parse import urljoin
 
+import httpx
 import lxml.html
 import numpy as np
 from PIL import Image
@@ -29,6 +33,7 @@ CLASSES = {
 }
 TEXT_CLASSES = ('tweet', 'social_post', 'web_page', 'document')   # screenshots of text: OCR'd
 TEXT_RECALL = 0.25   # high recall: OCR an image if these classes together have at least this probability
+ENGLISH_MIN_LATIN, ENGLISH_MIN_CHARS = 0.6, 20   # an English screenshot: a text class, mostly Latin, not a few words
 MIN_SIDE = 200                     # images smaller than this (icons, spacers, avatars) are skipped
 HEADERS = {'User-Agent': 'Mozilla/5.0 (research crawler; abha4861@colorado.edu)'}
 
@@ -95,14 +100,16 @@ def latin_share(text):
 
 
 def screen_article(html, page_url, client, classifier, ocr=None, max_images=40):
-    """[{page, src, alt, width, height, label, score, text_prob, ocr_text, latin}] for the article's body images:
-    each is fetched into memory, classified, OCR'd (ocr(image) -> text, if given) when the text-screenshot
-    classes together reach TEXT_RECALL, and dropped. Images that can't be fetched get label None."""
+    """[{page, src, alt, width, height, label, score, text_prob, ocr_text, latin, english_screenshot}] for the
+    article's body images (src: the image's URL; the image itself is never saved): each is fetched into memory,
+    classified, OCR'd (ocr(image) -> text, if given) when the text-screenshot classes together reach TEXT_RECALL,
+    and dropped. Images that can't be fetched get label None."""
     rows, images = [], []
     for img in body_images(html, page_url)[:max_images]:
         image = fetch_image(img['src'], page_url, client)
         rows.append({'page': page_url, 'src': img['src'], 'alt': img['alt'], 'width': None, 'height': None,
-                     'label': None, 'score': None, 'text_prob': None, 'ocr_text': None, 'latin': None})
+                     'label': None, 'score': None, 'text_prob': None, 'ocr_text': None, 'latin': None,
+                     'english_screenshot': False})
         images.append(image)
     fetched = [i for i, image in enumerate(images) if image is not None]
     for i, (label, score, scores) in zip(fetched, classifier.classify([images[i] for i in fetched])):
@@ -111,5 +118,28 @@ def screen_article(html, page_url, client, classifier, ocr=None, max_images=40):
                        text_prob=round(text_prob, 3))
         if ocr and text_prob >= TEXT_RECALL:
             text = ocr(images[i])
-            rows[i].update(ocr_text=text, latin=round(latin_share(text), 3))
+            latin = latin_share(text)
+            rows[i].update(ocr_text=text, latin=round(latin, 3), english_screenshot=bool(
+                label in TEXT_CLASSES and latin >= ENGLISH_MIN_LATIN and len(text) >= ENGLISH_MIN_CHARS))
     return rows
+
+
+class ZhImageScreener:
+    """Shard-queue row processor ({url} -> {n_images, n_english_screenshots, images}) for the Chinese documents:
+    the page's HTML is the one zh_docs saved (<html_dir>/<sha1 of url>.html.gz), its images are screened with
+    screen_article()."""
+
+    def __init__(self, html_dir, classifier=None, ocr=None):
+        self.html_dir = html_dir
+        self.classifier = classifier or ImageClassifier()
+        self.ocr = ocr or tesseract_ocr
+        self.client = httpx.Client()
+
+    def screen(self, row):
+        path = os.path.join(self.html_dir, hashlib.sha1(row['url'].encode()).hexdigest() + '.html.gz')
+        if not os.path.exists(path):
+            raise FileNotFoundError(f'no saved HTML for {row["url"]} ({path})')
+        with gzip.open(path, 'rt', encoding='utf-8', errors='replace') as f:
+            images = screen_article(f.read(), row['url'], self.client, self.classifier, self.ocr)
+        return {'n_images': len(images), 'n_english_screenshots': sum(i['english_screenshot'] for i in images),
+                'images': images}

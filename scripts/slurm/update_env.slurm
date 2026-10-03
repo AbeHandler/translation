@@ -28,5 +28,13 @@ if ! conda env list | grep -q "^${ENV_NAME} "; then
 fi
 conda activate "$ENV_NAME"
 pip install -r config/requirements.txt
+# Tesseract (OCR, src/clip.py): the program from conda-forge, the fast English + simplified Chinese models to $TMP
+command -v tesseract > /dev/null || conda install -y -c conda-forge tesseract
+mkdir -p "$TMP/tessdata"
+for lang in eng chi_sim; do
+    [ -s "$TMP/tessdata/$lang.traineddata" ] || curl -sL -o "$TMP/tessdata/$lang.traineddata" \
+        "https://github.com/tesseract-ocr/tessdata_fast/raw/main/$lang.traineddata"
+done
+TESSDATA_PREFIX=$TMP/tessdata tesseract --list-langs
 python -c "import spacy; spacy.load('en_core_web_trf'); print('spaCy model ok')"
-python -c "import newsplease, newspaper, htmldate, warcio, readability, lxml, tqdm, scrapy, torch, sentence_transformers, annoy, httpx, tenacity, google.auth, dotenv, datasets, accelerate, seqeval; print('env ok')"
+python -c "import newsplease, newspaper, htmldate, warcio, readability, lxml, tqdm, scrapy, torch, sentence_transformers, annoy, httpx, tenacity, google.auth, dotenv, datasets, accelerate, seqeval, pytesseract; print('env ok')"

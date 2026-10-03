@@ -124,3 +124,49 @@ chinanews.com.cn
 gmw.cn
 stdaily.com
 cctv.com
+
+
+# 36Kr 36氪 China's crunchbase?
+36kr.com/information/web_news/latest/
+
+# Huxiu 虎嗅
+https://www.huxiu.com/
+
+# Cyzone 创业邦
+cyzone.cn/channel/news
+
+# Leiphone 雷锋网
+https://www.leiphone.com/
+
+# iHeima i黑马
+https://www.iheima.com/
+
+# TMTPost 钛媒体
+https://www.tmtpost.com/
+
+# EqualOcean / EO 亿欧
+https://www.iyiou.com/
+
+# Im2Maker 镁客网
+im2maker.com/category/industry
+
+# GeekPark 极客公园
+geekpark.net/
+
+# iKanchai 砍柴网
+https://www.ikanchai.com/
+
+# Jiqizhixin 机器之心
+https://www.jiqizhixin.com/
+
+# QbitAI 量子位
+https://www.qbitai.com/
+
+# AI Era 新智元
+aiera.com.cn/
+
+# Zhidx 智东西
+https://zhidx.com/
+
+# ITHome IT之家
+https://www.ithome.com/

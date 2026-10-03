@@ -108,7 +108,10 @@ def screen_article(html, page_url, client, classifier, ocr=None, max_images=40):
     """[{page, src, alt, width, height, label, score, text_prob, ocr_text, latin, english_screenshot}] for the
     article's body images (src: the image's URL; the image itself is never saved): each is fetched into memory,
     classified, OCR'd (ocr(image) -> text, if given) when the text-screenshot classes together reach TEXT_RECALL,
-    and dropped. Images that can't be fetched get label None."""
+    and dropped. Images that can't be fetched get label None.
+
+    Important. Do not save or store images. Too much storage. Stream and classify. 10/2/26
+    """
     rows, images = [], []
     for img in body_images(html, page_url)[:max_images]:
         image = fetch_image(img['src'], page_url, client)

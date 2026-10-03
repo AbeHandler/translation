@@ -1,5 +1,5 @@
 #!/bin/bash
-# Queue the linked Chinese pages for fetching as documents (scripts/zh_images_queue.py): the cleaned en->zh link
+# Queue the Chinese documents for screening their images (scripts/zh_images_queue.py): zh_docs.jsonl
 # -> $TMP/zh_images_queue (TMP from ~/.myrc). Quick. Then screen them:
 #   bash scripts/process_queue.sh zh_images
 #

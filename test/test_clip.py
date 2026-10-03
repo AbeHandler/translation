@@ -28,3 +28,12 @@ def test_latin_share_tells_english_screenshots_from_chinese_ones():
     from src.clip import latin_share
     assert latin_share('Experts debunk fringe theory linking China’s coronavirus') == 1.0
     assert latin_share('美国将出台新规，进一步限制GPU出口中国') < 0.3
+
+
+def test_english_needs_words_or_a_handle_not_just_model_numbers():
+    from src.clip import is_english
+    assert is_english('Experts debunk fringe theory linking China’s coronavirus to weapons research')
+    assert is_english('kopite7kimi @kopite7kimi GeForce RTX 5090 PG144/145-SKU30 GB202-300-A1')
+    assert is_english('Eric Trump @ Se) We are so backll!')
+    assert not is_english('Vy GEFORCE RTX F- RTX4060Ti 4060Ti')
+    assert not is_english('英 伟 达 tesla a100 BF, 40/806 cs 制版 6.3w/ 定制 版 3.7W 站 100 片 40g+100 片 80')

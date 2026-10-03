@@ -1,7 +1,7 @@
 """
 What kind of image is this? Zero-shot classification with CLIP (clip-ViT-B-32 through sentence-transformers;
 free, local, CPU): an image's class is the description it is most similar to. For finding English screenshots
-(tweets, web pages) in Chinese articles; reading them is a later OCR step. Logic only.
+(posts, web pages) in Chinese articles; reading them is a later OCR step. Logic only.
 
 Also: pulling an article's body images out of its HTML (readability, so logos and sidebars are left out),
 fetching them into memory with the article as Referer (many Chinese image hosts refuse requests without one), and
@@ -12,6 +12,7 @@ import gzip
 import hashlib
 import io
 import os
+import re
 from urllib.parse import urljoin
 
 import httpx
@@ -21,19 +22,17 @@ from PIL import Image
 from readability import Document
 
 MODEL = 'clip-ViT-B-32'
-CLASSES = {
-    'tweet': 'a screenshot of a tweet on Twitter or X',
-    'social_post': 'a screenshot of a social media post with comments',
-    'web_page': 'a screenshot of a news article or web page with text',
-    'document': 'a screenshot of a document, paper or announcement with paragraphs of text',
-    'chart': 'a chart, graph or table of numbers',
+CLASSES = {   # two text classes, and two that pull non-text images away (zero-shot scores compete)
+    'post': 'a screenshot of a social media post or tweet',
+    'page': 'a screenshot of a web page, article or document with text',
     'photo': 'a photograph of people, places or objects',
-    'product': 'a product photo or advertisement',
-    'logo': 'a logo or icon',
+    'graphic': 'a chart, logo, icon or advertisement',
 }
-TEXT_CLASSES = ('tweet', 'social_post', 'web_page', 'document')   # screenshots of text: OCR'd
+TEXT_CLASSES = ('post', 'page')   # screenshots of text: OCR'd
 TEXT_RECALL = 0.25   # high recall: OCR an image if these classes together have at least this probability
-ENGLISH_MIN_LATIN, ENGLISH_MIN_CHARS = 0.6, 20   # an English screenshot: a text class, mostly Latin, not a few words
+ENGLISH_MIN_LATIN, ENGLISH_MIN_WORDS = 0.6, 4   # an English screenshot: a text class, mostly Latin, and words or a
+ENGLISH_WORD = re.compile(r'(?<![A-Za-z])[A-Za-z]{3,}(?![A-Za-z])')   # handle (not just model numbers: RTX 4060Ti)
+HANDLE = re.compile(r'@\w{3,}')
 MIN_SIDE = 200                     # images smaller than this (icons, spacers, avatars) are skipped
 HEADERS = {'User-Agent': 'Mozilla/5.0 (research crawler; abha4861@colorado.edu)'}
 
@@ -94,6 +93,12 @@ def tesseract_ocr(image, langs='eng+chi_sim'):
     return ' '.join(pytesseract.image_to_string(image, lang=langs).split())
 
 
+def is_english(text):
+    """Mostly Latin letters, and real English words (ENGLISH_MIN_WORDS of 3+ letters) or an @handle."""
+    words = len(ENGLISH_WORD.findall(text))
+    return latin_share(text) >= ENGLISH_MIN_LATIN and (words >= ENGLISH_MIN_WORDS or bool(HANDLE.search(text)))
+
+
 def latin_share(text):
     letters = [ch for ch in text if ch.isalpha()]
     return sum(ch.isascii() for ch in letters) / len(letters) if letters else 0.0
@@ -118,9 +123,8 @@ def screen_article(html, page_url, client, classifier, ocr=None, max_images=40):
                        text_prob=round(text_prob, 3))
         if ocr and text_prob >= TEXT_RECALL:
             text = ocr(images[i])
-            latin = latin_share(text)
-            rows[i].update(ocr_text=text, latin=round(latin, 3), english_screenshot=bool(
-                label in TEXT_CLASSES and latin >= ENGLISH_MIN_LATIN and len(text) >= ENGLISH_MIN_CHARS))
+            rows[i].update(ocr_text=text, latin=round(latin_share(text), 3),
+                           english_screenshot=label in TEXT_CLASSES and is_english(text))
     return rows
 
 

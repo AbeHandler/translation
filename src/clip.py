@@ -32,6 +32,7 @@ TEXT_RECALL = 0.25   # high recall: OCR an image if these classes together have 
 ENGLISH_MIN_LATIN, ENGLISH_MIN_WORDS = 0.6, 4   # an English screenshot: a text class, mostly Latin, and words or a
 ENGLISH_WORD = re.compile(r'(?<![A-Za-z])[A-Za-z]{3,}(?![A-Za-z])')   # handle (not just model numbers: RTX 4060Ti)
 HANDLE = re.compile(r'@\w{3,}')
+ENGLISH_MIN_CONF = 70   # Tesseract's mean confidence in the Latin words: OCR noise ("mse Tid dad AAA") is lower
 MIN_SIDE = 200                     # images smaller than this (icons, spacers, avatars) are skipped
 HEADERS = {'User-Agent': 'Mozilla/5.0 (research crawler; abha4861@colorado.edu)'}
 
@@ -87,15 +88,22 @@ class ImageClassifier:
 
 
 def tesseract_ocr(image, langs='eng+chi_sim'):
-    """The image's text, by Tesseract (free, local; needs its eng and chi_sim language files, TESSDATA_PREFIX)."""
+    """(text, latin_conf): the image's text by Tesseract (free, local; needs its eng and chi_sim language files,
+    TESSDATA_PREFIX), and Tesseract's mean confidence (0-100) in the words of 3+ Latin letters it read (0 if none):
+    real English is read with high confidence, noise from a Chinese image or a photo is not."""
     import pytesseract
-    return ' '.join(pytesseract.image_to_string(image, lang=langs).split())
+    data = pytesseract.image_to_data(image, lang=langs, output_type=pytesseract.Output.DICT)
+    words = [(w, float(c)) for w, c in zip(data['text'], data['conf']) if w.strip()]
+    latin = [c for w, c in words if ENGLISH_WORD.search(w) and c >= 0]
+    return ' '.join(w for w, _ in words), (sum(latin) / len(latin) if latin else 0.0)
 
 
-def is_english(text):
-    """Mostly Latin letters, and real English words (ENGLISH_MIN_WORDS of 3+ letters) or an @handle."""
+def is_english(text, latin_conf=100.0):
+    """Mostly Latin letters, read with confidence (latin_conf >= ENGLISH_MIN_CONF), and real English words
+    (ENGLISH_MIN_WORDS of 3+ letters) or an @handle."""
     words = len(ENGLISH_WORD.findall(text))
-    return latin_share(text) >= ENGLISH_MIN_LATIN and (words >= ENGLISH_MIN_WORDS or bool(HANDLE.search(text)))
+    return (latin_share(text) >= ENGLISH_MIN_LATIN and latin_conf >= ENGLISH_MIN_CONF
+            and (words >= ENGLISH_MIN_WORDS or bool(HANDLE.search(text))))
 
 
 def latin_share(text):
@@ -106,8 +114,8 @@ def latin_share(text):
 def screen_article(html, page_url, client, classifier, ocr=None, max_images=40):
     """[{page, src, alt, width, height, label, score, text_prob, ocr_text, latin, english_screenshot}] for the
     article's body images (src: the image's URL; the image itself is never saved): each is fetched into memory,
-    classified, OCR'd (ocr(image) -> text, if given) when the text-screenshot classes together reach TEXT_RECALL,
-    and dropped. Images that can't be fetched get label None.
+    classified, OCR'd (ocr(image) -> (text, latin_conf), if given) when the text-screenshot classes together reach
+    TEXT_RECALL, and dropped. Images that can't be fetched get label None.
 
     Important. Do not save or store images. Too much storage. Stream and classify. 10/2/26
     """
@@ -116,6 +124,7 @@ def screen_article(html, page_url, client, classifier, ocr=None, max_images=40):
         image = fetch_image(img['src'], page_url, client)
         rows.append({'page': page_url, 'src': img['src'], 'alt': img['alt'], 'width': None, 'height': None,
                      'label': None, 'score': None, 'text_prob': None, 'ocr_text': None, 'latin': None,
+                     'latin_conf': None,
                      'english_screenshot': False})
         images.append(image)
     fetched = [i for i, image in enumerate(images) if image is not None]
@@ -125,9 +134,9 @@ def screen_article(html, page_url, client, classifier, ocr=None, max_images=40):
         rows[i].update(width=images[i].size[0], height=images[i].size[1], label=label, score=round(score, 3),
                        text_prob=round(text_prob, 3))
         if ocr and text_prob >= TEXT_RECALL:
-            text = ocr(images[i])
-            rows[i].update(ocr_text=text, latin=round(latin_share(text), 3),
-                           english_screenshot=label in TEXT_CLASSES and is_english(text))
+            text, conf = ocr(images[i])
+            rows[i].update(ocr_text=text, latin=round(latin_share(text), 3), latin_conf=round(conf, 1),
+                           english_screenshot=label in TEXT_CLASSES and is_english(text, conf))
     return rows
 
 

@@ -36,6 +36,8 @@ def test_english_needs_words_or_a_handle_not_just_model_numbers():
     assert is_english('kopite7kimi @kopite7kimi GeForce RTX 5090 PG144/145-SKU30 GB202-300-A1')
     assert is_english('Eric Trump @ Se) We are so backll!')
     assert not is_english('Vy GEFORCE RTX F- RTX4060Ti 4060Ti')
+    assert not is_english('mse Tid dad AAA A Ach hed See eee = pga Chinanews.com', latin_conf=29.9)   # OCR noise
+    assert is_english('Experts debunk fringe theory linking China’s coronavirus', latin_conf=83.0)
     assert not is_english('英 伟 达 tesla a100 BF, 40/806 cs 制版 6.3w/ 定制 版 3.7W 站 100 片 40g+100 片 80')
 
 

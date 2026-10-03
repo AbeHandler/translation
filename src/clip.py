@@ -3,8 +3,10 @@ What kind of image is this? Zero-shot classification with CLIP (clip-ViT-B-32 th
 free, local, CPU): an image's class is the description it is most similar to. For finding English screenshots
 (tweets, web pages) in Chinese articles; reading them is a later OCR step. Logic only.
 
-Also: pulling an article's body images out of its HTML (readability, so logos and sidebars are left out), and
-fetching them with the article as Referer (many Chinese image hosts refuse requests without one).
+Also: pulling an article's body images out of its HTML (readability, so logos and sidebars are left out),
+fetching them into memory with the article as Referer (many Chinese image hosts refuse requests without one), and
+screen_article(): a high-recall pass over one article that keeps a small row per image (never the image itself):
+its class, and, for anything that may be a screenshot of text, the OCR'd text and its share of Latin letters.
 """
 import io
 from urllib.parse import urljoin
@@ -25,6 +27,8 @@ CLASSES = {
     'product': 'a product photo or advertisement',
     'logo': 'a logo or icon',
 }
+TEXT_CLASSES = ('tweet', 'social_post', 'web_page', 'document')   # screenshots of text: OCR'd
+TEXT_RECALL = 0.25   # high recall: OCR an image if these classes together have at least this probability
 MIN_SIDE = 200                     # images smaller than this (icons, spacers, avatars) are skipped
 HEADERS = {'User-Agent': 'Mozilla/5.0 (research crawler; abha4861@colorado.edu)'}
 
@@ -77,3 +81,35 @@ class ImageClassifier:
         probs = np.exp(logits - logits.max(1, keepdims=True))
         probs /= probs.sum(1, keepdims=True)
         return [(self.names[int(p.argmax())], float(p.max()), dict(zip(self.names, map(float, p)))) for p in probs]
+
+
+def tesseract_ocr(image, langs='eng+chi_sim'):
+    """The image's text, by Tesseract (free, local; needs its eng and chi_sim language files, TESSDATA_PREFIX)."""
+    import pytesseract
+    return ' '.join(pytesseract.image_to_string(image, lang=langs).split())
+
+
+def latin_share(text):
+    letters = [ch for ch in text if ch.isalpha()]
+    return sum(ch.isascii() for ch in letters) / len(letters) if letters else 0.0
+
+
+def screen_article(html, page_url, client, classifier, ocr=None, max_images=40):
+    """[{page, src, alt, width, height, label, score, text_prob, ocr_text, latin}] for the article's body images:
+    each is fetched into memory, classified, OCR'd (ocr(image) -> text, if given) when the text-screenshot
+    classes together reach TEXT_RECALL, and dropped. Images that can't be fetched get label None."""
+    rows, images = [], []
+    for img in body_images(html, page_url)[:max_images]:
+        image = fetch_image(img['src'], page_url, client)
+        rows.append({'page': page_url, 'src': img['src'], 'alt': img['alt'], 'width': None, 'height': None,
+                     'label': None, 'score': None, 'text_prob': None, 'ocr_text': None, 'latin': None})
+        images.append(image)
+    fetched = [i for i, image in enumerate(images) if image is not None]
+    for i, (label, score, scores) in zip(fetched, classifier.classify([images[i] for i in fetched])):
+        text_prob = sum(scores[c] for c in TEXT_CLASSES)
+        rows[i].update(width=images[i].size[0], height=images[i].size[1], label=label, score=round(score, 3),
+                       text_prob=round(text_prob, 3))
+        if ocr and text_prob >= TEXT_RECALL:
+            text = ocr(images[i])
+            rows[i].update(ocr_text=text, latin=round(latin_share(text), 3))
+    return rows

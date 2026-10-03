@@ -22,3 +22,9 @@ def test_body_images_are_absolute_and_lazy_sources_win():
             f'<img src="/blank.gif" data-src="/a/shot.jpg" alt="截图来自《华盛顿邮报》">{para}</article></body></html>')
     assert body_images(html, 'https://news.sina.com.cn/c/1.shtml') == [
         {'src': 'https://news.sina.com.cn/a/shot.jpg', 'alt': '截图来自《华盛顿邮报》'}]
+
+
+def test_latin_share_tells_english_screenshots_from_chinese_ones():
+    from src.clip import latin_share
+    assert latin_share('Experts debunk fringe theory linking China’s coronavirus') == 1.0
+    assert latin_share('美国将出台新规，进一步限制GPU出口中国') < 0.3

@@ -62,6 +62,7 @@ def fetch_image(src, page_url, client):
         if response.status_code != 200:
             return None
         image = Image.open(io.BytesIO(response.content)).convert('RGB')
+        image.info.pop('transparency', None)   # left over from palette PNGs; breaks saving it for Tesseract
     except Exception:
         return None
     return image if min(image.size) >= MIN_SIDE else None
@@ -134,7 +135,11 @@ def screen_article(html, page_url, client, classifier, ocr=None, max_images=40):
         rows[i].update(width=images[i].size[0], height=images[i].size[1], label=label, score=round(score, 3),
                        text_prob=round(text_prob, 3))
         if ocr and text_prob >= TEXT_RECALL:
-            text, conf = ocr(images[i])
+            try:
+                text, conf = ocr(images[i])
+            except Exception as exc:   # one unreadable image shouldn't lose the whole file: recorded, not skipped
+                rows[i]['ocr_error'] = f'{type(exc).__name__}: {exc}'[:200]
+                continue
             rows[i].update(ocr_text=text, latin=round(latin_share(text), 3), latin_conf=round(conf, 1),
                            english_screenshot=label in TEXT_CLASSES and is_english(text, conf))
     return rows

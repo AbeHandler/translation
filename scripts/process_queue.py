@@ -13,7 +13,6 @@ import logging
 from urllib.parse import urlparse
 
 from config.paths import link_language_cache_dir, zh_docs_html_dir
-from src.clip import ZhImageScreener
 from src.link_language.labeler import LinkLanguageLabeler
 from src.shard_queue.worker import process_queue
 from src.warc_worker_cli import optional_int, setup_worker_process
@@ -30,7 +29,6 @@ PROCESSORS = {
     'domain': lambda: domain,
     'link_language': lambda: LinkLanguageLabeler(str(link_language_cache_dir())).label,
     'zh_doc': lambda: ZhDocFetcher(str(zh_docs_html_dir())).doc,
-    'zh_images': lambda: ZhImageScreener(str(zh_docs_html_dir())).screen,
 }
 
 

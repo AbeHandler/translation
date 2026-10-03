@@ -26,7 +26,6 @@ WIKIPEDIA_CONFIG = REPO_ROOT / 'config' / 'wikipedia.yaml'
 WIKIPEDIA_DIR = REPO_ROOT / 'data' / 'interim' / 'wikipedia'  # <lang>/pages/chunk_*.parquet, <lang>/ai_pages.parquet
 NEWS_EN_ZH_LINKS_PATH = REPO_ROOT / 'data' / 'processed' / 'news_en_zh_links.jsonl'  # scripts/collect_queue.py
 TRANSMISSION_PAIRS_PATH = REPO_ROOT / 'data' / 'processed' / 'transmission_pairs.csv'  # src/transmission
-ZH_IMAGES_PATH = REPO_ROOT / 'data' / 'processed' / 'zh_images.jsonl'  # images of the Chinese documents
 ZH_DOCS_PATH = REPO_ROOT / 'data' / 'processed' / 'zh_docs.jsonl'  # the fetched Chinese documents (src/zh_docs.py)
 TRANSLATIONS_DB = REPO_ROOT / 'data' / 'processed' / 'translations.sqlite'  # src/translation/store.py
 
@@ -74,11 +73,6 @@ def news_similarity_weights_path():
 def zh_docs_queue_dir():
     """The queue of linked Chinese pages to fetch as documents (scripts/zh_docs_queue.py, src/zh_docs.py)."""
     return _tmp_dir('zh_docs_queue')
-
-
-def zh_images_queue_dir():
-    """The queue of Chinese documents whose images are screened for English screenshots (src/clip.py)."""
-    return _tmp_dir('zh_images_queue')
 
 
 def zh_docs_html_dir():

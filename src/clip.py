@@ -8,16 +8,15 @@ fetching them into memory with the article as Referer (many Chinese image hosts 
 screen_article(): a high-recall pass over one article that keeps a small row per image (never the image itself):
 its class, and, for anything that may be a screenshot of text, the OCR'd text and its share of Latin letters.
 """
-import gzip
-import hashlib
 import io
+import json
 import os
 import re
 from urllib.parse import urljoin
 
-import httpx
 import lxml.html
 import numpy as np
+import pyarrow.parquet as pq
 from PIL import Image
 from readability import Document
 
@@ -120,7 +119,8 @@ def screen_article(html, page_url, client, classifier, ocr=None, max_images=40):
                      'english_screenshot': False})
         images.append(image)
     fetched = [i for i, image in enumerate(images) if image is not None]
-    for i, (label, score, scores) in zip(fetched, classifier.classify([images[i] for i in fetched])):
+    labelled = classifier.classify([images[i] for i in fetched]) if fetched else []
+    for i, (label, score, scores) in zip(fetched, labelled):
         text_prob = sum(scores[c] for c in TEXT_CLASSES)
         rows[i].update(width=images[i].size[0], height=images[i].size[1], label=label, score=round(score, 3),
                        text_prob=round(text_prob, 3))
@@ -131,22 +131,35 @@ def screen_article(html, page_url, client, classifier, ocr=None, max_images=40):
     return rows
 
 
-class ZhImageScreener:
-    """Shard-queue row processor ({url} -> {n_images, n_english_screenshots, images}) for the Chinese documents:
-    the page's HTML is the one zh_docs saved (<html_dir>/<sha1 of url>.html.gz), its images are screened with
-    screen_article()."""
+AI_ZH = re.compile(r'(?<![A-Za-z])AI(?![A-Za-z])|人工智能|大模型|生成式|ChatGPT|DeepSeek|OpenAI|算力|智能体')
 
-    def __init__(self, html_dir, classifier=None, ocr=None):
-        self.html_dir = html_dir
-        self.classifier = classifier or ImageClassifier()
-        self.ocr = ocr or tesseract_ocr
-        self.client = httpx.Client()
 
-    def screen(self, row):
-        path = os.path.join(self.html_dir, hashlib.sha1(row['url'].encode()).hexdigest() + '.html.gz')
-        if not os.path.exists(path):
-            raise FileNotFoundError(f'no saved HTML for {row["url"]} ({path})')
-        with gzip.open(path, 'rt', encoding='utf-8', errors='replace') as f:
-            images = screen_article(f.read(), row['url'], self.client, self.classifier, self.ocr)
-        return {'n_images': len(images), 'n_english_screenshots': sum(i['english_screenshot'] for i in images),
-                'images': images}
+def about_ai(html):
+    """True if the page's visible text mentions AI (in Chinese or English): the pages worth screening."""
+    try:
+        text = lxml.html.fromstring(html).text_content()
+    except Exception:
+        return False
+    return bool(AI_ZH.search(text))
+
+
+def screen_html_file(html_path, out_path, classifier, ocr, client, ai_only=True):
+    """Screen the images of every page in a crawl's HTML Parquet file (the scrapy crawls' html/<part>.parquet)
+    whose text is about AI; write one JSONL row per page {url, n_images, n_english_screenshots, images} (image
+    URLs and their screening, never the images) via .part. Returns counts."""
+    n_pages = n_screened = n_english = 0
+    with open(out_path + '.part', 'w', encoding='utf-8') as f:
+        for batch in pq.ParquetFile(html_path).iter_batches(batch_size=50, columns=['url', 'html']):
+            for page in batch.to_pylist():
+                n_pages += 1
+                html = page['html'].decode('utf-8', errors='replace') if isinstance(page['html'], bytes) \
+                    else page['html']
+                if not html or (ai_only and not about_ai(html)):
+                    continue
+                images = screen_article(html, page['url'], client, classifier, ocr)
+                english = sum(i['english_screenshot'] for i in images)
+                n_screened, n_english = n_screened + 1, n_english + english
+                f.write(json.dumps({'url': page['url'], 'n_images': len(images), 'n_english_screenshots': english,
+                                    'images': images}, ensure_ascii=False) + '\n')
+    os.rename(out_path + '.part', out_path)
+    return {'pages': n_pages, 'screened': n_screened, 'english_screenshots': n_english}

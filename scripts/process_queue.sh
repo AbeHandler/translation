@@ -11,8 +11,6 @@
 #   wikipedia_en  $TMP/wikipedia_queue/en  -> data/processed/wikipedia_en_link_languages.jsonl
 #   cc_full       $TMP/cc_full_queue       -> data/processed/cc_full_en_zh_links.jsonl (all English pages; -> Chinese)
 #                                                                                       (scripts/cc_full.py)
-#   zh_images     $TMP/zh_images_queue     -> data/processed/zh_images.jsonl  the documents' images screened for
-#                                                                             English screenshots (src/clip.py)
 #   zh_docs       $TMP/zh_docs_queue       -> data/processed/zh_docs.jsonl  the linked Chinese pages as documents
 #                                                                           (scripts/zh_docs_queue.py, src/zh_docs.py)
 # WHERE (set per queue below) keeps only those rows in the collected file; the summary counts every row.
@@ -43,10 +41,8 @@ case "${1:-}" in
                    WHERE='language=zh' ;;
     zh_docs)       QUEUE_DIR=$TMP/zh_docs_queue;      OUT=data/processed/zh_docs.jsonl
                    PROCESSOR=${PROCESSOR:-zh_doc}; KEY=url; COUNT=is_document ;;
-    zh_images)     QUEUE_DIR=$TMP/zh_images_queue;    OUT=data/processed/zh_images.jsonl
-                   PROCESSOR=${PROCESSOR:-zh_images}; KEY=url; COUNT=n_english_screenshots ;;
     "")            OUT=${OUT:-$QUEUE_DIR/collected.jsonl} ;;  # QUEUE_DIR given directly
-    *)             echo "ERROR: unknown queue '$1'; use news, cc_full, zh_docs, zh_images, wikipedia_zh or wikipedia_en"; exit 1 ;;
+    *)             echo "ERROR: unknown queue '$1'; use news, cc_full, zh_docs, wikipedia_zh or wikipedia_en"; exit 1 ;;
 esac
 PROCESSOR=${PROCESSOR:-link_language}
 if [ -z "${QUEUE_DIR:-}" ]; then

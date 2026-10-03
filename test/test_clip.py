@@ -37,3 +37,22 @@ def test_english_needs_words_or_a_handle_not_just_model_numbers():
     assert is_english('Eric Trump @ Se) We are so backll!')
     assert not is_english('Vy GEFORCE RTX F- RTX4060Ti 4060Ti')
     assert not is_english('英 伟 达 tesla a100 BF, 40/806 cs 制版 6.3w/ 定制 版 3.7W 站 100 片 40g+100 片 80')
+
+
+def test_a_crawl_file_is_screened_page_by_page_ai_pages_only(tmp_path, monkeypatch):
+    import json
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    import src.clip as clip
+    from src.cc_news import ArticleHtmlArchiver
+    monkeypatch.setattr(clip, 'fetch_image', lambda src, page, client: None)   # no network in tests
+    para = '<p>' + '人工智能大模型正在改变新闻业。' * 20 + '</p><img src="/shot.jpg" alt="截图来自推特">'
+    rows = [{'url': f'https://zh.com/{i}', 'language': 'zh', 'warc_date': '', 'content_type': 'text/html',
+             'record_id': str(i), 'html': f'<html><body><article>{text}</article></body></html>'.encode()}
+            for i, text in enumerate([para, '<p>' + '今天天气很好。' * 20 + '</p>'])]
+    pq.write_table(pa.Table.from_pylist(rows, ArticleHtmlArchiver.SCHEMA), tmp_path / 'part.parquet')
+    counts = clip.screen_html_file(str(tmp_path / 'part.parquet'), str(tmp_path / 'out.jsonl'),
+                                   classifier=None, ocr=None, client=None)
+    assert counts == {'pages': 2, 'screened': 1, 'english_screenshots': 0}
+    (row,) = [json.loads(line) for line in open(tmp_path / 'out.jsonl')]
+    assert row['url'] == 'https://zh.com/0' and row['images'][0]['src'] == 'https://zh.com/shot.jpg'

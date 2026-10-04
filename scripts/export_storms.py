@@ -14,8 +14,11 @@ import glob
 import json
 import os
 import random
+import time
 from collections import Counter, defaultdict
 
+import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from config.paths import MEDIA_STORMS_DIR, NEWS_EN_ZH_LINKS_PATH
@@ -33,18 +36,31 @@ def parse_args():
 
 def main():
     args = parse_args()
+    start = time.time()
+
+    def say(msg):
+        print(f'[{time.time() - start:6.0f}s] {msg}', flush=True)
+
     with open(os.path.join(args.storms_dir, 'storms.jsonl'), encoding='utf-8') as f:
         storms = [json.loads(line) for line in f][:args.top]
     wanted = {s['cluster'] for s in storms}
-    clusters = pq.read_table(os.path.join(args.storms_dir, 'clusters.parquet')).to_pydict()
-    cluster_of = {u: c for u, c in zip(clusters['url'], clusters['cluster']) if c in wanted}
+    say(f'{len(storms)} storms to export')
+    clusters = pq.read_table(os.path.join(args.storms_dir, 'clusters.parquet'))
+    clusters = clusters.filter(pc.is_in(clusters['cluster'], pa.array(sorted(wanted), clusters['cluster'].type)))
+    cluster_of = dict(zip(clusters['url'].to_pylist(), clusters['cluster'].to_pylist()))
+    urls = pa.array(list(cluster_of), pa.string())
+    say(f'{len(cluster_of)} articles in them; finding them in the day files')
+    paths = glob.glob(os.path.join(args.storms_dir, 'days', '*', '*.parquet'))
     members, seen = defaultdict(list), set()
-    for path in glob.glob(os.path.join(args.storms_dir, 'days', '*', '*.parquet')):
+    for n, path in enumerate(paths, 1):
         date = os.path.basename(os.path.dirname(path))
-        for row in pq.read_table(path, columns=['url', 'outlet', 'title']).to_pylist():
-            if row['url'] in cluster_of and row['url'] not in seen:
+        table = pq.read_table(path, columns=['url', 'outlet', 'title'])
+        for row in table.filter(pc.is_in(table['url'], urls)).to_pylist():   # only the storms' articles
+            if row['url'] not in seen:
                 seen.add(row['url'])
                 members[cluster_of[row['url']]].append({**row, 'date': date})
+        if n % 2000 == 0 or n == len(paths):
+            say(f'{n}/{len(paths)} day files read, {len(seen)}/{len(cluster_of)} articles found')
     rng = random.Random(0)
     out = []
     for s in storms:

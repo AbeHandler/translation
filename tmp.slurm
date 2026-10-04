@@ -1,7 +1,7 @@
 #!/bin/bash
 # Peek at the English screenshots the image screening has found so far in the Chinese site crawls
-# (scripts/screen_site_crawl_images.py): counts by kind and site, and 10 random tweets and 10 random prose
-# screenshots (page, image URL, OCR text). Only reads.
+# (scripts/screen_site_crawl_images.py): counts by kind and site, and a random sample of 150 tweets and 150 prose
+# screenshots -> data/processed/screenshot_sample.jsonl (site, page, image URL, OCR text). Only reads the results.
 #
 # Usage (from the repo root):
 #   sbatch tmp.slurm        # then: cat logs/scripts/slurm/tmp_<jobid>.out
@@ -29,9 +29,18 @@ for d in data/interim/site_crawls/*/images; do
     n=$(cat $d/*.jsonl 2>/dev/null | jq '[.images[] | select(.english_screenshot)] | length' | paste -sd+ | bc)
     echo "${n:-0} $(basename $(dirname $d))"
 done | sort -rn | head -15
+# a random sample to look through: 150 of each kind, with the site, page, image link and OCR text
+SAMPLE=data/processed/screenshot_sample.jsonl
+cat $FILES | jq -c '.url as $p | .images[] | select(.english_screenshot)
+    | {kind: (.english_kind // "old rule"), site: ($p | split("/")[2]), page: $p, src, label, latin_conf, ocr: .ocr_text}' \
+    > "$TMP/screenshots_all.jsonl"
+for kind in tweet prose; do
+    grep "\"kind\":\"$kind\"" "$TMP/screenshots_all.jsonl" | shuf -n 150 || true
+done > "$SAMPLE"
+echo
+echo "$(wc -l < "$SAMPLE") sampled -> $SAMPLE"
 for kind in tweet prose; do
     echo
-    echo "10 random $kind screenshots:"
-    cat $FILES | jq -c --arg k "$kind" '.url as $p | .images[] | select(.english_kind == $k)
-        | {page: $p, src, ocr: .ocr_text[:150]}' | shuf -n 10
+    echo "5 random $kind screenshots:"
+    grep "\"kind\":\"$kind\"" "$SAMPLE" | head -5 | jq -c '{page, src, ocr: .ocr[:150]}' || true
 done

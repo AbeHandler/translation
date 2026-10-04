@@ -28,7 +28,7 @@ echo "by site:"
 for d in data/interim/site_crawls/*/images; do
     n=$(cat $d/*.jsonl 2>/dev/null | jq '[.images[] | select(.english_screenshot)] | length' | paste -sd+ | bc)
     echo "${n:-0} $(basename $(dirname $d))"
-done | sort -rn | head -15
+done | sort -rn | head -15 || true   # head closing the pipe early is fine
 # a random sample to look through: 150 of each kind, with the site, page, image link and OCR text
 SAMPLE=data/processed/screenshot_sample.jsonl
 cat $FILES | jq -c '.url as $p | .images[] | select(.english_screenshot)

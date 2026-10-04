@@ -31,8 +31,9 @@ for d in data/interim/site_crawls/*/images; do
 done | sort -rn | head -15 || true   # head closing the pipe early is fine
 # a random sample to look through: 150 of each kind, with the site, page, image link and OCR text
 SAMPLE=data/processed/screenshot_sample.jsonl
-cat $FILES | jq -c '.url as $p | .images[] | select(.english_screenshot)
-    | {kind: (.english_kind // "old rule"), site: ($p | split("/")[2]), page: $p, src, label, latin_conf, ocr: .ocr_text}' \
+cat $FILES | jq -c '.url as $p | ($p | split("/") | .[2]) as $site | .images[] | select(.english_screenshot)
+    | {kind: (.english_kind // "old rule"), site: $site, page: $p, src: .src, label: .label,
+       latin_conf: .latin_conf, ocr: .ocr_text}' \
     > "$TMP/screenshots_all.jsonl"
 for kind in tweet prose; do
     grep "\"kind\":\"$kind\"" "$TMP/screenshots_all.jsonl" | shuf -n 150 || true

@@ -29,10 +29,17 @@ CLASSES = {   # two text classes, and two that pull non-text images away (zero-s
 }
 TEXT_CLASSES = ('post', 'page')   # screenshots of text: OCR'd
 TEXT_RECALL = 0.25   # high recall: OCR an image if these classes together have at least this probability
-ENGLISH_MIN_LATIN, ENGLISH_MIN_WORDS = 0.6, 4   # an English screenshot: a text class, mostly Latin, and words or a
-ENGLISH_WORD = re.compile(r'(?<![A-Za-z])[A-Za-z]{3,}(?![A-Za-z])')   # handle (not just model numbers: RTX 4060Ti)
-HANDLE = re.compile(r'@\w{3,}')
-ENGLISH_MIN_CONF = 70   # Tesseract's mean confidence in the Latin words: OCR noise ("mse Tid dad AAA") is lower
+# An English screenshot is mostly Latin text read with confidence (OCR noise like "mse Tid dad AAA" is read at ~30),
+# and either a post with an @handle (a tweet: kopite7kimi's spec list has no sentences) or English prose: a news
+# page, paper or statement. Prose is told from English interfaces, menus, charts and product pages (a DARPA org
+# chart, an Amazon listing, a dashboard) by its function words: 20-36% of the words of real articles, 0-11% of UIs.
+ENGLISH_MIN_LATIN, ENGLISH_MIN_CONF = 0.6, 70
+ENGLISH_WORD = re.compile(r'(?<![A-Za-z])[A-Za-z]{3,}(?![A-Za-z])')
+HANDLE = re.compile(r'@\s?\w{2,}')        # OCR may split it: "Eric Trump @ Se)"
+PROSE_WORD = re.compile(r"[A-Za-z][A-Za-z']+")
+FUNCTION_WORDS = set('the of and to a in is for that on with as by from at are was be this it an or we you they he '
+                     'she has have not but will can its their our your'.split())
+PROSE_MIN_WORDS, PROSE_MIN_FUNCTION, PROSE_MIN_SHARE = 8, 3, 0.18
 MIN_SIDE = 200                     # images smaller than this (icons, spacers, avatars) are skipped
 HEADERS = {'User-Agent': 'Mozilla/5.0 (research crawler; abha4861@colorado.edu)'}
 
@@ -99,12 +106,20 @@ def tesseract_ocr(image, langs='eng+chi_sim'):
     return ' '.join(w for w, _ in words), (sum(latin) / len(latin) if latin else 0.0)
 
 
-def is_english(text, latin_conf=100.0):
-    """Mostly Latin letters, read with confidence (latin_conf >= ENGLISH_MIN_CONF), and real English words
-    (ENGLISH_MIN_WORDS of 3+ letters) or an @handle."""
-    words = len(ENGLISH_WORD.findall(text))
-    return (latin_share(text) >= ENGLISH_MIN_LATIN and latin_conf >= ENGLISH_MIN_CONF
-            and (words >= ENGLISH_MIN_WORDS or bool(HANDLE.search(text))))
+def is_prose(text):
+    """Enough words, and enough of them function words (the, of, to, ...), as in sentences, not menus or labels."""
+    words = [w.lower() for w in PROSE_WORD.findall(text)]
+    function = sum(w in FUNCTION_WORDS for w in words)
+    return len(words) >= PROSE_MIN_WORDS and function >= PROSE_MIN_FUNCTION and function / len(words) >= PROSE_MIN_SHARE
+
+
+def english_kind(text, label, latin_conf=100.0):
+    """'tweet', 'prose' or None: what kind of English screenshot an image is, from its CLIP label and OCR text."""
+    if label not in TEXT_CLASSES or latin_share(text) < ENGLISH_MIN_LATIN or latin_conf < ENGLISH_MIN_CONF:
+        return None
+    if label == 'post' and HANDLE.search(text):
+        return 'tweet'
+    return 'prose' if is_prose(text) else None
 
 
 def latin_share(text):
@@ -125,7 +140,7 @@ def screen_article(html, page_url, client, classifier, ocr=None, max_images=40):
         image = fetch_image(img['src'], page_url, client)
         rows.append({'page': page_url, 'src': img['src'], 'alt': img['alt'], 'width': None, 'height': None,
                      'label': None, 'score': None, 'text_prob': None, 'ocr_text': None, 'latin': None,
-                     'latin_conf': None,
+                     'latin_conf': None, 'english_kind': None,
                      'english_screenshot': False})
         images.append(image)
     fetched = [i for i, image in enumerate(images) if image is not None]
@@ -140,8 +155,9 @@ def screen_article(html, page_url, client, classifier, ocr=None, max_images=40):
             except Exception as exc:   # one unreadable image shouldn't lose the whole file: recorded, not skipped
                 rows[i]['ocr_error'] = f'{type(exc).__name__}: {exc}'[:200]
                 continue
+            kind = english_kind(text, label, conf)
             rows[i].update(ocr_text=text, latin=round(latin_share(text), 3), latin_conf=round(conf, 1),
-                           english_screenshot=label in TEXT_CLASSES and is_english(text, conf))
+                           english_kind=kind, english_screenshot=kind is not None)
     return rows
 
 
@@ -177,3 +193,14 @@ def screen_html_file(html_path, out_path, classifier, ocr, client, ai_only=True)
                                     'images': images}, ensure_ascii=False) + '\n')
     os.rename(out_path + '.part', out_path)
     return {'pages': n_pages, 'screened': n_screened, 'english_screenshots': n_english}
+
+
+def rescore_row(row):
+    """Apply the current English test to a screened page's saved OCR (no fetching, no OCR): updates each image's
+    english_kind and english_screenshot, and the page's n_english_screenshots. Returns the row."""
+    for image in row['images']:
+        if image.get('ocr_text') is not None:
+            kind = english_kind(image['ocr_text'], image['label'], image.get('latin_conf') or 0.0)
+            image['english_kind'], image['english_screenshot'] = kind, kind is not None
+    row['n_english_screenshots'] = sum(bool(i.get('english_screenshot')) for i in row['images'])
+    return row

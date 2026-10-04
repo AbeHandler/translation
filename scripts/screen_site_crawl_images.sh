@@ -12,7 +12,13 @@ source ~/.myrc
 mkdir -p logs/scripts/slurm
 N_WORKERS=${N_WORKERS:-50}
 for ((i = 0; i < N_WORKERS; i++)); do
-    sbatch --parsable --export="MAX_FILES=$MAX_FILES" scripts/slurm/screen_site_crawl_images.slurm > /dev/null
+    # a pause between submissions, and a few retries: hundreds of sbatch calls at once can be refused
+    for attempt in 1 2 3; do
+        sbatch --parsable --export="MAX_FILES=$MAX_FILES" scripts/slurm/screen_site_crawl_images.slurm > /dev/null \
+            && break
+        sleep 5
+    done
+    sleep 0.5
 done
 echo "screen_site_crawl_images  $N_WORKERS workers"
 echo

@@ -30,15 +30,21 @@ def test_latin_share_tells_english_screenshots_from_chinese_ones():
     assert latin_share('美国将出台新规，进一步限制GPU出口中国') < 0.3
 
 
-def test_english_needs_words_or_a_handle_not_just_model_numbers():
-    from src.clip import is_english
-    assert is_english('Experts debunk fringe theory linking China’s coronavirus to weapons research')
-    assert is_english('kopite7kimi @kopite7kimi GeForce RTX 5090 PG144/145-SKU30 GB202-300-A1')
-    assert is_english('Eric Trump @ Se) We are so backll!')
-    assert not is_english('Vy GEFORCE RTX F- RTX4060Ti 4060Ti')
-    assert not is_english('mse Tid dad AAA A Ach hed See eee = pga Chinanews.com', latin_conf=29.9)   # OCR noise
-    assert is_english('Experts debunk fringe theory linking China’s coronavirus', latin_conf=83.0)
-    assert not is_english('英 伟 达 tesla a100 BF, 40/806 cs 制版 6.3w/ 定制 版 3.7W 站 100 片 40g+100 片 80')
+def test_english_screenshots_are_tweets_with_a_handle_or_prose_not_interfaces():
+    from src.clip import english_kind
+    assert english_kind('kopite7kimi @kopite7kimi GeForce RTX 5090 PG144/145-SKU30', 'post') == 'tweet'
+    assert english_kind('Eric Trump @ Se) We are so backll!', 'post') == 'tweet'
+    assert english_kind("Although Cotton's views break with medical experts, they're in keeping with his longtime "
+                        'opposition to the Chinese government', 'page') == 'prose'
+    assert english_kind('About Contact/Submission = The AI bubble and the U.S. economy By Michael Roberts (Posted Oct '
+                        '17, 2025) | Originally published: The Next Recession', 'page') == 'prose'
+    for ui in ['Home > Video Games » PlayStation > PlayStation 5 > PS5 Accessories > PS5 Controllers » Details',
+               'netflix_datapipeline > broker_offline_process_alert Jul 18th 2016, 12:53 AM Parameters Region',
+               'Biological Technologies Office Defense Sciences Office Information Processing Techniques Office',
+               'Results SD card 115,168MB total - 105,285MB free Tap to benchmark SD card 115,168MB total']:
+        assert english_kind(ui, 'page') is None
+    assert english_kind('mse Tid dad AAA A Ach hed See eee = pga Chinanews.com', 'page', latin_conf=29.9) is None
+    assert english_kind('Vy GEFORCE RTX F- RTX4060Ti 4060Ti', 'photo') is None
 
 
 def test_a_crawl_file_is_screened_page_by_page_ai_pages_only(tmp_path, monkeypatch):

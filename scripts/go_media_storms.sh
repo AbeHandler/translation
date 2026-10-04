@@ -26,10 +26,15 @@ EDGES=$(workers edges "afterany$BY_DAY" 8 32G)
 CLUSTER=$(sbatch --parsable --dependency="afterany$EDGES" --cpus-per-task=1 --mem=64G \
     --time=08:00:00 --export="STEP=cluster" scripts/slurm/media_storms.slurm)
 STORMS=$(sbatch --parsable --dependency="afterok:$CLUSTER" --cpus-per-task=1 --mem=64G \
-    --time=08:00:00 --mail-type=END,FAIL --export="STEP=storms" scripts/slurm/media_storms.slurm)
-echo "media_storms: $N_WORKERS by_day, then $N_WORKERS edges, then cluster $CLUSTER, then storms $STORMS"
+    --time=08:00:00 --export="STEP=storms" scripts/slurm/media_storms.slurm)
+SEEDS=$(sbatch --parsable --dependency="afterok:$STORMS" --cpus-per-task=1 --mem=64G \
+    --time=12:00:00 --export="STEP=seeds" scripts/slurm/media_storms.slurm)
+EXPORT=$(sbatch --parsable --dependency="afterok:$SEEDS" --export=NONE scripts/slurm/export_storms.slurm)
+echo "media_storms: $N_WORKERS by_day, then $N_WORKERS edges, then cluster $CLUSTER, storms $STORMS," \
+    "seeds $SEEDS, export $EXPORT (emails when done)"
 echo
 echo "Spot checks:"
 echo "  squeue -u \$USER --name=media_storms | wc -l"
 echo "  ls data/interim/media_storms/edges | wc -l              # days with edges"
 echo "  tail -25 logs/scripts/slurm/media_storms_$STORMS.out      # the storms, largest first (when done)"
+echo "  tail -25 logs/scripts/slurm/media_storms_$SEEDS.out       # storms most focused on one cited document"

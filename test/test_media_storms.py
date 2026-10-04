@@ -40,3 +40,33 @@ def test_a_storm_needs_a_week_and_five_outlets_in_storm_mode():
     assert len(found) == 1 and found[0]['storm_outlets'] == 6 and found[0]['days'] == 10
     short = {u: c for u, c in cluster_of.items() if u.split('-')[1] in '012'}   # 3 days only
     assert storms(articles, short) == []
+
+
+def test_a_storm_hits_and_subsides_a_year_long_template_stream_is_not_one():
+    articles, cluster_of = [], {}
+    for o in range(6):
+        for d in range(200):                             # a daily price notice for 200 days: 3.5% in any week
+            date = shift('2024-01-01', d)
+            for k in range(20):
+                url = f'o{o}-{d}-{k}'
+                articles.append({'url': url, 'outlet': f'outlet{o}.com', 'date': date})
+                if k == 0:
+                    cluster_of[url] = 'prices'
+    assert storms(articles, cluster_of) == []
+    assert storms(articles, cluster_of, min_peak_share=0) != []
+
+
+def test_seeds_are_the_documents_a_storm_cites_not_generic_links():
+    from src.media_storms import document_key, storm_seeds
+    assert document_key('https://www.ai.meta.com/blog/llama/?utm=x#top') == 'ai.meta.com/blog/llama'
+    assert document_key('https://twitter.com/') is None
+    assert document_key('https://www.facebook.com/sharer/sharer.php?u=x') is None
+    blog = 'https://ai.meta.com/blog/large-language-model-llama-meta-ai/'
+    members = {'llama': [f'https://n{i}.com/a' for i in range(10)]}
+    links_of = {f'https://n{i}.com/a': ([blog] if i < 6 else []) + ['https://twitter.com/x'] for i in range(10)}
+    for k in range(6):                                   # twitter.com/x is cited in 7 storms: generic
+        members[f's{k}'] = [f'https://m{k}.com/a']
+        links_of[f'https://m{k}.com/a'] = ['https://twitter.com/x']
+    found = storm_seeds(members, links_of)
+    assert found['llama']['seeds'][0]['href'] == blog and found['llama']['seed_share'] == 0.6
+    assert len(found['llama']['citing']) == 6 and found['s0']['seed_share'] == 0.0

@@ -1,13 +1,16 @@
 #!/usr/bin/env python
 """
-Export the media storms (scripts/media_storms.py) for reading: the -top largest storms, each with its articles
-(url, outlet, date, title; up to -max-articles, spread over the storm's days) and its articles per day.
-    data/interim/media_storms/{storms.jsonl, clusters.parquet, days/} -> data/processed/storms_review.json
+Export the media storms (scripts/media_storms.py) for reading: -top storms, those most focused on one cited
+document first (seed_share: the share of the storm's articles linking to its top cited document; the seeds step),
+then the rest, largest first. Each with its cited documents, articles per day, top outlets, and up to -max-articles
+of its articles (url, outlet, date, title, cites_seed; the citing ones first, then a sample over its days).
+    data/interim/media_storms/{storms.jsonl, storm_seeds.jsonl, clusters.parquet, days/}
+        -> data/processed/storms_review.json
 Small enough to copy to a laptop and read (or load into a review page).
 
 Run as a module from the repo root:
     python -m scripts.export_storms
-    python -m scripts.export_storms -top 200
+    python -m scripts.export_storms -top 1000 -max-articles 40
 """
 import argparse
 import glob
@@ -27,8 +30,9 @@ from config.paths import MEDIA_STORMS_DIR, NEWS_EN_ZH_LINKS_PATH
 def parse_args():
     parser = argparse.ArgumentParser(description='Export the media storms for reading')
     parser.add_argument('-storms-dir', default=str(MEDIA_STORMS_DIR))
-    parser.add_argument('-top', type=int, default=100, help='this many storms, largest first')
-    parser.add_argument('-max-articles', type=int, default=150, help='per storm')
+    parser.add_argument('-top', type=int, default=500, help='this many storms')
+    parser.add_argument('-max-articles', type=int, default=60, help='per storm')
+    parser.add_argument('-max-citing', type=int, default=20, help='per storm: citing articles shown first')
     parser.add_argument('-out', default=os.path.join(os.path.dirname(str(NEWS_EN_ZH_LINKS_PATH)),
                                                      'storms_review.json'))
     return parser.parse_args()
@@ -41,8 +45,11 @@ def main():
     def say(msg):
         print(f'[{time.time() - start:6.0f}s] {msg}', flush=True)
 
+    with open(os.path.join(args.storms_dir, 'storm_seeds.jsonl'), encoding='utf-8') as f:
+        seeds = {row['cluster']: row for row in map(json.loads, f)}
     with open(os.path.join(args.storms_dir, 'storms.jsonl'), encoding='utf-8') as f:
-        storms = [json.loads(line) for line in f][:args.top]
+        storms = [json.loads(line) for line in f]
+    storms = sorted(storms, key=lambda s: (-seeds[s['cluster']]['seed_share'], -s['articles']))[:args.top]
     wanted = {s['cluster'] for s in storms}
     say(f'{len(storms)} storms to export')
     clusters = pq.read_table(os.path.join(args.storms_dir, 'clusters.parquet'))
@@ -64,19 +71,26 @@ def main():
     rng = random.Random(0)
     out = []
     for s in storms:
-        articles = sorted(members[s['cluster']], key=lambda a: a['date'])
+        seed = seeds[s['cluster']]
+        citing = set(seed['citing'])
+        articles = sorted(({**a, 'cites_seed': a['url'] in citing} for a in members[s['cluster']]),
+                          key=lambda a: a['date'])
         per_day = Counter(a['date'] for a in articles)
-        sample = articles if len(articles) <= args.max_articles else sorted(
-            rng.sample(articles, args.max_articles), key=lambda a: a['date'])
+        cite = [a for a in articles if a['cites_seed']]
+        cite = rng.sample(cite, min(len(cite), args.max_citing))
+        rest = [a for a in articles if not a['cites_seed']]
+        rest = rng.sample(rest, min(len(rest), args.max_articles - len(cite)))
         out.append({**{k: v for k, v in s.items() if k != 'articles'}, 'n_articles': s['articles'],
+                    'seed_share': seed['seed_share'], 'n_citing': len(citing), 'seeds': seed['seeds'],
                     'per_day': dict(sorted(per_day.items())),
-                    'top_outlets': Counter(a['outlet'] for a in articles).most_common(15), 'articles': sample})
+                    'top_outlets': Counter(a['outlet'] for a in articles).most_common(15),
+                    'articles': sorted(cite + rest, key=lambda a: a['date'])})
     with open(args.out, 'w', encoding='utf-8') as f:
         json.dump(out, f, ensure_ascii=False)
     print(f'{len(out)} storms, {sum(len(s["articles"]) for s in out)} articles -> {args.out}')
-    for s in out[:10]:
-        print(f"  {s['n_articles']:5} articles, {s['storm_outlets']:3} outlets in storm mode, "
-              f"{s['first']}..{s['last']}  {s.get('title', '')[:70]}")
+    for s in out[:15]:
+        top = s['seeds'][0]['href'][:70] if s['seeds'] else '-'
+        print(f"  {s['seed_share']:.2f} of {s['n_articles']:5} articles cite {top}  |  {s.get('title', '')[:50]}")
 
 
 if __name__ == '__main__':

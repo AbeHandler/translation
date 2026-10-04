@@ -4,7 +4,7 @@
 #
 # Usage (from the repo root):
 #   sbatch --export=NONE scripts/slurm/export_storms.slurm
-#   sbatch --export=TOP=200 scripts/slurm/export_storms.slurm
+#   sbatch --export=TOP=1000 scripts/slurm/export_storms.slurm
 
 #SBATCH --partition=acpu
 #SBATCH --time=04:00:00
@@ -23,4 +23,4 @@ source ~/.myrc
 module load anaconda
 conda activate translation
 
-python -m scripts.export_storms -top "${TOP:-100}"
+python -m scripts.export_storms -top "${TOP:-500}"

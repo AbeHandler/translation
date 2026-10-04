@@ -12,10 +12,18 @@ the last and skipping work already done:
     storms   clusters lasting >= MIN_DAYS during which >= MIN_OUTLETS outlets are in "storm mode": the story is
              >= STORM_SHARE of the outlet's articles over some STORM_WINDOW-day window in which the outlet has
              >= MIN_OUTLET_ARTICLES articles. Shares are of the outlet's AI coverage (our corpus), not all its news.
+             A storm also hits and subsides: >= MIN_PEAK_SHARE of its articles fall within PEAK_HALF days of its
+             peak. This drops template streams (daily crypto prices, stock-holding notices) that chain into one
+             year-long cluster: their peak week holds 2-13% of their articles, real storms' 41-100%.
+    seeds    the documents each storm cites: the external links of its articles (cc_links), counted per storm.
+             A storm focused on one document (a model release, an executive order) has a top cited document
+             linked by a large share of its articles (seed_share). Links found in many storms (homepages, social
+             profiles, share buttons) are left out.
 """
 import datetime
 import os
-from collections import defaultdict
+from collections import Counter, defaultdict
+from urllib.parse import urlparse
 
 import numpy as np
 import pyarrow as pa
@@ -28,6 +36,9 @@ WINDOW_DAYS = 8
 BLOCK = 2048                 # rows of day d compared at a time
 MIN_DAYS, MIN_OUTLETS = 7, 5
 STORM_WINDOW, STORM_SHARE, MIN_OUTLET_ARTICLES = 3, 0.03, 40
+MIN_PEAK_SHARE, PEAK_HALF = 0.3, 3
+SEED_MAX_STORMS = 5          # a link cited in more storms than this is generic (a homepage, a profile), not a seed
+SEED_MIN_ARTICLES = 3        # a seed is cited by at least this many of the storm's articles
 DAY_SCHEMA = pa.schema([('url', pa.string()), ('outlet', pa.string()), ('title', pa.string()),
                         ('vector', pa.list_(pa.float16()))])
 EDGE_SCHEMA = pa.schema([('a', pa.string()), ('b', pa.string()), ('cosine', pa.float32())])
@@ -137,10 +148,17 @@ def clusters(edge_paths):
 
 # storms
 
+def peak_share(by_day, peak, half=PEAK_HALF):
+    """Share of the articles within half days of the peak day."""
+    near = sum(n for d, n in by_day.items()
+               if abs((datetime.date.fromisoformat(d) - datetime.date.fromisoformat(peak)).days) <= half)
+    return near / sum(by_day.values())
+
+
 def storms(articles, cluster_of, min_days=MIN_DAYS, min_outlets=MIN_OUTLETS, window=STORM_WINDOW,
-           share=STORM_SHARE, min_outlet_articles=MIN_OUTLET_ARTICLES):
+           share=STORM_SHARE, min_outlet_articles=MIN_OUTLET_ARTICLES, min_peak_share=MIN_PEAK_SHARE):
     """articles: [{url, outlet, date}] (all of them, clustered or not). Returns one summary per storm:
-    {cluster, articles, outlets, storm_outlets, first, last, days, peak}, largest first."""
+    {cluster, articles, outlets, storm_outlets, first, last, days, peak, peak_share}, largest first."""
     per_outlet_day = defaultdict(int)                  # (outlet, date) -> all articles
     members = defaultdict(list)
     for a in articles:
@@ -168,10 +186,56 @@ def storms(articles, cluster_of, min_days=MIN_DAYS, min_outlets=MIN_OUTLETS, win
                     in_storm.add(outlet)
                     break
         if len(in_storm) >= min_outlets:
-            by_day = defaultdict(int)
-            for d in dates:
-                by_day[d] += 1
+            by_day = Counter(dates)
+            peak = max(by_day, key=by_day.get)
+            burst = peak_share(by_day, peak)
+            if burst < min_peak_share:
+                continue
             found.append({'cluster': cid, 'articles': len(arts), 'outlets': len(outlets),
                           'storm_outlets': len(in_storm), 'first': first, 'last': last, 'days': span,
-                          'peak': max(by_day, key=by_day.get)})
+                          'peak': peak, 'peak_share': round(burst, 3)})
     return sorted(found, key=lambda s: -s['articles'])
+
+
+# seeds
+
+def document_key(href):
+    """A cited document's key: host without www., path without a trailing slash, no query or fragment; None for
+    links that can't be a document (a homepage, a share button, not http)."""
+    parts = urlparse(href.strip())
+    host, path = (parts.hostname or '').removeprefix('www.'), parts.path.rstrip('/')
+    if parts.scheme not in ('http', 'https') or not host or not path:
+        return None
+    if any(t in href for t in ('sharer', 'intent/tweet', 'share?', 'shareArticle', '/share/', 'mailto:')):
+        return None
+    return host + path
+
+
+def storm_seeds(members, links_of, max_storms=SEED_MAX_STORMS, min_articles=SEED_MIN_ARTICLES, top=5):
+    """members: {cluster: [article url]}; links_of: {article url: [external hrefs]}. Returns {cluster: {seeds:
+    [{document, href, articles, outlets, share}] (top cited documents, most cited first), seed_share (the top
+    one's share of the storm's articles; 0 if none is cited by min_articles), citing: [article urls citing it]}}.
+    Documents cited in more than max_storms storms are generic and left out."""
+    cites = {}                                    # cluster -> document -> set of article urls
+    href_of = {}
+    for cid, urls in members.items():
+        docs = defaultdict(set)
+        for url in urls:
+            for href in links_of.get(url, ()):
+                key = document_key(href)
+                if key:
+                    docs[key].add(url)
+                    href_of.setdefault(key, href)
+        cites[cid] = docs
+    n_storms = Counter(doc for docs in cites.values() for doc in docs)
+    out = {}
+    for cid, docs in cites.items():
+        n = len(members[cid])
+        ranked = sorted(((doc, arts) for doc, arts in docs.items() if n_storms[doc] <= max_storms),
+                        key=lambda kv: -len(kv[1]))[:top]
+        seeds = [{'document': doc, 'href': href_of[doc], 'articles': len(arts),
+                  'outlets': len({registered_domain(u) for u in arts}), 'share': round(len(arts) / n, 3)}
+                 for doc, arts in ranked]
+        best = ranked[0][1] if ranked and len(ranked[0][1]) >= min_articles else set()
+        out[cid] = {'seeds': seeds, 'seed_share': round(len(best) / n, 3) if best else 0.0, 'citing': sorted(best)}
+    return out

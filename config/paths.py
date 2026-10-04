@@ -27,6 +27,9 @@ WIKIPEDIA_DIR = REPO_ROOT / 'data' / 'interim' / 'wikipedia'  # <lang>/pages/chu
 NEWS_EN_ZH_LINKS_PATH = REPO_ROOT / 'data' / 'processed' / 'news_en_zh_links.jsonl'  # scripts/collect_queue.py
 TRANSMISSION_PAIRS_PATH = REPO_ROOT / 'data' / 'processed' / 'transmission_pairs.csv'  # src/transmission
 ZH_DOCS_PATH = REPO_ROOT / 'data' / 'processed' / 'zh_docs.jsonl'  # the fetched Chinese documents (src/zh_docs.py)
+NOTABLE_ACCOUNTS_PATH = REPO_ROOT / 'data' / 'external' / 'notable_accounts.tsv'  # scripts/fetch_notable_accounts.py
+NOTABLE_ACCOUNTS_EXTRA_PATH = REPO_ROOT / 'config' / 'notable_accounts_extra.tsv'  # hand-added, missing in Wikidata
+ENGLISH_SCREENSHOTS_PATH = REPO_ROOT / 'data' / 'processed' / 'english_screenshot_links.tsv'
 TRANSLATIONS_DB = REPO_ROOT / 'data' / 'processed' / 'translations.sqlite'  # src/translation/store.py
 
 

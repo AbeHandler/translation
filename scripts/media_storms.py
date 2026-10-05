@@ -87,11 +87,11 @@ def by_day_zh(args):
 
     def split(path, marker):
         key = key_of(path)
-        counts = split_site_crawl_by_day(path, embeddings_of(path), days_dir,
-                                         os.path.join(args.links_dir, key + '.jsonl'), key, last_day)
+        counts, funnel = split_site_crawl_by_day(path, embeddings_of(path), days_dir,
+                                                 os.path.join(args.links_dir, key + '.jsonl'), key, last_day)
         with open(marker, 'w') as f:
-            json.dump(counts, f)
-        return {'days': len(counts), 'articles': sum(counts.values())}
+            json.dump({'days': counts, 'pages': funnel}, f)
+        return {'days': len(counts), 'articles': sum(counts.values()), 'pages': funnel}
     process_files(paths, lambda p: os.path.join(done_dir, key_of(p) + '.json'), split, args.max_files)
 
 

@@ -91,19 +91,27 @@ CJK = re.compile(r'[\u4e00-\u9fff]')
 
 
 def site_crawl_page(row, last_day, pubdate=None, about=None):
-    """(date, day row without vector, links) of one crawled page if it is Chinese, about AI and dated between
-    FIRST_DAY and last_day; else None. pubdate(html, url) -> date string; about(html) -> bool (injectable)."""
+    """(outcome, found): outcome is 'kept' and found (date, day row without vector, links) for a crawled page
+    that is Chinese, about AI and dated between FIRST_DAY and last_day; otherwise outcome says which test it
+    failed ('empty', 'not chinese', 'not about ai', 'no date', 'date out of range') and found is None.
+    pubdate(html, url) -> date string; about(html) -> bool (injectable)."""
     import lxml.html
     from src.ai_mentions import about_ai
     from src.extract_pubdate import extract_pubdate
     pubdate = pubdate or (lambda html, url: extract_pubdate(html, url, extensive=False)[0])
     about = about or about_ai
     html = row['html'].decode('utf-8', errors='replace') if isinstance(row['html'], bytes) else row['html']
-    if not html or not is_chinese(row.get('language'), html) or not about(html):
-        return None
+    if not html:
+        return 'empty', None
+    if not is_chinese(row.get('language'), html):
+        return 'not chinese', None
+    if not about(html):
+        return 'not about ai', None
     date = (pubdate(html, row['url']) or '')[:10]
+    if not date:
+        return 'no date', None
     if not (FIRST_DAY <= date <= last_day):
-        return None
+        return 'date out of range', None
     try:
         tree = lxml.html.fromstring(html)
         tree.make_links_absolute(row['url'])
@@ -111,28 +119,31 @@ def site_crawl_page(row, last_day, pubdate=None, about=None):
         links = [{'href': href} for _, attr, href, _ in tree.iterlinks() if attr == 'href']
     except Exception:
         title, links = '', []
-    return date, {'url': row['url'], 'outlet': registered_domain(row['url']), 'title': title}, links
+    return 'kept', (date, {'url': row['url'], 'outlet': registered_domain(row['url']), 'title': title}, links)
 
 
 def split_site_crawl_by_day(html_path, embeddings_path, days_dir, links_path, key, last_day, **page_kwargs):
     """One crawled HTML file's Chinese AI pages -> <days_dir>/<date>/<key>.parquet (with their embeddings) and
-    links_path (one {url, links: [{href}]} line per page, the cc_links format). Returns {day: count}."""
+    links_path (one {url, links: [{href}]} line per page, the cc_links format). Returns ({day: count}, funnel):
+    funnel counts the pages by outcome ('no embedding', site_crawl_page's), so a file that keeps nothing says why."""
     rows = pq.read_table(embeddings_path, columns=['url', 'embedding']).to_pylist()
     vectors = {r['url']: r['embedding'] for r in rows if r['embedding'] is not None}
-    by_day = defaultdict(list)
+    by_day, funnel = defaultdict(list), Counter()
     with open(links_path + '.part', 'w', encoding='utf-8') as f:
         for batch in pq.ParquetFile(html_path).iter_batches(batch_size=200, columns=['url', 'language', 'html']):
             for row in batch.to_pylist():
                 if row['url'] not in vectors:
+                    funnel['no embedding'] += 1
                     continue
-                found = site_crawl_page(row, last_day, **page_kwargs)
+                outcome, found = site_crawl_page(row, last_day, **page_kwargs)
+                funnel[outcome] += 1
                 if found:
                     date, day_row, links = found
                     by_day[date].append({**day_row, 'vector': vectors[row['url']]})
                     f.write(json.dumps({'url': row['url'], 'links': links}, ensure_ascii=False) + '\n')
     counts = write_days(by_day, days_dir, key)
     os.rename(links_path + '.part', links_path)
-    return counts
+    return counts, dict(funnel)
 
 
 def read_day(days_dir, date):

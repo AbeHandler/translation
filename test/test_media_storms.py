@@ -77,10 +77,13 @@ def test_a_crawled_page_counts_if_chinese_about_ai_and_dated():
     html = ('<html><head><title>DeepSeek发布新模型</title></head><body><p>人工智能公司DeepSeek发布大模型。</p>'
             '<a href="https://api-docs.deepseek.com/news/r1">公告</a></body></html>')
     row = {'url': 'https://www.thepaper.cn/a1', 'language': 'zh', 'html': html.encode()}
-    date, day_row, links = site_crawl_page(row, '2026-10-04', pubdate=lambda h, u: '2025-01-20T08:00:00')
+    outcome, (date, day_row, links) = site_crawl_page(row, '2026-10-04', pubdate=lambda h, u: '2025-01-20T08:00:00')
+    assert outcome == 'kept'
     assert date == '2025-01-20' and day_row == {'url': row['url'], 'outlet': 'thepaper.cn', 'title': 'DeepSeek发布新模型'}
     assert {'href': 'https://api-docs.deepseek.com/news/r1'} in links
-    assert site_crawl_page(row, '2026-10-04', pubdate=lambda h, u: '2019-05-01') is None          # before 2023
-    assert site_crawl_page({**row, 'language': 'en'}, '2026-10-04', pubdate=lambda h, u: '2025-01-20') is None
+    assert site_crawl_page(row, '2026-10-04', pubdate=lambda h, u: '2019-05-01') == ('date out of range', None)
+    assert site_crawl_page(row, '2026-10-04', pubdate=lambda h, u: None) == ('no date', None)
+    english = {**row, 'language': 'en'}
+    assert site_crawl_page(english, '2026-10-04', pubdate=lambda h, u: '2025-01-20')[0] == 'not chinese'
     weather = {**row, 'html': '<html><title>天气</title><p>今天天气很好。</p></html>'.encode()}
-    assert site_crawl_page(weather, '2026-10-04', pubdate=lambda h, u: '2025-01-20') is None    # not about AI
+    assert site_crawl_page(weather, '2026-10-04', pubdate=lambda h, u: '2025-01-20')[0] == 'not about ai'

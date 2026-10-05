@@ -3,6 +3,7 @@
 characters) aren't used. For HTML, count it in the page's visible text, after a cheap check on the raw bytes;
 or only in the article body (mentions_ai_body: readability's main content, without menus, sidebars and "related
 stories", which put "AI" on pages that aren't about it)."""
+import os
 import re
 
 AI = re.compile(r'(?<![A-Za-z])AI(?![A-Za-z])')
@@ -43,9 +44,23 @@ def mentions_ai_body(html):
         return 0
 
 
-# Chinese pages: "AI" as above, or the Chinese terms for AI, large models, generative AI, compute and agents, or
-# the best-known model names
-AI_ZH = re.compile(r'(?<![A-Za-z])AI(?![A-Za-z])|人工智能|大模型|生成式|ChatGPT|DeepSeek|OpenAI|算力|智能体')
+# Chinese pages: the terms in config/chinese_ai_terms.txt ("AI" as a word, as above; the rest anywhere)
+CHINESE_AI_TERMS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config',
+                                'chinese_ai_terms.txt')
+
+
+def load_terms(path=CHINESE_AI_TERMS):
+    with open(path, encoding='utf-8') as f:
+        return [line.split('#')[0].strip() for line in f if line.split('#')[0].strip()]
+
+
+def terms_pattern(terms):
+    """One regex for the terms, longest first; "AI" only as a word of its own."""
+    parts = [AI.pattern if t == 'AI' else re.escape(t) for t in sorted(set(terms), key=len, reverse=True)]
+    return re.compile('|'.join(parts))
+
+
+AI_ZH = terms_pattern(load_terms())
 
 
 def about_ai(html):

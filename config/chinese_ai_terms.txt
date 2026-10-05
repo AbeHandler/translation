@@ -1,0 +1,21 @@
+# Terms that make a Chinese page about AI (src/ai_mentions.py AI_ZH): one per line; # starts a comment.
+# Matched anywhere in the text, except "AI", which must stand as a word (not inside MAIL or OpenAI) but may touch
+# Chinese characters ("AI芯片").
+
+# "AI"
+AI
+人工智能
+超级智能
+机器智能
+人造智能
+生成式人工智能
+生成式AI
+Generative AI
+AIGC
+AI生成内容
+人工智能生成内容
+
+# "LLM"
+大模型
+大语言模型
+大型语言模型

@@ -14,7 +14,12 @@
 set -eo pipefail  # no -u: ~/.myrc references unset vars
 source ~/.myrc
 
+FLUSH_JOB=""
+if [[ -n $FLUSH ]]; then   # first: the storms folder (the embedders don't use it, so they needn't wait)
+    FLUSH_JOB=$(sbatch --parsable --export=CORPUS=zh scripts/slurm/flush_media_storms.slurm)
+    echo "flush_media_storms (zh) $FLUSH_JOB"
+fi
 EMBED_JOBS=$(N_WORKERS=${N_EMBED:-50} bash scripts/embed_site_crawls.sh | tee /dev/stderr | sed -n 's/^JOB_IDS=//p')
 [[ -n $EMBED_JOBS ]] || { echo "ERROR: no embedding jobs were submitted" >&2; exit 1; }
 echo
-FLUSH=$FLUSH AFTER=$EMBED_JOBS CORPUS=zh N_WORKERS=${N_WORKERS:-100} bash scripts/go_media_storms.sh
+FLUSH= AFTER=$EMBED_JOBS${FLUSH_JOB:+:$FLUSH_JOB} CORPUS=zh N_WORKERS=${N_WORKERS:-100} bash scripts/go_media_storms.sh

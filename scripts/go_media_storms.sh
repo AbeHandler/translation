@@ -40,8 +40,8 @@ one() {       # one <step> <time> <dependency ids> [afterany]: prints :id
 }
 
 dep=${AFTER:+:$AFTER}
-if [[ -n $FLUSH ]]; then   # waits for AFTER too, so nothing reads the folder while it is being deleted
-    dep=":$(sbatch --parsable $(after "$dep" afterany) --export="CORPUS=$CORPUS" scripts/slurm/flush_media_storms.slurm)"
+if [[ -n $FLUSH ]]; then   # first, before any step reads the folder
+    dep=":$(sbatch --parsable --export="CORPUS=$CORPUS" scripts/slurm/flush_media_storms.slurm)$dep"
     echo "flush_media_storms ($CORPUS) ${dep#:}"
 fi
 if runs by_day;  then dep=$(workers by_day 1 8G "$dep"); fi

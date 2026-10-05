@@ -30,6 +30,7 @@ TRANSMISSION_PAIRS_PATH = REPO_ROOT / 'data' / 'processed' / 'transmission_pairs
 ZH_DOCS_PATH = REPO_ROOT / 'data' / 'processed' / 'zh_docs.jsonl'  # the fetched Chinese documents (src/zh_docs.py)
 PRIMARY_SOURCES_DIR = REPO_ROOT / 'data' / 'interim' / 'primary_sources'  # scripts/primary_sources.py (cache)
 PRIMARY_SOURCES_PATH = REPO_ROOT / 'data' / 'processed' / 'primary_sources.tsv'
+PRIMARY_TEXTS_DIR = REPO_ROOT / 'data' / 'interim' / 'primary'  # <sha1 of the document>.json (src/source_texts.py)
 NOTABLE_ACCOUNTS_PATH = REPO_ROOT / 'data' / 'external' / 'notable_accounts.tsv'  # scripts/fetch_notable_accounts.py
 NOTABLE_ACCOUNTS_EXTRA_PATH = REPO_ROOT / 'config' / 'notable_accounts_extra.tsv'  # hand-added, missing in Wikidata
 ENGLISH_SCREENSHOTS_PATH = REPO_ROOT / 'data' / 'processed' / 'english_screenshot_links.tsv'

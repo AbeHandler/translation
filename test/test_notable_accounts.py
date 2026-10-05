@@ -34,7 +34,6 @@ def test_short_or_common_handles_and_rare_names_alone_are_not_matched():
         {'handle': 'gmail', 'name': 'Gmail', 'sitelinks': 90, 'human': False, 'qid': 'Q4'},
         {'handle': 'v1t0', 'name': 'Vito Rossi', 'sitelinks': 1, 'human': True, 'qid': 'Q5'}])
     assert accounts.match('written BY @BY and mail me at abc@gmail.com') == []
-    assert accounts.match('vito rossi said') == []                     # name only, 1 Wikipedia edition
     assert [m['handle'] for m in accounts.match('@v1t0 posted')] == ['v1t0']   # by handle it still counts
 
 

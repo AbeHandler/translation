@@ -19,3 +19,10 @@ AI生成内容
 大模型
 大语言模型
 大型语言模型
+
+# AI products, labs and related terms
+ChatGPT
+DeepSeek
+OpenAI
+算力
+智能体

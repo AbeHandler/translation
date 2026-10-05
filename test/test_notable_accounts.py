@@ -26,3 +26,13 @@ def test_garbled_handles_and_names_are_matched():
 def test_accounts_without_a_wikipedia_article_and_single_word_names_are_not_matched():
     accounts = NotableAccounts(ROWS)
     assert accounts.match('@nobody No Body said Google is great') == []
+
+
+def test_short_or_common_handles_and_rare_names_alone_are_not_matched():
+    accounts = NotableAccounts(ROWS + [
+        {'handle': 'BY', 'name': 'Binali Yildirim', 'sitelinks': 80, 'human': True, 'qid': 'Q3'},
+        {'handle': 'gmail', 'name': 'Gmail', 'sitelinks': 90, 'human': False, 'qid': 'Q4'},
+        {'handle': 'v1t0', 'name': 'Vito Rossi', 'sitelinks': 1, 'human': True, 'qid': 'Q5'}])
+    assert accounts.match('written BY @BY and mail me at abc@gmail.com') == []
+    assert accounts.match('vito rossi said') == []                     # name only, 1 Wikipedia edition
+    assert [m['handle'] for m in accounts.match('@v1t0 posted')] == ['v1t0']   # by handle it still counts

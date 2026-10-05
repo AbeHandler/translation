@@ -24,6 +24,11 @@ SELECT ?item ?handle ?name ?sitelinks ?human WHERE {
 """
 COLUMNS = ['handle', 'name', 'sitelinks', 'human', 'qid']
 MIN_SITELINKS = 1        # notable: has a Wikipedia article in at least one language
+MIN_NAME_SITELINKS = 5   # a match by name alone (no handle) needs a better-known person: OCR noise hits rare names
+MIN_HANDLE_CHARS = 4     # shorter handles (@BY) match OCR noise
+# handles that are also everyday strings in screenshots: email domains (name@gmail.com), game UIs
+COMMON_HANDLES = {'gmail', 'outlook', 'hotmail', 'yahoo', 'icloud', 'thegame', 'email', 'mail', 'home', 'news',
+                  'admin', 'support', 'help', 'everyone', 'here'}
 HANDLE = re.compile(r'@\s?([A-Za-z0-9_]{2,15})')
 NAME_TOKEN = re.compile(r"[^\W\d_]+(?:['-][^\W\d_]+)*")
 
@@ -49,10 +54,11 @@ class NotableAccounts:
             if row['sitelinks'] < min_sitelinks:
                 continue
             handle = row['handle'].lower()
-            if row['sitelinks'] > self.by_handle.get(handle, {'sitelinks': -1})['sitelinks']:
+            if len(handle) >= MIN_HANDLE_CHARS and handle not in COMMON_HANDLES and \
+                    row['sitelinks'] > self.by_handle.get(handle, {'sitelinks': -1})['sitelinks']:
                 self.by_handle[handle] = row
             key = name_key(row['name'])
-            if row['human'] and len(key.split()) >= 2 and \
+            if row['human'] and len(key.split()) >= 2 and row['sitelinks'] >= MIN_NAME_SITELINKS and \
                     row['sitelinks'] > self.by_name.get(key, {'sitelinks': -1})['sitelinks']:
                 self.by_name[key] = row
         self.longest_name = max((len(k.split()) for k in self.by_name), default=0)

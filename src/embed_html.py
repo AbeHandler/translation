@@ -33,12 +33,22 @@ SCHEMA = pa.schema([
 
 
 def article_text(html, url, language):
-    """newspaper4k's title and body text, or '' if it finds none."""
-    # fetch_images=False: otherwise parse() downloads the page's images, which is most of its time
-    article = Article(url, language=language or 'zh', fetch_images=False)
-    article.download(input_html=html.decode('utf-8', errors='replace'))
-    article.parse()
-    return f'{article.title}\n{article.text}'.strip()
+    """newspaper4k's title and body text, or '' if it finds none. The page's language is cut to its two-letter
+    code (pages declare zh-CN, zh-Hans, en-US, which newspaper4k rejects); if newspaper4k fails in that language
+    it tries Chinese."""
+    if isinstance(html, bytes):
+        html = html.decode('utf-8', errors='replace')
+    code = (language or 'zh')[:2].lower()
+    for lang in dict.fromkeys([code, 'zh']):
+        try:
+            # fetch_images=False: otherwise parse() downloads the page's images, which is most of its time
+            article = Article(url, language=lang, fetch_images=False)
+            article.download(input_html=html)
+            article.parse()
+        except Exception:
+            continue
+        return f'{article.title}\n{article.text}'.strip()
+    return ''
 
 
 class HtmlEmbedder:

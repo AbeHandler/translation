@@ -56,3 +56,17 @@ def about_ai(html):
     except Exception:
         return False
     return bool(AI_ZH.search(text))
+
+
+def about_ai_article(html):
+    """True if the page's title or article body (readability: no menus, sidebars or "related stories", which put
+    "AI" on pages that aren't about it) mentions AI in Chinese or English."""
+    import lxml.html  # imported here so plain-text users don't need them
+    from readability import Document
+    if not AI_ZH.search(html or ''):
+        return False
+    try:
+        doc = Document(html)
+        return bool(AI_ZH.search(doc.short_title() + ' ' + lxml.html.fromstring(doc.summary()).text_content()))
+    except Exception:
+        return False

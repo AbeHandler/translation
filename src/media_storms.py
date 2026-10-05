@@ -8,7 +8,7 @@ and skipping work already done:
 
     by_day   each WARC's embedded articles (src/news_embeddings.py) joined to their dates (src/news_pubdates.py),
              split into one small file per day: <days>/<date>/<warc>.parquet {url, outlet, title, vector}.
-             Chinese: each crawled HTML file's Chinese pages about AI (src/ai_mentions.py about_ai), their
+             Chinese: each crawled HTML file's Chinese pages about AI (src/ai_mentions.py about_ai_article), their
              embeddings and publication dates (extract_pubdate) -> <days>/<date>/<domain>__<part>.parquet, and
              their links -> <links>/<domain>__<part>.jsonl (the cc_links format, for seeds)
     edges    per day d: cosine of d's articles with those of days d .. d + WINDOW_DAYS - 1; pairs >= THRESHOLD
@@ -93,16 +93,29 @@ TITLE = re.compile(r'<title[^>]*>(.*?)</title>', re.I | re.S)
 CJK = re.compile(r'[\u4e00-\u9fff]')
 
 
+def page_date(html, url):
+    """The page's publication date: newspaper4k, then htmldate's quick search, then its extensive one (slower,
+    so only for the pages that need it), then a date in the URL (/2025/01/20/, /20250120/, /2025-01/20/)."""
+    from src.extract_pubdate import extract_pubdate
+    found = extract_pubdate(html, url, extensive=True)[0]
+    if found:
+        return found
+    match = URL_DATE.search(url)
+    return f'{match.group(1)}-{match.group(2)}-{match.group(3)}' if match else None
+
+
+URL_DATE = re.compile(r'/(20[2-3]\d)[-/]?(0[1-9]|1[0-2])[-/]?(0[1-9]|[12]\d|3[01])(?:/|\D)')
+
+
 def site_crawl_page(row, last_day, pubdate=None, about=None):
     """(outcome, found): outcome is 'kept' and found (date, day row without vector, links) for a crawled page
     that is Chinese, about AI and dated between FIRST_DAY and last_day; otherwise outcome says which test it
     failed ('empty', 'not chinese', 'not about ai', 'no date', 'date out of range') and found is None.
     pubdate(html, url) -> date string; about(html) -> bool (injectable)."""
     import lxml.html
-    from src.ai_mentions import about_ai
-    from src.extract_pubdate import extract_pubdate
-    pubdate = pubdate or (lambda html, url: extract_pubdate(html, url, extensive=False)[0])
-    about = about or about_ai
+    from src.ai_mentions import about_ai_article
+    pubdate = pubdate or page_date
+    about = about or about_ai_article
     html = row['html'].decode('utf-8', errors='replace') if isinstance(row['html'], bytes) else row['html']
     if not html:
         return 'empty', None

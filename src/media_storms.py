@@ -104,7 +104,10 @@ def page_date(html, url):
     """The page's publication date: newspaper4k, then htmldate's quick search, then its extensive one (slower,
     so only for the pages that need it), then a date in the URL (/2025/01/20/, /20250120/, /2025-01/20/)."""
     from src.extract_pubdate import extract_pubdate
-    found = extract_pubdate(html, url, extensive=True)[0]
+    try:
+        found = extract_pubdate(html, url, extensive=True)[0]
+    except Exception:   # htmldate can choke on a page's odd date (a time zone offset over 24 hours); use the URL
+        found = None
     if found:
         return found
     match = URL_DATE.search(url)

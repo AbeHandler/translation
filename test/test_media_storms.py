@@ -129,3 +129,14 @@ def test_storm_mode_is_the_story_s_share_of_the_whole_ecosystem():
             articles.append({'url': f'other-{d}-{k}', 'outlet': f'big{k % 50}.com', 'date': date})
     assert storms(articles, cluster_of) == []                         # 6 of ~1000 a day: 0.6% < 1%
     assert len(storms(articles, cluster_of, share=0.005)) == 1
+
+
+def test_a_date_htmldate_chokes_on_falls_back_to_the_url(monkeypatch):
+    import src.extract_pubdate
+    from src.media_storms import page_date
+
+    def broken(*args, **kwargs):
+        raise ValueError('offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24).')
+    monkeypatch.setattr(src.extract_pubdate, 'extract_pubdate', broken)
+    assert page_date('<html></html>', 'https://www.huxiu.com/article/2025/01/20/x.html') == '2025-01-20'
+    assert page_date('<html></html>', 'https://www.huxiu.com/article/4838327.html') is None

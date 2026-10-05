@@ -24,6 +24,7 @@ import argparse
 import csv
 import datetime
 import glob
+import logging
 import os
 import random
 import re
@@ -89,7 +90,11 @@ def chinese_links(html_path, last_day):
     """Link rows of one crawl file's Chinese AI pages."""
     for batch in pq.ParquetFile(html_path).iter_batches(batch_size=200, columns=['url', 'language', 'html']):
         for row in batch.to_pylist():
-            found = chinese_page_links(row, last_day)
+            try:
+                found = chinese_page_links(row, last_day)
+            except Exception:   # one unparseable page shouldn't lose the file's other pages
+                logging.exception('skipping %s', row['url'])
+                continue
             if found:
                 yield from link_rows(row['url'], found[1], found[0], 'zh')
 

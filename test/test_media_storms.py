@@ -83,7 +83,9 @@ def test_a_crawled_page_counts_if_chinese_about_ai_and_dated():
     assert {'href': 'https://api-docs.deepseek.com/news/r1'} in links
     assert site_crawl_page(row, '2026-10-04', pubdate=lambda h, u: '2019-05-01') == ('date out of range', None)
     assert site_crawl_page(row, '2026-10-04', pubdate=lambda h, u: None) == ('no date', None)
-    english = {**row, 'language': 'en'}
+    mislabelled = {**row, 'language': 'en'}                  # the title decides, not the recorded language
+    assert site_crawl_page(mislabelled, '2026-10-04', pubdate=lambda h, u: '2025-01-20')[0] == 'kept'
+    english = {**row, 'language': 'zh', 'html': html.replace('DeepSeek发布新模型', 'DeepSeek releases R1').encode()}
     assert site_crawl_page(english, '2026-10-04', pubdate=lambda h, u: '2025-01-20')[0] == 'not chinese'
-    weather = {**row, 'html': '<html><title>天气</title><p>今天天气很好。</p></html>'.encode()}
+    weather = {**row, 'html': '<html><title>北京今日天气预报</title><p>今天天气很好。</p></html>'.encode()}
     assert site_crawl_page(weather, '2026-10-04', pubdate=lambda h, u: '2025-01-20')[0] == 'not about ai'

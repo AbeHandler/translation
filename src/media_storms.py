@@ -79,13 +79,16 @@ def write_days(by_day, days_dir, key):
 
 
 def is_chinese(language, html):
-    """news-please's language, or, when it has none, a page whose title has Chinese characters."""
-    if language:
-        return language.startswith('zh')
+    """The page's title has MIN_TITLE_CJK+ Chinese characters; for a page without a title, news-please's language.
+    The title decides because the crawls' recorded language proved unreliable (it rejected every page)."""
     match = TITLE.search(html)
-    return bool(match and CJK.search(match.group(1)))
+    title = match.group(1) if match else ''
+    if title.strip():
+        return len(CJK.findall(title)) >= MIN_TITLE_CJK
+    return bool(language) and language.lower().startswith('zh')
 
 
+MIN_TITLE_CJK = 4
 TITLE = re.compile(r'<title[^>]*>(.*?)</title>', re.I | re.S)
 CJK = re.compile(r'[\u4e00-\u9fff]')
 

@@ -16,10 +16,12 @@ import csv
 import glob
 import json
 import os
+from collections import Counter
 
 import pyarrow.parquet as pq
 
 from config.paths import MEDIA_STORMS_DIR, NEWS_EN_ZH_LINKS_PATH
+from src.primary_sources import MIN_NEWS_ARTICLES
 from src.seed_documents import is_primary, source_kind
 
 COLUMNS = ['document', 'href', 'kind', 'en_articles', 'en_outlets', 'storms', 'top_share', 'peak', 'storm_title']
@@ -33,12 +35,13 @@ def parse_args():
     return parser.parse_args()
 
 
-def news_outlets(days_dir):
-    """The registered domains of every article in the storms' corpus: news outlets, so not primary sources."""
-    outlets = set()
+def news_outlets(days_dir, min_articles=MIN_NEWS_ARTICLES):
+    """The storms' corpus's news outlets: sites with min_articles+ AI articles (CC-NEWS also crawls company
+    newsrooms, whose posts are primary sources)."""
+    volume = Counter()
     for path in glob.glob(os.path.join(days_dir, '*', '*.parquet')):
-        outlets.update(pq.read_table(path, columns=['outlet']).column('outlet').to_pylist())
-    return outlets
+        volume.update(pq.read_table(path, columns=['outlet']).column('outlet').to_pylist())
+    return {outlet for outlet, n in volume.items() if n >= min_articles}
 
 
 def seed_documents(storms, seeds, outlets, min_articles):

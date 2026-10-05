@@ -32,7 +32,7 @@ from config.paths import (CC_HTML_DIR, CC_LINKS_DIR, CC_NEWS_PUBDATES_DIR, MEDIA
                           PRIMARY_SOURCES_PATH)
 from src.cc_news import ai_article_links
 from src.file_worker import process_files
-from src.primary_sources import LINK_SCHEMA, MIN_OUTLETS, link_rows, primary_sources
+from src.primary_sources import LINK_SCHEMA, MIN_NEWS_ARTICLES, MIN_OUTLETS, link_rows, primary_sources
 from src.warc_worker_cli import optional_int, setup_worker_process
 
 COLUMNS = ['document', 'href', 'kind', 'first_seen', 'outlets_first', 'outlets', 'articles', 'en_outlets',
@@ -50,6 +50,8 @@ def parse_args():
     parser.add_argument('-zh-dir', default=str(MEDIA_STORMS_ZH_DIR), help='the Chinese storms: links/ and days/')
     parser.add_argument('-out', default=str(PRIMARY_SOURCES_PATH))
     parser.add_argument('-min-outlets', type=int, default=MIN_OUTLETS)
+    parser.add_argument('-min-news-articles', type=int, default=MIN_NEWS_ARTICLES,
+                        help='a corpus site with this many AI articles is a news outlet')
     parser.add_argument('-max-files', type=optional_int, default=None, help='links: stop after N (testing)')
     return parser.parse_args()
 
@@ -107,12 +109,15 @@ def links_step(args):
 
 def sources_step(args):
     table = ds.dataset(os.path.join(args.out_dir, 'links'), format='parquet').to_table()
-    outlets = set(pc.unique(table['outlet']).to_pylist())
+    volume = table.select(['outlet', 'article']).group_by('outlet').aggregate([('article', 'count_distinct')])
+    outlets = set(volume.filter(pc.greater_equal(volume['article_count_distinct'], args.min_news_articles))
+                  ['outlet'].to_pylist())
     counts = table.group_by('document').aggregate([('outlet', 'count_distinct')])
     keep = counts.filter(pc.greater_equal(counts['outlet_count_distinct'], args.min_outlets))['document']
     rows = table.filter(pc.is_in(table['document'], keep)).to_pylist()
-    print(f'{table.num_rows} links, {len(outlets)} outlets, {len(keep)} documents linked by >= {args.min_outlets} '
-          'outlets', flush=True)
+    print(f'{table.num_rows} links from {volume.num_rows} sites, {len(outlets)} of them news outlets '
+          f'(>= {args.min_news_articles} AI articles); {len(keep)} documents linked by >= {args.min_outlets} outlets',
+          flush=True)
     found = primary_sources(rows, outlets, min_outlets=args.min_outlets)
     with open(args.out + '.part', 'w', encoding='utf-8', newline='') as f:
         writer = csv.DictWriter(f, COLUMNS, delimiter='\t')

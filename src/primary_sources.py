@@ -18,6 +18,10 @@ from src.media_storms import document_key
 from src.seed_documents import NEWS_DOMAINS, is_primary, source_kind
 
 SPREAD_DAYS = 14           # outlets_first: outlets linking within this many days of the first link
+# a corpus site counts as a news outlet if it has this many AI articles: CC-NEWS also crawls company newsrooms
+# (anthropic.com, openai.com), whose posts are sources
+MIN_NEWS_ARTICLES = 100
+FIRST_DAY = '2000-01-01'   # earlier link dates are bad dates
 MIN_OUTLETS = 3            # a source is linked by at least this many outlets
 LINK_SCHEMA = pa.schema([('document', pa.string()), ('href', pa.string()), ('article', pa.string()),
                          ('outlet', pa.string()), ('date', pa.string()), ('language', pa.string())])
@@ -36,13 +40,13 @@ def link_rows(article_url, hrefs, date, language):
 
 
 def primary_sources(rows, outlets=None, spread_days=SPREAD_DAYS, min_outlets=MIN_OUTLETS):
-    """rows: link rows (dicts) from every corpus; outlets: every outlet in the corpora (news, so not primary
-    sources; default: the rows' outlets). Returns one summary per primary source, most outlets within spread_days
-    of its first link first."""
+    """rows: link rows (dicts) from every corpus; outlets: the corpora's news outlets, so not primary sources
+    (default: the rows' outlets; scripts/primary_sources.py passes those with MIN_NEWS_ARTICLES+ AI articles).
+    Returns one summary per primary source, most outlets within spread_days of its first link first."""
     news = (set(outlets) if outlets is not None else {r['outlet'] for r in rows}) | NEWS_DOMAINS
     by_doc = defaultdict(list)
     for r in rows:
-        if r['date']:
+        if r['date'] and r['date'] >= FIRST_DAY:
             by_doc[r['document']].append(r)
     found = []
     for doc, links in by_doc.items():

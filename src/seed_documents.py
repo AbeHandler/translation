@@ -45,11 +45,17 @@ def source_kind(document, news_domains=()):
     return 'organisation'
 
 
+GOVERNMENT = re.compile(r'(\.gov|\.gov\.\w\w|\.mil|europa\.eu|\.int|\.gouv\.\w\w)$')
+
+
 def is_primary(document, news_domains):
-    """True for a primary source: not on a news outlet (news_domains: the corpus's outlets, plus NEWS_DOMAINS)
-    and a single document (a social media post, not a profile)."""
+    """True for a primary source: not on a news outlet (news_domains: the corpus's news outlets, plus
+    NEWS_DOMAINS; a government site is never news, even when a news crawl took it in) and a single document
+    (a social media post, not a profile)."""
     host = document.split('/')[0]
     domain = registered_domain('https://' + host)
+    if GOVERNMENT.search(host):
+        return True
     if domain in news_domains or domain in NEWS_DOMAINS or host in NEWS_DOMAINS:
         return bool(HOSTED_DOCUMENT.search(document)) and 'amazon.com' not in host
     if domain in SOCIAL or host in SOCIAL:

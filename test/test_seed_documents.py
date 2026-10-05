@@ -38,3 +38,17 @@ def test_primary_sources_are_ranked_by_outlets_linking_soon_after_the_first_link
     (found,) = primary_sources(rows, {r['outlet'] for r in rows} | {'cnbc.com'})
     assert found['document'] == 'anthropic.com/news/statement-department-of-war'
     assert (found['outlets_first'], found['outlets'], found['first_seen']) == (5, 6, '2026-02-27')
+
+
+def test_a_newsroom_crawled_as_news_is_still_a_source_if_it_is_small():
+    from src.primary_sources import link_rows, primary_sources
+    post = 'https://www.anthropic.com/news/detecting-and-preventing-distillation-attacks'
+    rows = []
+    for i in range(4):
+        rows += link_rows(f'https://news{i}.com/a', [post], '2026-02-24', 'en')
+    rows += link_rows('https://www.anthropic.com/news/other', [], '2026-02-20', 'en')   # anthropic.com is in the corpus
+    news = {f'news{i}.com' for i in range(4)}                    # but not among its news outlets (too few articles)
+    assert [s['document'] for s in primary_sources(rows, news)] == ['anthropic.com/news/detecting-and-preventing-'
+                                                                    'distillation-attacks']
+    assert primary_sources(rows, news | {'anthropic.com'}) == []
+    assert is_primary('whitehouse.gov/briefing-room/x', {'whitehouse.gov'})          # government: never news

@@ -115,3 +115,17 @@ def test_listing_pages_are_not_articles():
     html = '<html><head><title>人工智能_最新资讯 | 雷锋网 第22页</title></head><body><p>人工智能大模型。</p></body></html>'
     row = {'url': 'https://www.leiphone.com/category/ai/page/22', 'language': 'zh', 'html': html.encode()}
     assert site_crawl_page(row, '2026-10-04', pubdate=lambda h, u: '2026-01-01')[0] == 'listing page'
+
+
+def test_storm_mode_is_the_story_s_share_of_the_whole_ecosystem():
+    articles, cluster_of = [], {}
+    for d in range(10):
+        date = shift('2024-03-01', d)
+        for o in range(6):                               # the story: 6 outlets, one article a day each
+            url = f'story-{d}-{o}'
+            articles.append({'url': url, 'outlet': f'outlet{o}.com', 'date': date})
+            cluster_of[url] = 'story'
+        for k in range(1000):                            # everything else: 1000 AI articles a day
+            articles.append({'url': f'other-{d}-{k}', 'outlet': f'big{k % 50}.com', 'date': date})
+    assert storms(articles, cluster_of) == []                         # 6 of ~1000 a day: 0.6% < 1%
+    assert len(storms(articles, cluster_of, share=0.005)) == 1

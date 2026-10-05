@@ -10,7 +10,8 @@ Steps:
                    -> $STORMS/days/<date>/<domain>__<part>.parquet, and their links -> $STORMS/links/)
     -step edges    a worker: each day's similar pairs (cosine >= 0.9, within 8 days) -> $STORMS/edges/<date>.parquet
     -step cluster  connected components of all edges -> $STORMS/clusters.parquet {url, cluster}
-    -step storms   storm clusters (>= 7 days, >= 5 outlets in storm mode, a burst around the peak)
+    -step storms   storm clusters (>= 7 days, in storm mode: >= 1% of all AI articles over 3 days from >= 5 outlets,
+                   a burst around the peak)
                    -> $STORMS/storms.jsonl + a summary
     -step seeds    the documents each storm's articles cite (cc_links) -> $STORMS/storm_seeds.jsonl
 by_day and edges are workers (many in parallel, .lock files, finished
@@ -40,8 +41,8 @@ from config.paths import (CC_LINKS_DIR, CC_NEWS_EMBEDDINGS_DIR, CC_NEWS_PUBDATES
                           MEDIA_STORMS_ZH_DIR, SITE_CRAWLS_DIR)
 from src.file_worker import process_files
 from src.external_links import external_links
-from src.media_storms import (MIN_DAYS, MIN_OUTLET_ARTICLES, MIN_OUTLETS, MIN_PEAK_SHARE, STORM_SHARE,
-                              STORM_WINDOW, THRESHOLD, THRESHOLD_ZH, WINDOW_DAYS, clusters, day_edges, outlet_days,
+from src.media_storms import (MIN_DAYS, MIN_OUTLETS, MIN_PEAK_SHARE, STORM_SHARE,
+                              STORM_WINDOW, THRESHOLD, THRESHOLD_ZH, WINDOW_DAYS, clusters, daily_totals, day_edges,
                               profile, shift, split_by_day, split_site_crawl_by_day, storm_seeds, storms, write_edges)
 from src.warc_worker_cli import optional_int, setup_worker_process
 
@@ -59,9 +60,8 @@ def parse_args():
     parser.add_argument('-redo-edges', action='store_true', help='edges: recompute days that already have edges')
     parser.add_argument('-min-days', type=int, default=MIN_DAYS, help='storms')
     parser.add_argument('-min-outlets', type=int, default=MIN_OUTLETS, help='storms')
-    parser.add_argument('-min-outlet-articles', type=int, default=MIN_OUTLET_ARTICLES,
-                        help='storms: an outlet\'s articles over the window for it to be in storm mode')
-    parser.add_argument('-storm-share', type=float, default=STORM_SHARE, help='storms')
+    parser.add_argument('-storm-share', type=float, default=STORM_SHARE,
+                        help="storms: the story's share of all AI articles over the window, for storm mode")
     parser.add_argument('-min-peak-share', type=float, default=MIN_PEAK_SHARE, help='storms')
     parser.add_argument('-max-files', type=optional_int, default=None, help='workers: stop after N (testing)')
     args = parser.parse_args()
@@ -177,34 +177,28 @@ def storm_step(args):
                     titles.setdefault(cluster_of[row['url']], row['title'])
     funnel = Counter()
     found = storms(articles, cluster_of, min_days=args.min_days, min_outlets=args.min_outlets,
-                   share=args.storm_share, min_outlet_articles=args.min_outlet_articles,
-                   min_peak_share=args.min_peak_share, funnel=funnel)
+                   share=args.storm_share, min_peak_share=args.min_peak_share, funnel=funnel)
     out = os.path.join(args.out_dir, 'storms.jsonl')
     with open(out, 'w', encoding='utf-8') as f:
         for s in found:
             f.write(json.dumps({**s, 'title': titles.get(s['cluster'], '')}, ensure_ascii=False) + '\n')
     print(f'{len(articles)} articles, {len(set(cluster_of.values()))} clusters -> {len(found)} storms -> {out}')
     for s in found[:20]:
-        print(f"  {s['articles']:5d} articles {s['storm_outlets']:3d}/{s['outlets']:3d} outlets in storm mode "
-              f"{s['first']}..{s['last']} peak {s['peak']}  {titles.get(s['cluster'], '')[:70]}")
+        print(f"  {s['articles']:5d} articles, {s['outlets']:4d} outlets, up to {s['storm_share']:.1%} of all AI "
+              f"articles, {s['first']}..{s['last']} peak {s['peak']}  {titles.get(s['cluster'], '')[:60]}")
     print('\nclusters passing each test in turn:')
     for test, n in sorted(funnel.items()):
         print(f'  {n:8d}  {test[2:]}')
-    per_outlet_day, members = outlet_days(articles, cluster_of)
+    per_day, members = daily_totals(articles, cluster_of)
     print('\nthe 20 largest clusters (storm or not):')
-    print('  articles outlets storm_outlets days peak_share  title')
+    print('  articles outlets max_share max_outlets storm_days days peak_share  title')
     for cid, arts in sorted(members.items(), key=lambda kv: -len(kv[1]))[:20]:
-        p = profile(arts, per_outlet_day, STORM_WINDOW, args.storm_share, args.min_outlet_articles)
-        print(f"  {p['articles']:8d} {p['outlets']:7d} {p['storm_outlets']:13d} {p['days']:4d} {p['peak_share']:10.2f}"
-              f"  {p['first']}  {titles.get(cid, '')[:60]}")
-    outlet_volume = Counter()
-    for (outlet, _), n in per_outlet_day.items():
-        outlet_volume[outlet] += n
-    days_per = Counter(outlet for outlet, _ in per_outlet_day)
-    print('\nAI articles per outlet per day it published (the storm-mode test needs '
-          f'{args.min_outlet_articles} in {STORM_WINDOW} days):')
-    for outlet, n in outlet_volume.most_common(15):
-        print(f'  {outlet:28} {n:7d} articles over {days_per[outlet]:5d} days = {n / days_per[outlet]:5.1f}/day')
+        p = profile(arts, per_day, STORM_WINDOW, args.storm_share, args.min_outlets)
+        print(f"  {p['articles']:8d} {p['outlets']:7d} {p['storm_share']:9.2%} {p['storm_outlets']:11d} "
+              f"{p['storm_days']:10d} {p['days']:4d} {p['peak_share']:10.2f}  {p['first']}  {titles.get(cid, '')[:50]}")
+    print(f'\nAI articles per day in the corpus: median {sorted(per_day.values())[len(per_day) // 2]}, '
+          f'so storm mode needs about {args.storm_share * 3 * sorted(per_day.values())[len(per_day) // 2]:.0f} '
+          f'of a story\'s articles in {STORM_WINDOW} days')
 
 
 def article_url(line):

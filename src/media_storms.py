@@ -15,9 +15,10 @@ and skipping work already done:
              (the paper: < 8 days apart, cosine > 0.9; it also required a shared named entity, which we don't
              have, so the threshold alone decides)
     cluster  story clusters: connected components of the edges (union-find)
-    storms   clusters lasting >= MIN_DAYS during which >= MIN_OUTLETS outlets are in "storm mode": the story is
-             >= STORM_SHARE of the outlet's articles over some STORM_WINDOW-day window in which the outlet has
-             >= MIN_OUTLET_ARTICLES articles. Shares are of the outlet's AI coverage (our corpus), not all its news.
+    storms   clusters lasting >= MIN_DAYS that go into "storm mode", a property of the whole news ecosystem, not of
+             one outlet: over some STORM_WINDOW-day window the story is >= STORM_SHARE of all AI articles in the
+             corpus, from >= MIN_OUTLETS outlets. (Litterer et al. test each outlet's own coverage; that needs every
+             outlet sampled densely every day, which neither CC-NEWS nor our crawls do.)
              A storm also hits and subsides: >= MIN_PEAK_SHARE of its articles fall within PEAK_HALF days of its
              peak. This drops template streams (daily crypto prices, stock-holding notices) that chain into one
              year-long cluster: their peak week holds 2-13% of their articles, real storms' 41-100%.
@@ -47,7 +48,7 @@ THRESHOLD_ZH = 0.85     # bge-base-zh, cross-outlet pairs only: rewritten covera
 WINDOW_DAYS = 8
 BLOCK = 2048                 # rows of day d compared at a time
 MIN_DAYS, MIN_OUTLETS = 7, 5
-STORM_WINDOW, STORM_SHARE, MIN_OUTLET_ARTICLES = 3, 0.03, 40
+STORM_WINDOW, STORM_SHARE = 3, 0.01   # storm mode: >= 1% of all the corpus's AI articles over 3 days
 MIN_PEAK_SHARE, PEAK_HALF = 0.3, 3
 SEED_MAX_STORMS = 5          # a link cited in more storms than this is generic (a homepage, a profile), not a seed
 SEED_MIN_ARTICLES = 3        # a seed is cited by at least this many of the storm's articles
@@ -274,11 +275,11 @@ def peak_share(by_day, peak, half=PEAK_HALF):
 
 
 def storms(articles, cluster_of, min_days=MIN_DAYS, min_outlets=MIN_OUTLETS, window=STORM_WINDOW,
-           share=STORM_SHARE, min_outlet_articles=MIN_OUTLET_ARTICLES, min_peak_share=MIN_PEAK_SHARE, funnel=None):
+           share=STORM_SHARE, min_peak_share=MIN_PEAK_SHARE, funnel=None):
     """articles: [{url, outlet, date}] (all of them, clustered or not). Returns one summary per storm:
-    {cluster, articles, outlets, storm_outlets, first, last, days, peak, peak_share}, largest first.
-    funnel (a Counter, optional) counts the clusters that pass each test in turn, to show which one stops them."""
-    per_outlet_day, members = outlet_days(articles, cluster_of)
+    {cluster, articles, outlets, storm_share, storm_outlets, storm_days, first, last, days, peak, peak_share},
+    largest first. funnel (a Counter, optional) counts the clusters that pass each test in turn."""
+    per_day, members = daily_totals(articles, cluster_of)
     funnel = Counter() if funnel is None else funnel
     found = []
     for cid, arts in members.items():
@@ -286,13 +287,13 @@ def storms(articles, cluster_of, min_days=MIN_DAYS, min_outlets=MIN_OUTLETS, win
         if len({a['outlet'] for a in arts}) < min_outlets:
             continue
         funnel[f'2 with >= {min_outlets} outlets'] += 1
-        p = profile(arts, per_outlet_day, window, share, min_outlet_articles)
+        p = profile(arts, per_day, window, share, min_outlets)
         if p['days'] < min_days:
             continue
         funnel[f'3 lasting >= {min_days} days'] += 1
-        if p['storm_outlets'] < min_outlets:
+        if not p['storm_days']:
             continue
-        funnel[f'4 with >= {min_outlets} outlets in storm mode'] += 1
+        funnel[f'4 in storm mode (>= {share:.0%} of all AI articles over {window} days, >= {min_outlets} outlets)'] += 1
         if p['peak_share'] < min_peak_share:
             continue
         funnel[f'5 bursting (>= {min_peak_share:.0%} near the peak)'] += 1
@@ -300,38 +301,41 @@ def storms(articles, cluster_of, min_days=MIN_DAYS, min_outlets=MIN_OUTLETS, win
     return sorted(found, key=lambda s: -s['articles'])
 
 
-def outlet_days(articles, cluster_of):
-    """({(outlet, date): all its articles}, {cluster: [its articles]})."""
-    per_outlet_day, members = defaultdict(int), defaultdict(list)
+def daily_totals(articles, cluster_of):
+    """({date: all the corpus's articles that day}, {cluster: [its articles]})."""
+    per_day, members = Counter(), defaultdict(list)
     for a in articles:
-        per_outlet_day[(a['outlet'], a['date'])] += 1
+        per_day[a['date']] += 1
         if a['url'] in cluster_of:
             members[cluster_of[a['url']]].append(a)
-    return per_outlet_day, members
+    return per_day, members
 
 
-def profile(arts, per_outlet_day, window=STORM_WINDOW, share=STORM_SHARE, min_outlet_articles=MIN_OUTLET_ARTICLES):
-    """One cluster's {articles, outlets, storm_outlets, first, last, days, peak, peak_share}. An outlet is in storm
-    mode if, over some window-day stretch of the story, it published >= min_outlet_articles articles and the story
-    was >= share of them."""
+def profile(arts, per_day, window=STORM_WINDOW, share=STORM_SHARE, min_outlets=MIN_OUTLETS):
+    """One cluster's {articles, outlets, storm_share, storm_outlets, storm_days, first, last, days, peak,
+    peak_share}. For each window-day stretch of the story: its share of all the corpus's articles then, and how
+    many outlets covered it then; storm_days counts the stretches in storm mode (share >= share and >= min_outlets
+    outlets); storm_share and storm_outlets are the largest share and outlet count of any stretch."""
     dates = sorted(a['date'] for a in arts)
     first, last = dates[0], dates[-1]
     span = (datetime.date.fromisoformat(last) - datetime.date.fromisoformat(first)).days + 1
-    outlets = {a['outlet'] for a in arts}
-    story = Counter((a['outlet'], a['date']) for a in arts)
-    in_storm = set()
-    for outlet in outlets:
-        for start_offset in range(-(window - 1), span):
-            days_ = [shift(first, start_offset + k) for k in range(window)]
-            total = sum(per_outlet_day.get((outlet, d), 0) for d in days_)
-            ours = sum(story.get((outlet, d), 0) for d in days_)
-            if total >= min_outlet_articles and ours / total >= share:
-                in_storm.add(outlet)
-                break
-    by_day = Counter(dates)
+    by_day, outlets_on = Counter(dates), defaultdict(set)
+    for a in arts:
+        outlets_on[a['date']].add(a['outlet'])
+    best_share = best_outlets = storm_days = 0
+    for start_offset in range(-(window - 1), span):
+        days_ = [shift(first, start_offset + k) for k in range(window)]
+        total = sum(per_day.get(d, 0) for d in days_)
+        ours = sum(by_day.get(d, 0) for d in days_)
+        outlets = len(set().union(*(outlets_on.get(d, set()) for d in days_)))
+        if not total or not ours:
+            continue
+        best_share, best_outlets = max(best_share, ours / total), max(best_outlets, outlets)
+        storm_days += ours / total >= share and outlets >= min_outlets
     peak = max(by_day, key=by_day.get)
-    return {'articles': len(arts), 'outlets': len(outlets), 'storm_outlets': len(in_storm), 'first': first,
-            'last': last, 'days': span, 'peak': peak, 'peak_share': round(peak_share(by_day, peak), 3)}
+    return {'articles': len(arts), 'outlets': len({a['outlet'] for a in arts}), 'storm_share': round(best_share, 4),
+            'storm_outlets': best_outlets, 'storm_days': storm_days, 'first': first, 'last': last, 'days': span,
+            'peak': peak, 'peak_share': round(peak_share(by_day, peak), 3)}
 
 
 # seeds

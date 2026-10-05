@@ -5,7 +5,7 @@
 # Usage (from the repo root; normally via scripts/go_media_storms.sh):
 #   sbatch --export=STEP=edges scripts/slurm/media_storms.slurm
 #   optional: CORPUS=zh, MAX_FILES=1 (test), REDO_EDGES=1 (edges: recompute days already done),
-#             STORM_ARGS='-min-outlet-articles 10 -min-days 5' (storms: thresholds; no commas)
+#             STORM_ARGS='-storm-share 0.005 -min-days 5' (storms: thresholds; no commas)
 
 #SBATCH --partition=acpu
 #SBATCH --time=24:00:00

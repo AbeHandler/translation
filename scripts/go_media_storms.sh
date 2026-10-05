@@ -11,7 +11,7 @@
 #   CORPUS=zh bash scripts/go_media_storms.sh       # the Chinese site crawls -> data/interim/media_storms_zh,
 #                                                   # data/processed/storms_review_zh.json
 #   FLUSH=1 bash scripts/go_media_storms.sh         # first delete this corpus's storm outputs (not its inputs)
-#   FROM=storms CORPUS=zh STORM_ARGS='-min-outlet-articles 10' bash scripts/go_media_storms.sh   # other thresholds
+#   FROM=storms CORPUS=zh STORM_ARGS='-storm-share 0.005' bash scripts/go_media_storms.sh   # other thresholds
 #   N_WORKERS=1 MAX_FILES=1 bash scripts/go_media_storms.sh   # test
 # AFTER=<id>:<id>... makes the first step wait for those jobs to end (scripts/go_media_storms_zh.sh: the embedders).
 

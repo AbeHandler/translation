@@ -11,6 +11,7 @@
 #   CORPUS=zh bash scripts/go_media_storms.sh       # the Chinese site crawls -> data/interim/media_storms_zh,
 #                                                   # data/processed/storms_review_zh.json
 #   N_WORKERS=1 MAX_FILES=1 bash scripts/go_media_storms.sh   # test
+# AFTER=<id>:<id>... makes the first step wait for those jobs to end (scripts/go_media_storms_zh.sh: the embedders).
 
 set -eo pipefail  # no -u: ~/.myrc references unset vars
 source ~/.myrc
@@ -37,7 +38,7 @@ one() {       # one <step> <time> <dependency ids> [afterany]: prints :id
         --export="STEP=$1,CORPUS=$CORPUS" scripts/slurm/media_storms.slurm)"
 }
 
-dep=""
+dep=${AFTER:+:$AFTER}
 if runs by_day;  then dep=$(workers by_day 1 8G "$dep"); fi
 if runs edges;   then dep=$(workers edges 8 32G "$dep"); fi
 if runs cluster; then dep=$(one cluster 08:00:00 "$dep" afterany); fi   # workers may end by time limit

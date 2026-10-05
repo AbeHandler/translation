@@ -14,8 +14,8 @@ Steps:
                    -> $STORMS/storms.jsonl + a summary
     -step seeds    the documents each storm's articles cite (cc_links) -> $STORMS/storm_seeds.jsonl
 by_day and edges are workers (many in parallel, .lock files, finished
-files skipped), so rerunning after more WARCs are embedded and dated only does the new part. Note: a day's edges
-are computed once; rerun with -redo-edges after adding WARCs whose articles fall on days already done.
+files skipped), so rerunning after more WARCs are embedded and dated only does the new part. A day whose articles
+(or one of the next WINDOW_DAYS days) changed since its edges were computed is redone; -redo-edges redoes all.
 
 Run as a module from the repo root:
     python -m scripts.media_storms -step by_day
@@ -40,8 +40,8 @@ from config.paths import (CC_LINKS_DIR, CC_NEWS_EMBEDDINGS_DIR, CC_NEWS_PUBDATES
                           MEDIA_STORMS_ZH_DIR, SITE_CRAWLS_DIR)
 from src.file_worker import process_files
 from src.external_links import external_links
-from src.media_storms import (THRESHOLD, clusters, day_edges, split_by_day, split_site_crawl_by_day, storm_seeds,
-                              storms, write_edges)
+from src.media_storms import (THRESHOLD, WINDOW_DAYS, clusters, day_edges, split_by_day, split_site_crawl_by_day, storm_seeds,
+                              shift, storms, write_edges)
 from src.warc_worker_cli import optional_int, setup_worker_process
 
 
@@ -111,15 +111,26 @@ def by_day_en(args):
     process_files(paths, lambda p: os.path.join(done_dir, os.path.basename(p) + '.json'), split, args.max_files)
 
 
+def stale(days_dir, day, edges_path):
+    """True if an article file of the day, or of the following days its edges reach (WINDOW_DAYS), is newer than
+    its edges file."""
+    edges_time = os.path.getmtime(edges_path)
+    for k in range(WINDOW_DAYS):
+        folder = os.path.join(days_dir, shift(day, k))
+        if os.path.isdir(folder) and any(os.path.getmtime(os.path.join(folder, name)) > edges_time
+                                         for name in os.listdir(folder)):
+            return True
+    return False
+
+
 def edges(args):
     days_dir, edges_dir = os.path.join(args.out_dir, 'days'), os.path.join(args.out_dir, 'edges')
     os.makedirs(edges_dir, exist_ok=True)
     days = sorted(d for d in os.listdir(days_dir) if os.path.isdir(os.path.join(days_dir, d)))
-    if args.redo_edges:
-        for d in days:
-            path = os.path.join(edges_dir, d + '.parquet')
-            if os.path.exists(path):
-                os.remove(path)
+    for d in days:   # a day whose edges' articles changed since (new WARCs or crawl files) is redone
+        path = os.path.join(edges_dir, d + '.parquet')
+        if os.path.exists(path) and (args.redo_edges or stale(days_dir, d, path)):
+            os.remove(path)
 
     def compute(day_path, out):
         found = day_edges(days_dir, os.path.basename(day_path), args.threshold)

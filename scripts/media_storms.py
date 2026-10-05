@@ -126,6 +126,9 @@ def stale(days_dir, day, edges_path):
 def edges(args):
     days_dir, edges_dir = os.path.join(args.out_dir, 'days'), os.path.join(args.out_dir, 'edges')
     os.makedirs(edges_dir, exist_ok=True)
+    if not os.path.isdir(days_dir):
+        raise FileNotFoundError(f'{days_dir} does not exist: the by_day step wrote no articles; check its logs '
+                                '(logs/scripts/slurm/media_storms_*.out with "by_day" in the to-do lines)')
     days = sorted(d for d in os.listdir(days_dir) if os.path.isdir(os.path.join(days_dir, d)))
     for d in days:   # a day whose edges' articles changed since (new WARCs or crawl files) is redone
         path = os.path.join(edges_dir, d + '.parquet')

@@ -4,7 +4,8 @@ Link the English screenshots in the Chinese crawls to the primary sources they s
 each screenshot's OCR text against every fetched source in the store, kept if they share -min-shared five-word
 phrases. One row per matched screenshot, strongest first:
     shared, source_url, source_title, kind, site, page, date, notable, accounts, src, ocr
-shared is the number of five-word phrases in common; also_matches lists other sources it shares phrases with.
+shared is the number of five-word phrases in common; overlap is the passages they make up (lowercased, joined by
+" | "); also_matches lists other sources it shares phrases with.
     data/processed/english_screenshot_links.tsv + data/processed/primary.pq -> data/processed/screenshot_sources.tsv
 
 Run as a module from the repo root:
@@ -20,10 +21,10 @@ from collections import Counter
 import pandas as pd
 
 from config.paths import ENGLISH_SCREENSHOTS_PATH, PRIMARY_DB_PATH
-from src.source_matching import MIN_SHARED, SourceIndex
+from src.source_matching import MIN_SHARED, SourceIndex, overlap_spans
 
 COLUMNS = ['shared', 'source_url', 'source_title', 'kind', 'site', 'page', 'date', 'notable', 'accounts', 'src',
-           'also_matches', 'ocr']
+           'also_matches', 'ocr', 'overlap']
 
 
 def parse_args():
@@ -50,7 +51,8 @@ def main():
         if found:
             (url, n), others = found[0], found[1:4]
             rows.append({**{k: s.get(k, '') for k in COLUMNS}, 'shared': n, 'source_url': url,
-                         'source_title': index.titles[url], 'also_matches': '; '.join(f'{u} ({m})' for u, m in others)})
+                         'source_title': index.titles[url], 'also_matches': '; '.join(f'{u} ({m})' for u, m in others),
+                         'overlap': ' | '.join(overlap_spans(s['ocr'], index.shared_phrases(s['ocr'], url)))})
     rows.sort(key=lambda r: -r['shared'])
     with open(args.out, 'w', encoding='utf-8', newline='') as f:
         writer = csv.DictWriter(f, COLUMNS, delimiter='\t', extrasaction='ignore')
@@ -62,7 +64,7 @@ def main():
         print(f'  {n:4d}  {url}')
     print('by site:', Counter(r['site'] for r in rows).most_common(8))
     print('match strength (shared phrases):', dict(sorted(Counter(min(r['shared'], 20) for r in rows).items())))
-    print(f'spot check: cut -f1,2,5,12 {args.out} | awk -F"\\t" \'$1 <= 4\' | head    # the weakest matches')
+    print(f'spot check: cut -f1,2,13 {args.out} | head    # shared phrases, source, the overlapping passages')
 
 
 if __name__ == '__main__':

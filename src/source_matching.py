@@ -21,6 +21,24 @@ def phrases(text, n=N):
     return {' '.join(words[i:i + n]) for i in range(len(words) - n + 1)}
 
 
+def overlap_spans(text, shared, n=N):
+    """The runs of the text's words covered by the shared phrases, in order: the passages the text has in common
+    with a source, e.g. ['this expansion will help us serve this rapidly growing customer demand']."""
+    words = WORD.findall((text or '').lower())
+    covered = [False] * len(words)
+    for i in range(len(words) - n + 1):
+        if ' '.join(words[i:i + n]) in shared:
+            covered[i:i + n] = [True] * n
+    spans, run = [], []
+    for word, hit in zip(words, covered):
+        if hit:
+            run.append(word)
+        elif run:
+            spans.append(' '.join(run))
+            run = []
+    return spans + ([' '.join(run)] if run else [])
+
+
 def is_listing(url):
     """A site's front or listing page (anthropic.com/news): every headline is on it, so it 'matches' anything."""
     path = urlparse(url).path.strip('/').lower()
@@ -44,3 +62,7 @@ class SourceIndex:
         """[(url, shared phrases)] of the sources sharing at least min_shared phrases with text, most first."""
         shared = Counter(url for p in phrases(text) for url in self.index.get(p, ()))
         return [(url, n) for url, n in shared.most_common() if n >= min_shared]
+
+    def shared_phrases(self, text, url):
+        """The text's phrases that count towards its match with url."""
+        return {p for p in phrases(text) if url in self.index.get(p, ())}

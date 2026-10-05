@@ -20,3 +20,11 @@ def test_a_screenshot_matches_the_post_it_shows_despite_ocr_noise():
 def test_listing_pages_are_not_sources():
     assert is_listing('https://anthropic.com/news') and is_listing('https://openai.com/')
     assert not is_listing('https://anthropic.com/news/claude-4') and not is_listing('https://openai.com/sam-and-jony')
+
+
+def test_overlap_is_the_passages_in_common():
+    from src.source_matching import overlap_spans, phrases
+    source = 'This expansion will help us serve this rapidly growing customer demand. These greater resources'
+    ocr = 'Gu 显示 翻译 This expansion will help us serve this rapidly growing customer demand. Read more'
+    expected = 'this expansion will help us serve this rapidly growing customer demand'
+    assert overlap_spans(ocr, phrases(source)) == [expected]

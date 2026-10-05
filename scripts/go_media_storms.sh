@@ -10,6 +10,7 @@
 #   FROM=storms bash scripts/go_media_storms.sh     # start at a later step: cluster, storms, seeds or export
 #   CORPUS=zh bash scripts/go_media_storms.sh       # the Chinese site crawls -> data/interim/media_storms_zh,
 #                                                   # data/processed/storms_review_zh.json
+#   FLUSH=1 bash scripts/go_media_storms.sh         # first delete this corpus's storm outputs (not its inputs)
 #   N_WORKERS=1 MAX_FILES=1 bash scripts/go_media_storms.sh   # test
 # AFTER=<id>:<id>... makes the first step wait for those jobs to end (scripts/go_media_storms_zh.sh: the embedders).
 
@@ -39,6 +40,10 @@ one() {       # one <step> <time> <dependency ids> [afterany]: prints :id
 }
 
 dep=${AFTER:+:$AFTER}
+if [[ -n $FLUSH ]]; then   # waits for AFTER too, so nothing reads the folder while it is being deleted
+    dep=":$(sbatch --parsable $(after "$dep" afterany) --export="CORPUS=$CORPUS" scripts/slurm/flush_media_storms.slurm)"
+    echo "flush_media_storms ($CORPUS) ${dep#:}"
+fi
 if runs by_day;  then dep=$(workers by_day 1 8G "$dep"); fi
 if runs edges;   then dep=$(workers edges 8 32G "$dep"); fi
 if runs cluster; then dep=$(one cluster 08:00:00 "$dep" afterany); fi   # workers may end by time limit

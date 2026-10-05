@@ -56,6 +56,8 @@ def main():
     with open(os.path.join(args.storms_dir, 'storms.jsonl'), encoding='utf-8') as f:
         storms = [json.loads(line) for line in f]
     storms = sorted(storms, key=lambda s: (-seeds[s['cluster']]['seed_share'], -s['articles']))[:args.top]
+    if not storms:
+        raise SystemExit(f'no storms in {args.storms_dir}/storms.jsonl: nothing to export (see the storms step\'s log)')
     wanted = {s['cluster'] for s in storms}
     say(f'{len(storms)} storms to export')
     clusters = pq.read_table(os.path.join(args.storms_dir, 'clusters.parquet'))

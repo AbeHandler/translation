@@ -13,6 +13,7 @@ Only text is kept (at most MAX_TEXT_CHARS), not the HTML or file. Logic only.
 import datetime
 import hashlib
 import io
+import json
 import os
 import re
 
@@ -148,3 +149,28 @@ class SourceFetcher:
         out['text'] = (out['text'] or '')[:MAX_TEXT_CHARS]
         return {**out, 'n_chars': len(out['text']),
                 'fetched_at': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')}
+
+
+STORE_SCHEMA = [('key', 'string'), ('url', 'string'), ('final_url', 'string'), ('status', 'int32'),
+                ('content_type', 'string'), ('title', 'string'), ('text', 'string'), ('n_chars', 'int32'),
+                ('fetched_at', 'string'), ('error', 'string')]
+
+
+def compile_store(store_dir, out_path):
+    """Every <store_dir>/*.json as one Parquet table at out_path, a row per source, sorted by URL; written under a
+    name of this process's own and then renamed, so workers compiling at once never clobber each other. Returns
+    the rows."""
+    import glob
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    schema = pa.schema([(name, getattr(pa, kind)()) for name, kind in STORE_SCHEMA])
+    rows = []
+    for path in glob.glob(os.path.join(store_dir, '*.json')):
+        with open(path, encoding='utf-8') as f:
+            source = json.load(f)
+        rows.append({name: source.get(name) for name in schema.names})
+    rows.sort(key=lambda r: r['url'] or '')
+    part = f'{out_path}.{os.getpid()}.part'
+    pq.write_table(pa.Table.from_pylist(rows, schema), part, compression='zstd')
+    os.replace(part, out_path)
+    return rows

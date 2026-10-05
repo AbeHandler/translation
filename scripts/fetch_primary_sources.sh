@@ -1,10 +1,10 @@
 #!/bin/bash
 # The primary-source store, in one go: add the primary sources (data/processed/primary_sources.tsv, linked by
 # MIN_OUTLETS+ outlets) to the to-do list (scripts/slurm/add_primary_todo.slurm), then N_WORKERS workers fetch
-# everything on the list without a file yet -> data/interim/primary/<sha1>.json, then the store is compiled into
-# data/processed/primary.pq (scripts/slurm/compile_primary_sources.slurm, emails when done). Rerun any time: URLs
-# already listed
-# or fetched are skipped. Other URL lists: sbatch --export=TSV=...,COLUMN=... scripts/slurm/add_primary_todo.slurm
+# everything on the list without a file yet -> data/interim/primary/<sha1>.json; each worker rebuilds
+# data/processed/primary.pq when it finishes, and a last compile (emails when done) runs after them all. Rerun any
+# time: URLs already listed or fetched are skipped.
+# Other URL lists: sbatch --export=TSV=...,COLUMN=... scripts/slurm/add_primary_todo.slurm
 #
 # Usage (from the repo root):
 #   bash scripts/fetch_primary_sources.sh

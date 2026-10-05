@@ -36,7 +36,7 @@ def parse_args():
     parser.add_argument('-crawls-dir', default=str(SITE_CRAWLS_DIR))
     parser.add_argument('-out', default=str(ENGLISH_SCREENSHOTS_PATH))
     parser.add_argument('-accounts', nargs='+', default=[str(NOTABLE_ACCOUNTS_PATH), str(NOTABLE_ACCOUNTS_EXTRA_PATH)])
-    parser.add_argument('-ocr-chars', type=int, default=300)
+    parser.add_argument('-ocr-chars', type=int, default=2000)
     return parser.parse_args()
 
 

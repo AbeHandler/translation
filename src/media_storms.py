@@ -40,7 +40,10 @@ import pyarrow.parquet as pq
 from src.external_links import registered_domain
 
 FIRST_DAY = '2023-01-01'     # publication dates before this (or after the crawl) are taken to be wrong
+MIN_TEXT_CHARS = 300         # Chinese crawls: shorter pages are market flashes, captions or listings, not articles
+LISTING = re.compile(r'第\s*\d+\s*页|最新资讯|最新进展')   # channel and listing pages ("人工智能 第22页")
 THRESHOLD = 0.9
+THRESHOLD_ZH = 0.85     # bge-base-zh, cross-outlet pairs only: rewritten coverage of one story rarely reaches 0.9
 WINDOW_DAYS = 8
 BLOCK = 2048                 # rows of day d compared at a time
 MIN_DAYS, MIN_OUTLETS = 7, 5
@@ -113,7 +116,7 @@ URL_DATE = re.compile(r'/(20[2-3]\d)[-/]?(0[1-9]|1[0-2])[-/]?(0[1-9]|[12]\d|3[01
 def site_crawl_page(row, last_day, pubdate=None, about=None):
     """(outcome, found): outcome is 'kept' and found (date, day row without vector, links) for a crawled page
     that is Chinese, about AI and dated between FIRST_DAY and last_day; otherwise outcome says which test it
-    failed ('empty', 'not chinese', 'not about ai', 'no date', 'date out of range') and found is None.
+    failed ('empty', 'not chinese', 'listing page', 'not about ai', 'no date', 'date out of range') and found is None.
     pubdate(html, url) -> date string; about(html) -> bool (injectable)."""
     import lxml.html
     from src.ai_mentions import about_ai_article
@@ -124,6 +127,9 @@ def site_crawl_page(row, last_day, pubdate=None, about=None):
         return 'empty', None
     if not is_chinese(row.get('language'), html):
         return 'not chinese', None
+    match = TITLE.search(html)
+    if match and LISTING.search(match.group(1)):
+        return 'listing page', None
     if not about(html):
         return 'not about ai', None
     date = (pubdate(html, row['url']) or '')[:10]
@@ -145,14 +151,18 @@ def split_site_crawl_by_day(html_path, embeddings_path, days_dir, links_path, ke
     """One crawled HTML file's Chinese AI pages -> <days_dir>/<date>/<key>.parquet (with their embeddings) and
     links_path (one {url, links: [{href}]} line per page, the cc_links format). Returns ({day: count}, funnel):
     funnel counts the pages by outcome ('no embedding', site_crawl_page's), so a file that keeps nothing says why."""
-    rows = pq.read_table(embeddings_path, columns=['url', 'embedding']).to_pylist()
+    rows = pq.read_table(embeddings_path, columns=['url', 'text_chars', 'embedding']).to_pylist()
     vectors = {r['url']: r['embedding'] for r in rows if r['embedding'] is not None}
+    short = {r['url'] for r in rows if r['embedding'] is not None and r['text_chars'] < MIN_TEXT_CHARS}
     by_day, funnel = defaultdict(list), Counter()
     with open(links_path + '.part', 'w', encoding='utf-8') as f:
         for batch in pq.ParquetFile(html_path).iter_batches(batch_size=200, columns=['url', 'language', 'html']):
             for row in batch.to_pylist():
                 if row['url'] not in vectors:
                     funnel['no embedding'] += 1
+                    continue
+                if row['url'] in short:
+                    funnel['short'] += 1
                     continue
                 outcome, found = site_crawl_page(row, last_day, **page_kwargs)
                 funnel[outcome] += 1
@@ -188,9 +198,11 @@ def shift(date, days):
     return (datetime.date.fromisoformat(date) + datetime.timedelta(days=days)).isoformat()
 
 
-def day_edges(days_dir, date, threshold=THRESHOLD, window=WINDOW_DAYS):
+def day_edges(days_dir, date, threshold=THRESHOLD, window=WINDOW_DAYS, cross_outlet=False):
     """Pairs (url_a, url_b, cosine) >= threshold with url_a on date and url_b on date .. date + window - 1 (same
-    day: each pair once)."""
+    day: each pair once). cross_outlet: only pairs from different outlets (the Chinese crawls: one site's own
+    templated pages, like market flashes or listing pages, are near-identical and chain into year-long clusters;
+    a storm is coverage across outlets)."""
     urls, vecs = read_day(days_dir, date)
     if not urls:
         return []
@@ -202,9 +214,14 @@ def day_edges(days_dir, date, threshold=THRESHOLD, window=WINDOW_DAYS):
             later_vecs.append(v)
     other_urls = urls + later_urls
     others = np.vstack([vecs] + later_vecs)
+    if cross_outlet:
+        outlet_ids = {}
+        codes = np.array([outlet_ids.setdefault(registered_domain(u), len(outlet_ids)) for u in other_urls])
     edges = []
     for start in range(0, len(urls), BLOCK):
         sims = vecs[start:start + BLOCK] @ others.T
+        if cross_outlet:
+            sims[codes[start:start + BLOCK, None] == codes[None, :]] = -1
         rows, cols = np.nonzero(sims >= threshold)
         for i, j in zip(rows, cols):
             if j < len(urls) and j <= start + i:   # same day: each pair once, no self-pairs

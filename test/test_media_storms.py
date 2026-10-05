@@ -94,3 +94,24 @@ def test_a_crawled_page_counts_if_chinese_about_ai_and_dated():
     assert site_crawl_page(english, '2026-10-04', pubdate=lambda h, u: '2025-01-20')[0] == 'not chinese'
     weather = {**row, 'html': '<html><title>北京今日天气预报</title><p>今天天气很好。</p></html>'.encode()}
     assert site_crawl_page(weather, '2026-10-04', pubdate=lambda h, u: '2025-01-20')[0] == 'not about ai'
+
+
+def test_chinese_edges_pair_only_different_outlets(tmp_path):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from src.media_storms import DAY_SCHEMA, day_edges
+    rows = [{'url': u, 'outlet': '', 'title': '', 'vector': [1.0, 0.0]}
+            for u in ['https://nbd.com.cn/a', 'https://nbd.com.cn/b', 'https://thepaper.cn/c']]
+    (tmp_path / '2025-01-20').mkdir()
+    pq.write_table(pa.Table.from_pylist(rows, DAY_SCHEMA), tmp_path / '2025-01-20' / 'x.parquet')
+    assert len(day_edges(str(tmp_path), '2025-01-20')) == 3
+    pairs = {(a, b) for a, b, _ in day_edges(str(tmp_path), '2025-01-20', cross_outlet=True)}
+    c = 'https://thepaper.cn/c'
+    assert pairs == {('https://nbd.com.cn/a', c), ('https://nbd.com.cn/b', c)}
+
+
+def test_listing_pages_are_not_articles():
+    from src.media_storms import site_crawl_page
+    html = '<html><head><title>人工智能_最新资讯 | 雷锋网 第22页</title></head><body><p>人工智能大模型。</p></body></html>'
+    row = {'url': 'https://www.leiphone.com/category/ai/page/22', 'language': 'zh', 'html': html.encode()}
+    assert site_crawl_page(row, '2026-10-04', pubdate=lambda h, u: '2026-01-01')[0] == 'listing page'

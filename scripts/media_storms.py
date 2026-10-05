@@ -41,8 +41,8 @@ from config.paths import (CC_LINKS_DIR, CC_NEWS_EMBEDDINGS_DIR, CC_NEWS_PUBDATES
 from src.file_worker import process_files
 from src.external_links import external_links
 from src.media_storms import (MIN_DAYS, MIN_OUTLET_ARTICLES, MIN_OUTLETS, MIN_PEAK_SHARE, STORM_SHARE,
-                              STORM_WINDOW, THRESHOLD, WINDOW_DAYS, clusters, day_edges, outlet_days, profile, shift,
-                              split_by_day, split_site_crawl_by_day, storm_seeds, storms, write_edges)
+                              STORM_WINDOW, THRESHOLD, THRESHOLD_ZH, WINDOW_DAYS, clusters, day_edges, outlet_days,
+                              profile, shift, split_by_day, split_site_crawl_by_day, storm_seeds, storms, write_edges)
 from src.warc_worker_cli import optional_int, setup_worker_process
 
 
@@ -55,7 +55,7 @@ def parse_args():
     parser.add_argument('-crawls-dir', default=str(SITE_CRAWLS_DIR), help='zh: <domain>/html, <domain>/embeddings')
     parser.add_argument('-out-dir', default=None, help='default: by corpus')
     parser.add_argument('-links-dir', default=None, help="seeds: the articles' links (default: by corpus)")
-    parser.add_argument('-threshold', type=float, default=THRESHOLD)
+    parser.add_argument('-threshold', type=float, default=None, help=f'default {THRESHOLD} (en), {THRESHOLD_ZH} (zh)')
     parser.add_argument('-redo-edges', action='store_true', help='edges: recompute days that already have edges')
     parser.add_argument('-min-days', type=int, default=MIN_DAYS, help='storms')
     parser.add_argument('-min-outlets', type=int, default=MIN_OUTLETS, help='storms')
@@ -66,6 +66,7 @@ def parse_args():
     parser.add_argument('-max-files', type=optional_int, default=None, help='workers: stop after N (testing)')
     args = parser.parse_args()
     zh = args.corpus == 'zh'
+    args.threshold = args.threshold or (THRESHOLD_ZH if zh else THRESHOLD)
     args.out_dir = args.out_dir or str(MEDIA_STORMS_ZH_DIR if zh else MEDIA_STORMS_DIR)
     args.links_dir = args.links_dir or (os.path.join(args.out_dir, 'links') if zh else str(CC_LINKS_DIR))
     return args
@@ -143,7 +144,7 @@ def edges(args):
             os.remove(path)
 
     def compute(day_path, out):
-        found = day_edges(days_dir, os.path.basename(day_path), args.threshold)
+        found = day_edges(days_dir, os.path.basename(day_path), args.threshold, cross_outlet=args.corpus == 'zh')
         write_edges(found, out)
         return {'edges': len(found)}
 

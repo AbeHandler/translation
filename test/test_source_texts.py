@@ -2,10 +2,11 @@
 from src.source_texts import TRUTH_POST, X_POST, html_text, source_path
 
 
-def test_one_file_per_document():
-    assert source_path('/d', 'x.com/sama/status/1').endswith('.json')
-    assert source_path('/d', 'x.com/sama/status/1') == source_path('/d', 'x.com/sama/status/1')
-    assert source_path('/d', 'x.com/sama/status/1') != source_path('/d', 'x.com/sama/status/2')
+def test_one_file_per_url_variants_included():
+    post = 'https://x.com/sama/status/1790075827666796666'
+    assert source_path('/d', post).endswith('.json')
+    assert source_path('/d', post) == source_path('/d', 'https://twitter.com/sama/status/1790075827666796666?s=20')
+    assert source_path('/d', post) != source_path('/d', 'https://x.com/sama/status/2')
 
 
 def test_posts_are_recognised():

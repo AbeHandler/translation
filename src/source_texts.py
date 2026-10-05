@@ -1,8 +1,9 @@
 """
-The raw text of a primary source (src/primary_sources.py), fetched once and kept as one JSON file per source,
-<dir>/<sha1 of its document key>.json {document, url, final_url, status, content_type, title, text, n_chars,
-fetched_at} (scripts/fetch_primary_sources.py). The key is the normalized URL (src/media_storms.py document_key),
-so twitter.com and x.com, or links with and without ?utm=, share one file. Each kind of source has its way in:
+The store of primary sources' raw text: a to-do list of URLs (<dir>/todo.tsv: url, added_from, added_at;
+scripts/add_primary_todo.py adds to it from any list of URLs), and one JSON file per URL fetched,
+<dir>/<sha1 of the URL's key>.json {key, url, final_url, status, content_type, title, text, n_chars, fetched_at}
+(scripts/fetch_primary_sources.py works through the list). The key is the URL normalized (source_key), so
+twitter.com and x.com, or links with and without ?utm=, share one file. Each kind of source has its way in:
     X/Twitter posts   the public oEmbed endpoint (publish.twitter.com): the post's text, no login
     Truth Social      its public status API (truthsocial.com/api/v1/statuses/<id>)
     PDFs              the file's text (pypdf), at most MAX_PDF_PAGES pages
@@ -59,8 +60,31 @@ def pdf_text(data):
     return str(title), '\n'.join(pages)
 
 
-def source_path(texts_dir, document):
-    return os.path.join(texts_dir, hashlib.sha1(document.encode('utf-8')).hexdigest() + '.json')
+def source_key(url):
+    """The URL normalized (src/media_storms.py document_key: no www., query or fragment; twitter.com is x.com), so
+    variants of one URL share a file; the URL itself when it has no document key (a homepage)."""
+    from src.media_storms import document_key
+    return document_key(url) or url.strip()
+
+
+def source_path(texts_dir, url):
+    """<texts_dir>/<sha1 of the URL's key>.json"""
+    return os.path.join(texts_dir, hashlib.sha1(source_key(url).encode('utf-8')).hexdigest() + '.json')
+
+
+TODO_COLUMNS = ['url', 'added_from', 'added_at']
+
+
+def read_todo(path):
+    """{source key: url} of the to-do list (a TSV: url, added_from, added_at), first URL per key."""
+    if not os.path.exists(path):
+        return {}
+    import csv
+    with open(path, encoding='utf-8', newline='') as f:
+        todo = {}
+        for row in csv.DictReader(f, delimiter='\t'):
+            todo.setdefault(source_key(row['url']), row['url'])
+        return todo
 
 
 class SourceFetcher:

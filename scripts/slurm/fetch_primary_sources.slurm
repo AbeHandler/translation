@@ -1,10 +1,10 @@
 #!/bin/bash
-# A worker of scripts/fetch_primary_sources.py: the raw text of the primary sources -> data/interim/primary/.
+# A worker of scripts/fetch_primary_sources.py: the raw text of the URLs on data/interim/primary/todo.tsv
+# -> data/interim/primary/<sha1>.json.
 # Submit many (scripts/fetch_primary_sources.sh).
 #
 # Usage (from the repo root):
 #   sbatch --export=NONE scripts/slurm/fetch_primary_sources.slurm
-#   sbatch --export=MIN_OUTLETS=10 scripts/slurm/fetch_primary_sources.slurm
 
 #SBATCH --partition=acpu
 #SBATCH --time=24:00:00
@@ -23,4 +23,4 @@ source ~/.myrc
 module load anaconda
 conda activate translation
 
-python -m scripts.fetch_primary_sources -min-outlets "${MIN_OUTLETS:-0}" -max-files "$MAX_FILES"
+python -m scripts.fetch_primary_sources -max-files "$MAX_FILES"

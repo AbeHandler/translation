@@ -20,7 +20,7 @@ from src.seed_documents import NEWS_DOMAINS, is_primary, source_kind
 SPREAD_DAYS = 14           # outlets_first: outlets linking within this many days of the first link
 # a corpus site counts as a news outlet if it has this many AI articles: CC-NEWS also crawls company newsrooms
 # (anthropic.com, openai.com), whose posts are sources
-MIN_NEWS_ARTICLES = 100
+MIN_NEWS_ARTICLES = 5000
 FIRST_DAY = '2000-01-01'   # earlier link dates are bad dates
 MIN_OUTLETS = 3            # a source is linked by at least this many outlets
 LINK_SCHEMA = pa.schema([('document', pa.string()), ('href', pa.string()), ('article', pa.string()),

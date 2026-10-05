@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Add URLs to the primary-source store's to-do list (data/interim/primary/todo.tsv: url, added_from, added_at;
+Add URLs to the primary-source store's to-do list (data/interim/primary/todo.tsv: one URL per line;
 src/source_texts.py), each once (by its normalized key). scripts/fetch_primary_sources.py then fetches whatever on
 the list has no file yet. Any list of URLs can feed it:
     -primary-sources TSV     the primary sources (data/processed/primary_sources.tsv, column href), linked by at
@@ -14,11 +14,10 @@ Run as a module from the repo root:
 """
 import argparse
 import csv
-import datetime
 import os
 
 from config.paths import PRIMARY_TEXTS_DIR
-from src.source_texts import TODO_COLUMNS, read_todo, source_key
+from src.source_texts import read_todo, source_key
 
 
 def parse_args():
@@ -59,18 +58,13 @@ def main():
     os.makedirs(args.store_dir, exist_ok=True)
     path = os.path.join(args.store_dir, 'todo.tsv')
     known = read_todo(path)
-    now = datetime.datetime.now().isoformat(timespec='seconds')
     new = {}
-    for url, added_from in candidate_urls(args):
+    for url, _ in candidate_urls(args):
         key = source_key(url)
         if key not in known and key not in new:
-            new[key] = (url, added_from)
-    is_new_file = not os.path.exists(path)
-    with open(path, 'a', encoding='utf-8', newline='') as f:
-        writer = csv.writer(f, delimiter='\t')
-        if is_new_file:
-            writer.writerow(TODO_COLUMNS)
-        writer.writerows([url, added_from, now] for url, added_from in new.values())
+            new[key] = url
+    with open(path, 'a', encoding='utf-8') as f:
+        f.writelines(url + '\n' for url in new.values())
     print(f'{len(new)} URLs added to {path} ({len(known) + len(new)} on the list)')
 
 

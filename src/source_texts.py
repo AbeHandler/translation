@@ -1,6 +1,6 @@
 """
-The store of primary sources' raw text: a to-do list of URLs (<dir>/todo.tsv: url, added_from, added_at;
-scripts/add_primary_todo.py adds to it from any list of URLs), and one JSON file per URL fetched,
+The store of primary sources' raw text: a to-do list (<dir>/todo.tsv: one URL per line; scripts/add_primary_todo.py
+adds to it from any list of URLs, or append to it yourself), and one JSON file per URL fetched,
 <dir>/<sha1 of the URL's key>.json {key, url, final_url, status, content_type, title, text, n_chars, fetched_at}
 (scripts/fetch_primary_sources.py works through the list). The key is the URL normalized (source_key), so
 twitter.com and x.com, or links with and without ?utm=, share one file. Each kind of source has its way in:
@@ -72,19 +72,18 @@ def source_path(texts_dir, url):
     return os.path.join(texts_dir, hashlib.sha1(source_key(url).encode('utf-8')).hexdigest() + '.json')
 
 
-TODO_COLUMNS = ['url', 'added_from', 'added_at']
-
-
 def read_todo(path):
-    """{source key: url} of the to-do list (a TSV: url, added_from, added_at), first URL per key."""
+    """{source key: url} of the to-do list: one URL per line (anything else on a line after a tab is ignored, and
+    lines that aren't URLs, like a header, are skipped); the first URL per key."""
     if not os.path.exists(path):
         return {}
-    import csv
-    with open(path, encoding='utf-8', newline='') as f:
-        todo = {}
-        for row in csv.DictReader(f, delimiter='\t'):
-            todo.setdefault(source_key(row['url']), row['url'])
-        return todo
+    todo = {}
+    with open(path, encoding='utf-8') as f:
+        for line in f:
+            url = line.split('\t')[0].strip()
+            if url.startswith(('http://', 'https://')):
+                todo.setdefault(source_key(url), url)
+    return todo
 
 
 class SourceFetcher:

@@ -33,6 +33,7 @@ from src.media_storms import split_site_crawl_by_day
 import pyarrow.parquet as pq
 
 out = sys.argv[1]
+os.makedirs(out, exist_ok=True)
 sites = sorted(glob.glob('data/interim/site_crawls/*/'))
 random.shuffle(sites)
 total, today = Counter(), datetime.date.today().isoformat()

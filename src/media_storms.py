@@ -48,6 +48,9 @@ STORM_WINDOW, STORM_SHARE, MIN_OUTLET_ARTICLES = 3, 0.03, 40
 MIN_PEAK_SHARE, PEAK_HALF = 0.3, 3
 SEED_MAX_STORMS = 5          # a link cited in more storms than this is generic (a homepage, a profile), not a seed
 SEED_MIN_ARTICLES = 3        # a seed is cited by at least this many of the storm's articles
+# a storm whose top cited document is on one of these is a burst of templated stock notices (price targets,
+# holdings), all linking the stock's page: not news
+TEMPLATE_HOSTS = ('marketbeat.com',)
 DAY_SCHEMA = pa.schema([('url', pa.string()), ('outlet', pa.string()), ('title', pa.string()),
                         ('vector', pa.list_(pa.float16()))])
 EDGE_SCHEMA = pa.schema([('a', pa.string()), ('b', pa.string()), ('cosine', pa.float32())])
@@ -321,7 +324,7 @@ def document_key(href):
     links that can't be a document (a homepage, a share button, not http)."""
     parts = urlparse(href.strip())
     host, path = (parts.hostname or '').removeprefix('www.'), parts.path.rstrip('/')
-    if parts.scheme not in ('http', 'https') or not host or not path:
+    if parts.scheme not in ('http', 'https') or not host or not path or '/hub/' in path:   # AP topic pages
         return None
     if any(t in href for t in ('sharer', 'intent/tweet', 'share?', 'shareArticle', '/share/', 'mailto:')):
         return None
@@ -331,7 +334,8 @@ def document_key(href):
 def storm_seeds(members, links_of, max_storms=SEED_MAX_STORMS, min_articles=SEED_MIN_ARTICLES, top=5):
     """members: {cluster: [article url]}; links_of: {article url: [external hrefs]}. Returns {cluster: {seeds:
     [{document, href, articles, outlets, share}] (top cited documents, most cited first), seed_share (the top
-    one's share of the storm's articles; 0 if none is cited by min_articles), citing: [article urls citing it]}}.
+    one's share of the storm's articles; 0 if none is cited by min_articles), citing: [article urls citing it],
+    template: its top cited document is on a TEMPLATE_HOSTS site}}.
     Documents cited in more than max_storms storms are generic and left out."""
     cites = {}                                    # cluster -> document -> set of article urls
     href_of = {}
@@ -354,5 +358,7 @@ def storm_seeds(members, links_of, max_storms=SEED_MAX_STORMS, min_articles=SEED
                   'outlets': len({registered_domain(u) for u in arts}), 'share': round(len(arts) / n, 3)}
                  for doc, arts in ranked]
         best = ranked[0][1] if ranked and len(ranked[0][1]) >= min_articles else set()
-        out[cid] = {'seeds': seeds, 'seed_share': round(len(best) / n, 3) if best else 0.0, 'citing': sorted(best)}
+        template = bool(ranked) and ranked[0][0].split('/')[0].endswith(TEMPLATE_HOSTS)
+        out[cid] = {'seeds': seeds, 'seed_share': round(len(best) / n, 3) if best else 0.0, 'citing': sorted(best),
+                    'template': template}
     return out

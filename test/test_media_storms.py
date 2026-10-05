@@ -60,6 +60,7 @@ def test_seeds_are_the_documents_a_storm_cites_not_generic_links():
     from src.media_storms import document_key, storm_seeds
     assert document_key('https://www.ai.meta.com/blog/llama/?utm=x#top') == 'ai.meta.com/blog/llama'
     assert document_key('https://twitter.com/') is None
+    assert document_key('https://apnews.com/hub/hollywood-strikes/') is None
     assert document_key('https://www.facebook.com/sharer/sharer.php?u=x') is None
     blog = 'https://ai.meta.com/blog/large-language-model-llama-meta-ai/'
     members = {'llama': [f'https://n{i}.com/a' for i in range(10)]}
@@ -70,6 +71,10 @@ def test_seeds_are_the_documents_a_storm_cites_not_generic_links():
     found = storm_seeds(members, links_of)
     assert found['llama']['seeds'][0]['href'] == blog and found['llama']['seed_share'] == 0.6
     assert len(found['llama']['citing']) == 6 and found['s0']['seed_share'] == 0.0
+    assert not found['llama']['template']
+    stock_page = 'https://www.marketbeat.com/stocks/NASDAQ/X/'
+    notices = storm_seeds({'n': ['https://a.com/1']}, {'https://a.com/1': [stock_page]})
+    assert notices['n']['template']
 
 
 def test_a_crawled_page_counts_if_chinese_about_ai_and_dated():

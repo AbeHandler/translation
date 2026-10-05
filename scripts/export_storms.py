@@ -2,8 +2,9 @@
 """
 Export the media storms (scripts/media_storms.py) for reading: -top storms, those most focused on one cited
 document first (seed_share: the share of the storm's articles linking to its top cited document; the seeds step),
-then the rest, largest first. Each with its cited documents, articles per day, top outlets, and up to -max-articles
-of its articles (url, outlet, date, title, cites_seed; the citing ones first, then a sample over its days).
+then the rest, largest first. Storms of templated stock notices (seeds' template flag) are left out. Each with
+its cited documents, articles per day, top outlets, and up to -max-articles of its articles (url, outlet, date,
+title, cites_seed; the citing ones first, then a sample over its days).
     data/interim/media_storms/{storms.jsonl, storm_seeds.jsonl, clusters.parquet, days/}
         -> data/processed/storms_review.json
 Small enough to copy to a laptop and read (or load into a review page).
@@ -55,6 +56,10 @@ def main():
         seeds = {row['cluster']: row for row in map(json.loads, f)}
     with open(os.path.join(args.storms_dir, 'storms.jsonl'), encoding='utf-8') as f:
         storms = [json.loads(line) for line in f]
+    template = [s for s in storms if seeds[s['cluster']].get('template')]
+    print(f'{len(template)} of {len(storms)} storms left out as templated stock notices (src/media_storms.py '
+          'TEMPLATE_HOSTS)', flush=True)
+    storms = [s for s in storms if not seeds[s['cluster']].get('template')]
     storms = sorted(storms, key=lambda s: (-seeds[s['cluster']]['seed_share'], -s['articles']))[:args.top]
     if not storms:
         raise SystemExit(f'no storms in {args.storms_dir}/storms.jsonl: nothing to export (see the storms step\'s log)')

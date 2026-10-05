@@ -1,10 +1,10 @@
 #!/bin/bash
-# One step of scripts/media_storms.py (STEP=by_day|edges|cluster|storms). by_day and edges are workers: submit
-# many. scripts/go_media_storms.sh runs all four in order.
+# One step of scripts/media_storms.py (STEP=by_day|edges|cluster|storms|seeds; CORPUS=en|zh, default en).
+# by_day and edges are workers: submit many. scripts/go_media_storms.sh runs them all in order.
 #
 # Usage (from the repo root; normally via scripts/go_media_storms.sh):
 #   sbatch --export=STEP=edges scripts/slurm/media_storms.slurm
-#   optional: MAX_FILES=1 (test), REDO_EDGES=1 (edges: recompute days already done)
+#   optional: CORPUS=zh, MAX_FILES=1 (test), REDO_EDGES=1 (edges: recompute days already done)
 
 #SBATCH --partition=acpu
 #SBATCH --time=24:00:00
@@ -31,4 +31,4 @@ conda activate translation
 
 export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK:-1}   # the edges' matrix products
 
-python -m scripts.media_storms -step "$STEP" -max-files "$MAX_FILES" ${REDO_EDGES:+-redo-edges}
+python -m scripts.media_storms -corpus "${CORPUS:-en}" -step "$STEP" -max-files "$MAX_FILES" ${REDO_EDGES:+-redo-edges}

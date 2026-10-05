@@ -1,13 +1,19 @@
 #!/usr/bin/env python
 """
-Media storms in the English CC-NEWS coverage of AI (src/media_storms.py, after Litterer et al. 2023). Steps:
+Media storms in news coverage of AI (src/media_storms.py, after Litterer et al. 2023), in one of two corpora:
+    -corpus en   the English CC-NEWS articles (default) -> $STORMS = data/interim/media_storms
+    -corpus zh   the Chinese site crawls (their bge-base-zh embeddings, scripts/embed_site_crawls.py)
+                 -> $STORMS = data/interim/media_storms_zh
+Steps:
     -step by_day   a worker: each WARC's embeddings + dates -> $STORMS/days/<date>/<warc>.parquet
+                   (zh: each crawled HTML file's Chinese AI pages, dated from their HTML, + their embeddings
+                   -> $STORMS/days/<date>/<domain>__<part>.parquet, and their links -> $STORMS/links/)
     -step edges    a worker: each day's similar pairs (cosine >= 0.9, within 8 days) -> $STORMS/edges/<date>.parquet
     -step cluster  connected components of all edges -> $STORMS/clusters.parquet {url, cluster}
     -step storms   storm clusters (>= 7 days, >= 5 outlets in storm mode, a burst around the peak)
                    -> $STORMS/storms.jsonl + a summary
     -step seeds    the documents each storm's articles cite (cc_links) -> $STORMS/storm_seeds.jsonl
-with $STORMS = data/interim/media_storms. by_day and edges are workers (many in parallel, .lock files, finished
+by_day and edges are workers (many in parallel, .lock files, finished
 files skipped), so rerunning after more WARCs are embedded and dated only does the new part. Note: a day's edges
 are computed once; rerun with -redo-edges after adding WARCs whose articles fall on days already done.
 
@@ -17,6 +23,7 @@ Run as a module from the repo root:
     python -m scripts.media_storms -step cluster
     python -m scripts.media_storms -step storms
     python -m scripts.media_storms -step seeds
+    python -m scripts.media_storms -corpus zh -step by_day
 """
 import argparse
 import glob
@@ -27,27 +34,68 @@ from collections import Counter, defaultdict
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from config.paths import CC_LINKS_DIR, CC_NEWS_EMBEDDINGS_DIR, CC_NEWS_PUBDATES_DIR, MEDIA_STORMS_DIR
+import datetime
+
+from config.paths import (CC_LINKS_DIR, CC_NEWS_EMBEDDINGS_DIR, CC_NEWS_PUBDATES_DIR, MEDIA_STORMS_DIR,
+                          MEDIA_STORMS_ZH_DIR, SITE_CRAWLS_DIR)
 from src.file_worker import process_files
 from src.external_links import external_links
-from src.media_storms import THRESHOLD, clusters, day_edges, split_by_day, storm_seeds, storms, write_edges
+from src.media_storms import (THRESHOLD, clusters, day_edges, split_by_day, split_site_crawl_by_day, storm_seeds,
+                              storms, write_edges)
 from src.warc_worker_cli import optional_int, setup_worker_process
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Media storms in the English CC-NEWS coverage of AI')
     parser.add_argument('-step', required=True, choices=('by_day', 'edges', 'cluster', 'storms', 'seeds'))
-    parser.add_argument('-embeddings-dir', default=str(CC_NEWS_EMBEDDINGS_DIR))
-    parser.add_argument('-dates-dir', default=str(CC_NEWS_PUBDATES_DIR))
-    parser.add_argument('-out-dir', default=str(MEDIA_STORMS_DIR))
-    parser.add_argument('-links-dir', default=str(CC_LINKS_DIR), help="seeds: each WARC's article links")
+    parser.add_argument('-corpus', default='en', choices=('en', 'zh'))
+    parser.add_argument('-embeddings-dir', default=str(CC_NEWS_EMBEDDINGS_DIR), help='en')
+    parser.add_argument('-dates-dir', default=str(CC_NEWS_PUBDATES_DIR), help='en')
+    parser.add_argument('-crawls-dir', default=str(SITE_CRAWLS_DIR), help='zh: <domain>/html, <domain>/embeddings')
+    parser.add_argument('-out-dir', default=None, help='default: by corpus')
+    parser.add_argument('-links-dir', default=None, help="seeds: the articles' links (default: by corpus)")
     parser.add_argument('-threshold', type=float, default=THRESHOLD)
     parser.add_argument('-redo-edges', action='store_true', help='edges: recompute days that already have edges')
     parser.add_argument('-max-files', type=optional_int, default=None, help='workers: stop after N (testing)')
-    return parser.parse_args()
+    args = parser.parse_args()
+    zh = args.corpus == 'zh'
+    args.out_dir = args.out_dir or str(MEDIA_STORMS_ZH_DIR if zh else MEDIA_STORMS_DIR)
+    args.links_dir = args.links_dir or (os.path.join(args.out_dir, 'links') if zh else str(CC_LINKS_DIR))
+    return args
 
 
 def by_day(args):
+    (by_day_zh if args.corpus == 'zh' else by_day_en)(args)
+
+
+def by_day_zh(args):
+    """Worker over the crawled HTML files that have embeddings; a marker file per HTML file says it's split."""
+    days_dir, done_dir = os.path.join(args.out_dir, 'days'), os.path.join(args.out_dir, 'by_day_done')
+    os.makedirs(done_dir, exist_ok=True)
+    os.makedirs(args.links_dir, exist_ok=True)
+    last_day = datetime.date.today().isoformat()
+
+    def key_of(path):   # <domain>__<part>
+        return os.path.basename(os.path.dirname(os.path.dirname(path))) + '__' + \
+            os.path.basename(path).removesuffix('.parquet')
+
+    def embeddings_of(path):
+        return os.path.join(os.path.dirname(os.path.dirname(path)), 'embeddings', os.path.basename(path))
+
+    paths = [p for p in sorted(glob.glob(os.path.join(args.crawls_dir, '*', 'html', '*.parquet')))
+             if os.path.exists(embeddings_of(p))]
+
+    def split(path, marker):
+        key = key_of(path)
+        counts = split_site_crawl_by_day(path, embeddings_of(path), days_dir,
+                                         os.path.join(args.links_dir, key + '.jsonl'), key, last_day)
+        with open(marker, 'w') as f:
+            json.dump(counts, f)
+        return {'days': len(counts), 'articles': sum(counts.values())}
+    process_files(paths, lambda p: os.path.join(done_dir, key_of(p) + '.json'), split, args.max_files)
+
+
+def by_day_en(args):
     """Worker over the WARCs that have both embeddings and dates; a marker file per WARC says it's split."""
     days_dir, done_dir = os.path.join(args.out_dir, 'days'), os.path.join(args.out_dir, 'by_day_done')
     os.makedirs(done_dir, exist_ok=True)

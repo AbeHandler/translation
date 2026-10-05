@@ -1,10 +1,16 @@
 """
-Media storms in the English CC-NEWS coverage of AI, after Litterer, Jurgens & Card (2023), "When it Rains, it
-Pours" (Findings of EMNLP), sec. 3.3-3.4. Logic only: no paths. Steps (scripts/media_storms.py), each building on
-the last and skipping work already done:
+Media storms in news coverage of AI, after Litterer, Jurgens & Card (2023), "When it Rains, it Pours" (Findings
+of EMNLP), sec. 3.3-3.4. Two corpora, the same steps after by_day: the English CC-NEWS articles (newsSimilarity
+embeddings, CC-NEWS's US-centred outlets) and the Chinese site crawls (the mainland outlets in config/sites.txt;
+bge-base-zh-v1.5 embeddings, a general-purpose Chinese document embedder, already made for every crawled page by
+scripts/embed_site_crawls.py). Logic only: no paths. Steps (scripts/media_storms.py), each building on the last
+and skipping work already done:
 
     by_day   each WARC's embedded articles (src/news_embeddings.py) joined to their dates (src/news_pubdates.py),
-             split into one small file per day: <days>/<date>/<warc>.parquet {url, outlet, title, vector}
+             split into one small file per day: <days>/<date>/<warc>.parquet {url, outlet, title, vector}.
+             Chinese: each crawled HTML file's Chinese pages about AI (src/ai_mentions.py about_ai), their
+             embeddings and publication dates (extract_pubdate) -> <days>/<date>/<domain>__<part>.parquet, and
+             their links -> <links>/<domain>__<part>.jsonl (the cc_links format, for seeds)
     edges    per day d: cosine of d's articles with those of days d .. d + WINDOW_DAYS - 1; pairs >= THRESHOLD
              (the paper: < 8 days apart, cosine > 0.9; it also required a shared named entity, which we don't
              have, so the threshold alone decides)
@@ -21,7 +27,9 @@ the last and skipping work already done:
              profiles, share buttons) are left out.
 """
 import datetime
+import json
 import os
+import re
 from collections import Counter, defaultdict
 from urllib.parse import urlparse
 
@@ -31,6 +39,7 @@ import pyarrow.parquet as pq
 
 from src.external_links import registered_domain
 
+FIRST_DAY = '2023-01-01'     # publication dates before this (or after the crawl) are taken to be wrong
 THRESHOLD = 0.9
 WINDOW_DAYS = 8
 BLOCK = 2048                 # rows of day d compared at a time
@@ -56,12 +65,74 @@ def split_by_day(embeddings_path, dates_path, days_dir, warc):
         if date:
             by_day[date].append({'url': row['url'], 'outlet': registered_domain(row['url']), 'title': row['title'],
                                  'vector': row['embedding']})
+    return write_days(by_day, days_dir, warc)
+
+
+def write_days(by_day, days_dir, key):
+    """{date: [day rows]} -> <days_dir>/<date>/<key>.parquet each. Returns {day: count}."""
     for date, rows in by_day.items():
-        out = os.path.join(days_dir, date, warc + '.parquet')
+        out = os.path.join(days_dir, date, key + '.parquet')
         os.makedirs(os.path.dirname(out), exist_ok=True)
         pq.write_table(pa.Table.from_pylist(rows, DAY_SCHEMA), out + '.part')
         os.rename(out + '.part', out)
     return {date: len(rows) for date, rows in by_day.items()}
+
+
+def is_chinese(language, html):
+    """news-please's language, or, when it has none, a page whose title has Chinese characters."""
+    if language:
+        return language.startswith('zh')
+    match = TITLE.search(html)
+    return bool(match and CJK.search(match.group(1)))
+
+
+TITLE = re.compile(r'<title[^>]*>(.*?)</title>', re.I | re.S)
+CJK = re.compile(r'[\u4e00-\u9fff]')
+
+
+def site_crawl_page(row, last_day, pubdate=None, about=None):
+    """(date, day row without vector, links) of one crawled page if it is Chinese, about AI and dated between
+    FIRST_DAY and last_day; else None. pubdate(html, url) -> date string; about(html) -> bool (injectable)."""
+    import lxml.html
+    from src.ai_mentions import about_ai
+    from src.extract_pubdate import extract_pubdate
+    pubdate = pubdate or (lambda html, url: extract_pubdate(html, url, extensive=False)[0])
+    about = about or about_ai
+    html = row['html'].decode('utf-8', errors='replace') if isinstance(row['html'], bytes) else row['html']
+    if not html or not is_chinese(row.get('language'), html) or not about(html):
+        return None
+    date = (pubdate(html, row['url']) or '')[:10]
+    if not (FIRST_DAY <= date <= last_day):
+        return None
+    try:
+        tree = lxml.html.fromstring(html)
+        tree.make_links_absolute(row['url'])
+        title = (tree.findtext('.//title') or '').strip()
+        links = [{'href': href} for _, attr, href, _ in tree.iterlinks() if attr == 'href']
+    except Exception:
+        title, links = '', []
+    return date, {'url': row['url'], 'outlet': registered_domain(row['url']), 'title': title}, links
+
+
+def split_site_crawl_by_day(html_path, embeddings_path, days_dir, links_path, key, last_day, **page_kwargs):
+    """One crawled HTML file's Chinese AI pages -> <days_dir>/<date>/<key>.parquet (with their embeddings) and
+    links_path (one {url, links: [{href}]} line per page, the cc_links format). Returns {day: count}."""
+    rows = pq.read_table(embeddings_path, columns=['url', 'embedding']).to_pylist()
+    vectors = {r['url']: r['embedding'] for r in rows if r['embedding'] is not None}
+    by_day = defaultdict(list)
+    with open(links_path + '.part', 'w', encoding='utf-8') as f:
+        for batch in pq.ParquetFile(html_path).iter_batches(batch_size=200, columns=['url', 'language', 'html']):
+            for row in batch.to_pylist():
+                if row['url'] not in vectors:
+                    continue
+                found = site_crawl_page(row, last_day, **page_kwargs)
+                if found:
+                    date, day_row, links = found
+                    by_day[date].append({**day_row, 'vector': vectors[row['url']]})
+                    f.write(json.dumps({'url': row['url'], 'links': links}, ensure_ascii=False) + '\n')
+    counts = write_days(by_day, days_dir, key)
+    os.rename(links_path + '.part', links_path)
+    return counts
 
 
 def read_day(days_dir, date):

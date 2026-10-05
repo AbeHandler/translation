@@ -8,12 +8,15 @@
 # Usage:
 #   bash scripts/go_media_storms.sh                 # everything (100 workers per worker step)
 #   FROM=storms bash scripts/go_media_storms.sh     # start at a later step: cluster, storms, seeds or export
+#   CORPUS=zh bash scripts/go_media_storms.sh       # the Chinese site crawls -> data/interim/media_storms_zh,
+#                                                   # data/processed/storms_review_zh.json
 #   N_WORKERS=1 MAX_FILES=1 bash scripts/go_media_storms.sh   # test
 
 set -eo pipefail  # no -u: ~/.myrc references unset vars
 source ~/.myrc
 mkdir -p logs/scripts/slurm
 N_WORKERS=${N_WORKERS:-100}
+CORPUS=${CORPUS:-en}
 FROM=${FROM:-by_day}
 STEPS=(by_day edges cluster storms seeds export)
 [[ " ${STEPS[*]} " == *" $FROM "* ]] || { echo "FROM must be one of: ${STEPS[*]}" >&2; exit 1; }
@@ -25,13 +28,13 @@ workers() {   # workers <step> <cpus> <mem> <dependency ids>: prints :id:id...
     local ids=""
     for ((i = 0; i < N_WORKERS; i++)); do
         ids+=":$(sbatch --parsable ${4:+--dependency=afterany$4} --cpus-per-task="$2" --mem="$3" \
-            --export="STEP=$1,MAX_FILES=$MAX_FILES,REDO_EDGES=$REDO_EDGES" scripts/slurm/media_storms.slurm)"
+            --export="STEP=$1,CORPUS=$CORPUS,MAX_FILES=$MAX_FILES,REDO_EDGES=$REDO_EDGES" scripts/slurm/media_storms.slurm)"
     done
     echo "$ids"
 }
 one() {       # one <step> <time> <dependency ids> [afterany]: prints :id
     echo ":$(sbatch --parsable $(after "$3" "$4") --cpus-per-task=1 --mem=64G --time="$2" \
-        --export="STEP=$1" scripts/slurm/media_storms.slurm)"
+        --export="STEP=$1,CORPUS=$CORPUS" scripts/slurm/media_storms.slurm)"
 }
 
 dep=""
@@ -40,8 +43,8 @@ if runs edges;   then dep=$(workers edges 8 32G "$dep"); fi
 if runs cluster; then dep=$(one cluster 08:00:00 "$dep" afterany); fi   # workers may end by time limit
 if runs storms;  then dep=$(one storms 08:00:00 "$dep"); STORMS=${dep#:}; fi
 if runs seeds;   then dep=$(one seeds 12:00:00 "$dep"); SEEDS=${dep#:}; fi
-EXPORT=$(sbatch --parsable $(after "$dep") --export=NONE scripts/slurm/export_storms.slurm)
-echo "media_storms from $FROM; the export ($EXPORT) emails when done"
+EXPORT=$(sbatch --parsable $(after "$dep") --export="CORPUS=$CORPUS" scripts/slurm/export_storms.slurm)
+echo "media_storms ($CORPUS) from $FROM; the export ($EXPORT) emails when done"
 echo
 echo "Spot checks:"
 echo "  squeue -u \$USER --name=media_storms,export_storms"

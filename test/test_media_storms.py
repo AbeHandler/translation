@@ -70,3 +70,17 @@ def test_seeds_are_the_documents_a_storm_cites_not_generic_links():
     found = storm_seeds(members, links_of)
     assert found['llama']['seeds'][0]['href'] == blog and found['llama']['seed_share'] == 0.6
     assert len(found['llama']['citing']) == 6 and found['s0']['seed_share'] == 0.0
+
+
+def test_a_crawled_page_counts_if_chinese_about_ai_and_dated():
+    from src.media_storms import site_crawl_page
+    html = ('<html><head><title>DeepSeek发布新模型</title></head><body><p>人工智能公司DeepSeek发布大模型。</p>'
+            '<a href="https://api-docs.deepseek.com/news/r1">公告</a></body></html>')
+    row = {'url': 'https://www.thepaper.cn/a1', 'language': 'zh', 'html': html.encode()}
+    date, day_row, links = site_crawl_page(row, '2026-10-04', pubdate=lambda h, u: '2025-01-20T08:00:00')
+    assert date == '2025-01-20' and day_row == {'url': row['url'], 'outlet': 'thepaper.cn', 'title': 'DeepSeek发布新模型'}
+    assert {'href': 'https://api-docs.deepseek.com/news/r1'} in links
+    assert site_crawl_page(row, '2026-10-04', pubdate=lambda h, u: '2019-05-01') is None          # before 2023
+    assert site_crawl_page({**row, 'language': 'en'}, '2026-10-04', pubdate=lambda h, u: '2025-01-20') is None
+    weather = {**row, 'html': '<html><title>天气</title><p>今天天气很好。</p></html>'.encode()}
+    assert site_crawl_page(weather, '2026-10-04', pubdate=lambda h, u: '2025-01-20') is None    # not about AI

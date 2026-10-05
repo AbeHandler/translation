@@ -11,6 +11,7 @@ Small enough to copy to a laptop and read (or load into a review page).
 Run as a module from the repo root:
     python -m scripts.export_storms
     python -m scripts.export_storms -top 1000 -max-articles 40
+    python -m scripts.export_storms -corpus zh          # -> data/processed/storms_review_zh.json
 """
 import argparse
 import glob
@@ -24,18 +25,23 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
-from config.paths import MEDIA_STORMS_DIR, NEWS_EN_ZH_LINKS_PATH
+from config.paths import MEDIA_STORMS_DIR, MEDIA_STORMS_ZH_DIR, NEWS_EN_ZH_LINKS_PATH
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Export the media storms for reading')
-    parser.add_argument('-storms-dir', default=str(MEDIA_STORMS_DIR))
+    parser.add_argument('-corpus', default='en', choices=('en', 'zh'), help='zh: the Chinese site crawls\' storms')
+    parser.add_argument('-storms-dir', default=None, help='default: by corpus')
     parser.add_argument('-top', type=int, default=500, help='this many storms')
     parser.add_argument('-max-articles', type=int, default=60, help='per storm')
     parser.add_argument('-max-citing', type=int, default=20, help='per storm: citing articles shown first')
-    parser.add_argument('-out', default=os.path.join(os.path.dirname(str(NEWS_EN_ZH_LINKS_PATH)),
-                                                     'storms_review.json'))
-    return parser.parse_args()
+    parser.add_argument('-out', default=None, help='default: data/processed/storms_review[_zh].json')
+    args = parser.parse_args()
+    zh = args.corpus == 'zh'
+    args.storms_dir = args.storms_dir or str(MEDIA_STORMS_ZH_DIR if zh else MEDIA_STORMS_DIR)
+    args.out = args.out or os.path.join(os.path.dirname(str(NEWS_EN_ZH_LINKS_PATH)),
+                                        'storms_review_zh.json' if zh else 'storms_review.json')
+    return args
 
 
 def main():

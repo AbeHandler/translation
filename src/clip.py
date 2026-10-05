@@ -20,6 +20,8 @@ import pyarrow.parquet as pq
 from PIL import Image
 from readability import Document
 
+from src.ai_mentions import about_ai
+
 MODEL = 'clip-ViT-B-32'
 CLASSES = {   # two text classes, and two that pull non-text images away (zero-shot scores compete)
     'post': 'a screenshot of a social media post or tweet',
@@ -159,18 +161,6 @@ def screen_article(html, page_url, client, classifier, ocr=None, max_images=40):
             rows[i].update(ocr_text=text, latin=round(latin_share(text), 3), latin_conf=round(conf, 1),
                            english_kind=kind, english_screenshot=kind is not None)
     return rows
-
-
-AI_ZH = re.compile(r'(?<![A-Za-z])AI(?![A-Za-z])|人工智能|大模型|生成式|ChatGPT|DeepSeek|OpenAI|算力|智能体')
-
-
-def about_ai(html):
-    """True if the page's visible text mentions AI (in Chinese or English): the pages worth screening."""
-    try:
-        text = lxml.html.fromstring(html).text_content()
-    except Exception:
-        return False
-    return bool(AI_ZH.search(text))
 
 
 def screen_html_file(html_path, out_path, classifier, ocr, client, ai_only=True):

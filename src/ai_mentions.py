@@ -41,3 +41,18 @@ def mentions_ai_body(html):
         return mentions_ai(lxml.html.fromstring(Document(html).summary()).text_content())
     except Exception:
         return 0
+
+
+# Chinese pages: "AI" as above, or the Chinese terms for AI, large models, generative AI, compute and agents, or
+# the best-known model names
+AI_ZH = re.compile(r'(?<![A-Za-z])AI(?![A-Za-z])|人工智能|大模型|生成式|ChatGPT|DeepSeek|OpenAI|算力|智能体')
+
+
+def about_ai(html):
+    """True if the page's visible text mentions AI (in Chinese or English)."""
+    import lxml.html  # imported here so plain-text users don't need it
+    try:
+        text = lxml.html.fromstring(html).text_content()
+    except Exception:
+        return False
+    return bool(AI_ZH.search(text))

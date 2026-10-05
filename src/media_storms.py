@@ -340,7 +340,8 @@ def document_key(href):
     """A cited document's key: host without www., path without a trailing slash, no query or fragment; None for
     links that can't be a document (a homepage, a share button, not http)."""
     parts = urlparse(href.strip())
-    host, path = (parts.hostname or '').removeprefix('www.'), parts.path.rstrip('/')
+    host, path = (parts.hostname or '').removeprefix('www.').removeprefix('mobile.'), parts.path.rstrip('/')
+    host = 'x.com' if host == 'twitter.com' else host   # one post, two hosts
     if parts.scheme not in ('http', 'https') or not host or not path or '/hub/' in path:   # AP topic pages
         return None
     if any(t in href for t in ('sharer', 'intent/tweet', 'share?', 'shareArticle', '/share/', 'mailto:')):

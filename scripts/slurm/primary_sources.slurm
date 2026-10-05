@@ -1,5 +1,6 @@
 #!/bin/bash
-# One step of scripts/primary_sources.py (STEP=links|sources|flush). links is a worker: submit many.
+# One step of scripts/primary_sources.py (STEP=links|sources|flush; CORPUS=en|zh, default en). links is a
+# worker: submit many.
 # scripts/go_primary_sources.sh runs them in order.
 #
 # Usage (from the repo root; normally via scripts/go_primary_sources.sh):
@@ -27,4 +28,4 @@ fi
 module load anaconda
 conda activate translation
 
-python -m scripts.primary_sources -step "$STEP" -max-files "$MAX_FILES"
+python -m scripts.primary_sources -corpus "${CORPUS:-en}" -step "$STEP" -max-files "$MAX_FILES"

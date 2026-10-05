@@ -28,7 +28,8 @@ MIN_NAME_SITELINKS = 5   # a match by name alone (no handle) needs a better-know
 MIN_HANDLE_CHARS = 4     # shorter handles (@BY) match OCR noise
 # handles that are also everyday strings in screenshots: email domains (name@gmail.com), game UIs
 COMMON_HANDLES = {'gmail', 'outlook', 'hotmail', 'yahoo', 'icloud', 'thegame', 'email', 'mail', 'home', 'news',
-                  'admin', 'support', 'help', 'everyone', 'here'}
+                  'admin', 'support', 'help', 'everyone', 'here', 'global'}
+NAME_STOPWORDS = {'the', 'a', 'an', 'of', 'and', 'in', 'on', 'for', 'to', 'is', 'it', 'my', 'your', 'our'}  # "the game"
 HANDLE = re.compile(r'@\s?([A-Za-z0-9_]{2,15})')
 NAME_TOKEN = re.compile(r"[^\W\d_]+(?:['-][^\W\d_]+)*")
 
@@ -59,6 +60,7 @@ class NotableAccounts:
                 self.by_handle[handle] = row
             key = name_key(row['name'])
             if row['human'] and len(key.split()) >= 2 and row['sitelinks'] >= MIN_NAME_SITELINKS and \
+                    not set(key.split()) & NAME_STOPWORDS and \
                     row['sitelinks'] > self.by_name.get(key, {'sitelinks': -1})['sitelinks']:
                 self.by_name[key] = row
         self.longest_name = max((len(k.split()) for k in self.by_name), default=0)
@@ -86,7 +88,7 @@ class NotableAccounts:
         for n in range(self.longest_name, 1, -1):
             for i in range(len(tokens) - n + 1):
                 row = self.by_name.get(' '.join(tokens[i:i + n]))
-                if row and row['qid'] not in qids:
+                if row and row["qid"] not in qids and row["name"] in text:   # written as a name: "Eric Trump"
                     qids.add(row['qid'])
                     found.append({**row, 'how': 'name'})
         return found

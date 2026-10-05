@@ -36,3 +36,10 @@ def test_short_or_common_handles_and_rare_names_alone_are_not_matched():
     assert accounts.match('written BY @BY and mail me at abc@gmail.com') == []
     assert accounts.match('vito rossi said') == []                     # name only, 1 Wikipedia edition
     assert [m['handle'] for m in accounts.match('@v1t0 posted')] == ['v1t0']   # by handle it still counts
+
+
+def test_a_name_must_be_written_as_a_name():
+    accounts = NotableAccounts(ROWS + [{'handle': 'thegamee', 'name': 'The Game', 'sitelinks': 85, 'human': True,
+                                        'qid': 'Q6'}])
+    assert accounts.match('The Game is about to start, the game is on') == []
+    assert accounts.match('eric trump said') == []

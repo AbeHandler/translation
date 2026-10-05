@@ -1,5 +1,5 @@
 #!/bin/bash
-# The primary-source documents behind the English media storms, with their Chinese links
+# The primary-source documents behind the English media storms
 # (scripts/export_seed_documents.py) -> data/processed/seed_documents.tsv. After the seeds step.
 #
 # Usage (from the repo root):

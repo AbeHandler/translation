@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 A local page for reviewing the English screenshots found in the Chinese crawls, six at a time: click the ones to
-keep, then Next (or Enter); the others are discarded. Decisions go to a YAML file as you go
+keep, then Next (or k, or Enter); the others are discarded. Decisions go to a YAML file as you go
 (src/screenshot_review.py), so stop any time and run it again to carry on where you left off. Images load straight
 from their sites (no Referer, which most Chinese image hosts accept); an image that refuses is fetched through this
 server with its article as Referer instead, in memory, never saved.
@@ -41,7 +41,7 @@ button { font: 600 14px inherit; padding: 8px 18px; border-radius: 6px; border: 
 .tag { display: none; background: var(--keep); color: #fff; border-radius: 3px; padding: 0 6px; font-weight: 600 }
 .ocr { color: var(--muted); max-height: 3.9em; overflow: hidden } a { color: inherit }
 </style></head><body><header><b>Screenshot review</b><span class="muted" id="count"></span>
-<span class="muted">click to keep &middot; Enter or Next to save (the rest are discarded)</span>
+<span class="muted">click to keep &middot; k, Enter or Next to save (the rest are discarded)</span>
 <button id="next">Next</button></header><div class="grid" id="grid"></div><script>
 let batch = [];
 const esc = s => String(s || '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
@@ -72,7 +72,7 @@ async function next() {
   load();
 }
 document.getElementById('next').onclick = next;
-document.addEventListener('keydown', e => { if (e.key === 'Enter') next(); });
+document.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === 'k') next(); });
 load();
 </script></body></html>'''
 

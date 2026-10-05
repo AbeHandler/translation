@@ -254,45 +254,64 @@ def peak_share(by_day, peak, half=PEAK_HALF):
 
 
 def storms(articles, cluster_of, min_days=MIN_DAYS, min_outlets=MIN_OUTLETS, window=STORM_WINDOW,
-           share=STORM_SHARE, min_outlet_articles=MIN_OUTLET_ARTICLES, min_peak_share=MIN_PEAK_SHARE):
+           share=STORM_SHARE, min_outlet_articles=MIN_OUTLET_ARTICLES, min_peak_share=MIN_PEAK_SHARE, funnel=None):
     """articles: [{url, outlet, date}] (all of them, clustered or not). Returns one summary per storm:
-    {cluster, articles, outlets, storm_outlets, first, last, days, peak, peak_share}, largest first."""
-    per_outlet_day = defaultdict(int)                  # (outlet, date) -> all articles
-    members = defaultdict(list)
+    {cluster, articles, outlets, storm_outlets, first, last, days, peak, peak_share}, largest first.
+    funnel (a Counter, optional) counts the clusters that pass each test in turn, to show which one stops them."""
+    per_outlet_day, members = outlet_days(articles, cluster_of)
+    funnel = Counter() if funnel is None else funnel
+    found = []
+    for cid, arts in members.items():
+        funnel['1 clusters'] += 1
+        if len({a['outlet'] for a in arts}) < min_outlets:
+            continue
+        funnel[f'2 with >= {min_outlets} outlets'] += 1
+        p = profile(arts, per_outlet_day, window, share, min_outlet_articles)
+        if p['days'] < min_days:
+            continue
+        funnel[f'3 lasting >= {min_days} days'] += 1
+        if p['storm_outlets'] < min_outlets:
+            continue
+        funnel[f'4 with >= {min_outlets} outlets in storm mode'] += 1
+        if p['peak_share'] < min_peak_share:
+            continue
+        funnel[f'5 bursting (>= {min_peak_share:.0%} near the peak)'] += 1
+        found.append({'cluster': cid, **p})
+    return sorted(found, key=lambda s: -s['articles'])
+
+
+def outlet_days(articles, cluster_of):
+    """({(outlet, date): all its articles}, {cluster: [its articles]})."""
+    per_outlet_day, members = defaultdict(int), defaultdict(list)
     for a in articles:
         per_outlet_day[(a['outlet'], a['date'])] += 1
         if a['url'] in cluster_of:
             members[cluster_of[a['url']]].append(a)
-    found = []
-    for cid, arts in members.items():
-        dates = sorted(a['date'] for a in arts)
-        first, last = dates[0], dates[-1]
-        span = (datetime.date.fromisoformat(last) - datetime.date.fromisoformat(first)).days + 1
-        outlets = {a['outlet'] for a in arts}
-        if span < min_days or len(outlets) < min_outlets:
-            continue
-        story = defaultdict(int)                       # (outlet, date) -> this story's articles
-        for a in arts:
-            story[(a['outlet'], a['date'])] += 1
-        in_storm = set()
-        for outlet in outlets:
-            for start_offset in range(-(window - 1), span):
-                days_ = [shift(first, start_offset + k) for k in range(window)]
-                total = sum(per_outlet_day.get((outlet, d), 0) for d in days_)
-                ours = sum(story.get((outlet, d), 0) for d in days_)
-                if total >= min_outlet_articles and ours / total >= share:
-                    in_storm.add(outlet)
-                    break
-        if len(in_storm) >= min_outlets:
-            by_day = Counter(dates)
-            peak = max(by_day, key=by_day.get)
-            burst = peak_share(by_day, peak)
-            if burst < min_peak_share:
-                continue
-            found.append({'cluster': cid, 'articles': len(arts), 'outlets': len(outlets),
-                          'storm_outlets': len(in_storm), 'first': first, 'last': last, 'days': span,
-                          'peak': peak, 'peak_share': round(burst, 3)})
-    return sorted(found, key=lambda s: -s['articles'])
+    return per_outlet_day, members
+
+
+def profile(arts, per_outlet_day, window=STORM_WINDOW, share=STORM_SHARE, min_outlet_articles=MIN_OUTLET_ARTICLES):
+    """One cluster's {articles, outlets, storm_outlets, first, last, days, peak, peak_share}. An outlet is in storm
+    mode if, over some window-day stretch of the story, it published >= min_outlet_articles articles and the story
+    was >= share of them."""
+    dates = sorted(a['date'] for a in arts)
+    first, last = dates[0], dates[-1]
+    span = (datetime.date.fromisoformat(last) - datetime.date.fromisoformat(first)).days + 1
+    outlets = {a['outlet'] for a in arts}
+    story = Counter((a['outlet'], a['date']) for a in arts)
+    in_storm = set()
+    for outlet in outlets:
+        for start_offset in range(-(window - 1), span):
+            days_ = [shift(first, start_offset + k) for k in range(window)]
+            total = sum(per_outlet_day.get((outlet, d), 0) for d in days_)
+            ours = sum(story.get((outlet, d), 0) for d in days_)
+            if total >= min_outlet_articles and ours / total >= share:
+                in_storm.add(outlet)
+                break
+    by_day = Counter(dates)
+    peak = max(by_day, key=by_day.get)
+    return {'articles': len(arts), 'outlets': len(outlets), 'storm_outlets': len(in_storm), 'first': first,
+            'last': last, 'days': span, 'peak': peak, 'peak_share': round(peak_share(by_day, peak), 3)}
 
 
 # seeds

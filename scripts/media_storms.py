@@ -40,8 +40,9 @@ from config.paths import (CC_LINKS_DIR, CC_NEWS_EMBEDDINGS_DIR, CC_NEWS_PUBDATES
                           MEDIA_STORMS_ZH_DIR, SITE_CRAWLS_DIR)
 from src.file_worker import process_files
 from src.external_links import external_links
-from src.media_storms import (THRESHOLD, WINDOW_DAYS, clusters, day_edges, shift, split_by_day,
-                              split_site_crawl_by_day, storm_seeds, storms, write_edges)
+from src.media_storms import (MIN_DAYS, MIN_OUTLET_ARTICLES, MIN_OUTLETS, MIN_PEAK_SHARE, STORM_SHARE,
+                              STORM_WINDOW, THRESHOLD, WINDOW_DAYS, clusters, day_edges, outlet_days, profile, shift,
+                              split_by_day, split_site_crawl_by_day, storm_seeds, storms, write_edges)
 from src.warc_worker_cli import optional_int, setup_worker_process
 
 
@@ -56,6 +57,12 @@ def parse_args():
     parser.add_argument('-links-dir', default=None, help="seeds: the articles' links (default: by corpus)")
     parser.add_argument('-threshold', type=float, default=THRESHOLD)
     parser.add_argument('-redo-edges', action='store_true', help='edges: recompute days that already have edges')
+    parser.add_argument('-min-days', type=int, default=MIN_DAYS, help='storms')
+    parser.add_argument('-min-outlets', type=int, default=MIN_OUTLETS, help='storms')
+    parser.add_argument('-min-outlet-articles', type=int, default=MIN_OUTLET_ARTICLES,
+                        help='storms: an outlet\'s articles over the window for it to be in storm mode')
+    parser.add_argument('-storm-share', type=float, default=STORM_SHARE, help='storms')
+    parser.add_argument('-min-peak-share', type=float, default=MIN_PEAK_SHARE, help='storms')
     parser.add_argument('-max-files', type=optional_int, default=None, help='workers: stop after N (testing)')
     args = parser.parse_args()
     zh = args.corpus == 'zh'
@@ -167,7 +174,10 @@ def storm_step(args):
                 articles.append({'url': row['url'], 'outlet': row['outlet'], 'date': date})
                 if row['url'] in cluster_of:
                     titles.setdefault(cluster_of[row['url']], row['title'])
-    found = storms(articles, cluster_of)
+    funnel = Counter()
+    found = storms(articles, cluster_of, min_days=args.min_days, min_outlets=args.min_outlets,
+                   share=args.storm_share, min_outlet_articles=args.min_outlet_articles,
+                   min_peak_share=args.min_peak_share, funnel=funnel)
     out = os.path.join(args.out_dir, 'storms.jsonl')
     with open(out, 'w', encoding='utf-8') as f:
         for s in found:
@@ -176,6 +186,24 @@ def storm_step(args):
     for s in found[:20]:
         print(f"  {s['articles']:5d} articles {s['storm_outlets']:3d}/{s['outlets']:3d} outlets in storm mode "
               f"{s['first']}..{s['last']} peak {s['peak']}  {titles.get(s['cluster'], '')[:70]}")
+    print('\nclusters passing each test in turn:')
+    for test, n in sorted(funnel.items()):
+        print(f'  {n:8d}  {test[2:]}')
+    per_outlet_day, members = outlet_days(articles, cluster_of)
+    print('\nthe 20 largest clusters (storm or not):')
+    print('  articles outlets storm_outlets days peak_share  title')
+    for cid, arts in sorted(members.items(), key=lambda kv: -len(kv[1]))[:20]:
+        p = profile(arts, per_outlet_day, STORM_WINDOW, args.storm_share, args.min_outlet_articles)
+        print(f"  {p['articles']:8d} {p['outlets']:7d} {p['storm_outlets']:13d} {p['days']:4d} {p['peak_share']:10.2f}"
+              f"  {p['first']}  {titles.get(cid, '')[:60]}")
+    outlet_volume = Counter()
+    for (outlet, _), n in per_outlet_day.items():
+        outlet_volume[outlet] += n
+    days_per = Counter(outlet for outlet, _ in per_outlet_day)
+    print('\nAI articles per outlet per day it published (the storm-mode test needs '
+          f'{args.min_outlet_articles} in {STORM_WINDOW} days):')
+    for outlet, n in outlet_volume.most_common(15):
+        print(f'  {outlet:28} {n:7d} articles over {days_per[outlet]:5d} days = {n / days_per[outlet]:5.1f}/day')
 
 
 def article_url(line):

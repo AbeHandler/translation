@@ -11,6 +11,7 @@
 #   CORPUS=zh bash scripts/go_media_storms.sh       # the Chinese site crawls -> data/interim/media_storms_zh,
 #                                                   # data/processed/storms_review_zh.json
 #   FLUSH=1 bash scripts/go_media_storms.sh         # first delete this corpus's storm outputs (not its inputs)
+#   FROM=storms CORPUS=zh STORM_ARGS='-min-outlet-articles 10' bash scripts/go_media_storms.sh   # other thresholds
 #   N_WORKERS=1 MAX_FILES=1 bash scripts/go_media_storms.sh   # test
 # AFTER=<id>:<id>... makes the first step wait for those jobs to end (scripts/go_media_storms_zh.sh: the embedders).
 
@@ -36,7 +37,7 @@ workers() {   # workers <step> <cpus> <mem> <dependency ids>: prints :id:id...
 }
 one() {       # one <step> <time> <dependency ids> [afterany]: prints :id
     echo ":$(sbatch --parsable $(after "$3" "$4") --cpus-per-task=1 --mem=64G --time="$2" \
-        --export="STEP=$1,CORPUS=$CORPUS" scripts/slurm/media_storms.slurm)"
+        --export="STEP=$1,CORPUS=$CORPUS,STORM_ARGS=$STORM_ARGS" scripts/slurm/media_storms.slurm)"
 }
 
 dep=${AFTER:+:$AFTER}

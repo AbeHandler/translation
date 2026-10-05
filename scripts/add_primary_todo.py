@@ -17,7 +17,7 @@ import csv
 import os
 
 from config.paths import PRIMARY_TEXTS_DIR
-from src.source_texts import read_todo, source_key
+from src.source_texts import as_url, read_todo, source_key
 
 
 def parse_args():
@@ -59,7 +59,10 @@ def main():
     path = os.path.join(args.store_dir, 'todo.tsv')
     known = read_todo(path)
     new = {}
-    for url, _ in candidate_urls(args):
+    for text, _ in candidate_urls(args):
+        url = as_url(text)
+        if not url:
+            continue
         key = source_key(url)
         if key not in known and key not in new:
             new[key] = url

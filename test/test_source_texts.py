@@ -22,3 +22,12 @@ def test_html_text_keeps_the_article():
             '</p></article></body></html>')
     title, text = html_text(html)
     assert 'Susan' in title and 'garage' in text and 'Home | News' not in text
+
+
+def test_the_to_do_list_takes_urls_with_or_without_https(tmp_path):
+    from src.source_texts import read_todo
+    (tmp_path / 'todo.tsv').write_text('url\nanthropic.com/news/statement-department-of-war\n'
+                                       'https://www.anthropic.com/news/statement-department-of-war?utm=x\n'
+                                       'https://x.com/sama/status/1\n\nnot a url\n')
+    assert sorted(read_todo(str(tmp_path / 'todo.tsv')).values()) == [
+        'https://anthropic.com/news/statement-department-of-war', 'https://x.com/sama/status/1']

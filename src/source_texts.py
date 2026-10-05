@@ -72,16 +72,27 @@ def source_path(texts_dir, url):
     return os.path.join(texts_dir, hashlib.sha1(source_key(url).encode('utf-8')).hexdigest() + '.json')
 
 
+BARE_URL = re.compile(r'^[\w-]+(\.[\w-]+)+(/\S*)?$')   # anthropic.com/news/x: a URL without its scheme
+
+
+def as_url(text):
+    """text as a URL: as is with http(s)://, https:// added to a bare address (anthropic.com/news/x), else None."""
+    text = text.strip()
+    if text.startswith(('http://', 'https://')):
+        return text
+    return 'https://' + text if BARE_URL.match(text) else None
+
+
 def read_todo(path):
-    """{source key: url} of the to-do list: one URL per line (anything else on a line after a tab is ignored, and
-    lines that aren't URLs, like a header, are skipped); the first URL per key."""
+    """{source key: url} of the to-do list: one URL per line, with or without https:// (anything after a tab is
+    ignored, and lines that aren't URLs, like a header, are skipped); the first URL per key."""
     if not os.path.exists(path):
         return {}
     todo = {}
     with open(path, encoding='utf-8') as f:
         for line in f:
-            url = line.split('\t')[0].strip()
-            if url.startswith(('http://', 'https://')):
+            url = as_url(line.split('\t')[0])
+            if url:
                 todo.setdefault(source_key(url), url)
     return todo
 

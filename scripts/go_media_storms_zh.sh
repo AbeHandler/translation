@@ -9,17 +9,21 @@
 # Usage:
 #   bash scripts/go_media_storms_zh.sh
 #   N_EMBED=100 N_WORKERS=200 bash scripts/go_media_storms_zh.sh     # more workers (defaults 50 and 100)
-#   FLUSH=1 bash scripts/go_media_storms_zh.sh     # rebuild the storms from scratch (deletes media_storms_zh first)
+#   FLUSH=1 bash scripts/go_media_storms_zh.sh     # a clean run: first delete media_storms_zh AND every site crawl
+#                                                   # embeddings file, then re-embed everything and rebuild
 
 set -eo pipefail  # no -u: ~/.myrc references unset vars
 source ~/.myrc
 
-FLUSH_JOB=""
-if [[ -n $FLUSH ]]; then   # first: the storms folder (the embedders don't use it, so they needn't wait)
-    FLUSH_JOB=$(sbatch --parsable --export=CORPUS=zh scripts/slurm/flush_media_storms.slurm)
-    echo "flush_media_storms (zh) $FLUSH_JOB"
+EMBED_AFTER=""
+if [[ -n $FLUSH ]]; then   # first: the storms folder and the embeddings; update_env alongside; embedders wait for both
+    FLUSH_JOB=$(sbatch --parsable --export=CORPUS=zh,EMBEDDINGS=1 scripts/slurm/flush_media_storms.slurm)
+    ENV_JOB=$(sbatch --parsable --export=NONE scripts/slurm/update_env.slurm)
+    echo "flush_media_storms (zh, with embeddings) $FLUSH_JOB; update_env $ENV_JOB"
+    EMBED_AFTER=afterok:$FLUSH_JOB:$ENV_JOB
 fi
-EMBED_JOBS=$(N_WORKERS=${N_EMBED:-50} bash scripts/embed_site_crawls.sh | tee /dev/stderr | sed -n 's/^JOB_IDS=//p')
+EMBED_JOBS=$(DEPENDENCY=$EMBED_AFTER N_WORKERS=${N_EMBED:-50} bash scripts/embed_site_crawls.sh | tee /dev/stderr \
+    | sed -n 's/^JOB_IDS=//p')
 [[ -n $EMBED_JOBS ]] || { echo "ERROR: no embedding jobs were submitted" >&2; exit 1; }
 echo
-FLUSH= AFTER=$EMBED_JOBS${FLUSH_JOB:+:$FLUSH_JOB} CORPUS=zh N_WORKERS=${N_WORKERS:-100} bash scripts/go_media_storms.sh
+FLUSH= AFTER=$EMBED_JOBS CORPUS=zh N_WORKERS=${N_WORKERS:-100} bash scripts/go_media_storms.sh

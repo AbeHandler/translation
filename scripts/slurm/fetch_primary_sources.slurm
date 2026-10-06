@@ -7,7 +7,7 @@
 #   sbatch --export=NONE scripts/slurm/fetch_primary_sources.slurm
 
 #SBATCH --partition=acpu
-#SBATCH --time=24:00:00
+#SBATCH --time=12:00:00
 #SBATCH --job-name=fetch_primary_sources
 #SBATCH --output=logs/scripts/slurm/%x_%j.out
 #SBATCH --mem=4G

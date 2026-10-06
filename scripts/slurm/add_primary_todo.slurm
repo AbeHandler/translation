@@ -1,6 +1,7 @@
 #!/bin/bash
-# Add URLs to the primary-source store's to-do list (scripts/add_primary_todo.py): the primary sources
-# (data/processed/primary_sources.tsv, linked by MIN_OUTLETS+ outlets), and, if given, a TSV with a URL column.
+# Add URLs to the primary-source store's to-do list (scripts/add_primary_todo.py): all the primary sources, English
+# and Chinese (data/processed/primary_sources.tsv and primary_sources_zh.tsv, whichever exist; linked by
+# MIN_OUTLETS+ outlets), or, if TSV is given, that TSV's URL column instead.
 #
 # Usage (from the repo root; normally via scripts/fetch_primary_sources.sh):
 #   sbatch --export=NONE scripts/slurm/add_primary_todo.slurm
@@ -27,5 +28,11 @@ conda activate translation
 if [ -n "${TSV:-}" ]; then
     python -m scripts.add_primary_todo -tsv "$TSV" -column "${COLUMN:-url}"
 else
-    python -m scripts.add_primary_todo -primary-sources data/processed/primary_sources.tsv -min-outlets "${MIN_OUTLETS:-0}"
+    for tsv in data/processed/primary_sources.tsv data/processed/primary_sources_zh.tsv; do
+        if [ -f "$tsv" ]; then
+            python -m scripts.add_primary_todo -primary-sources "$tsv" -min-outlets "${MIN_OUTLETS:-0}"
+        else
+            echo "skipping $tsv: not there"
+        fi
+    done
 fi

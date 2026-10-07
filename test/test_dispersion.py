@@ -1,12 +1,12 @@
 import numpy as np
 
-from src.dispersion.align import align
 from src.dispersion.aligners.dictionary import DictionaryAligner
-from src.dispersion.dispersion import dispersion
+from src.dispersion.crossing import PhraseCrossingDetector
+from src.dispersion.dispersion import dispersion, selection
 from src.dispersion.evaluate import overlap_f1, score
 from src.dispersion.locate import occurrences, sentences
 from src.dispersion.sentences import SentenceMatcher
-from src.dispersion.types import DROPPED, NOT_FOUND, RENDERED, Doc, Focal
+from src.dispersion.types import DROPPED, PARAPHRASED, TRANSLATED, VERBATIM, Doc, Focal
 
 SOURCE = Doc('src', 'en', 'We need better AI governance. Prices fell. Governance matters for frontier models.')
 TARGET = Doc('tgt', 'zh', '我们需要更好的人工智能治理。价格下降了。对于前沿模型，管控很重要。')
@@ -32,28 +32,53 @@ def test_occurrences_by_text_or_span():
     assert occurrences(Focal('governance', 'en', span=(18, 28)), SOURCE.text) == [(18, 28)]
 
 
-def test_align_one_prediction_per_occurrence():
-    aligner = DictionaryAligner({'governance': ['治理', '管控']})
-    preds = align(Focal('governance', 'en'), SOURCE, TARGET, SentenceMatcher(TopicEncoder(), min_score=0.5), aligner)
-    assert [p.status for p in preds] == [RENDERED, RENDERED]
+class WordEncoder:
+    """A fake encoder for phrase similarity: texts sharing a meaning (a set) are 1, else 0."""
+    MEANINGS = [{'governance', '治理', '管控'}, {'prices', '价格'}]
+
+    def __call__(self, texts):
+        vecs = np.array([[float(t.lower() in m) for m in self.MEANINGS] + [1e-3] for t in texts])
+        return vecs / np.linalg.norm(vecs, axis=1, keepdims=True)
+
+
+def detector(renderings, min_score=0.5, known=None):
+    return PhraseCrossingDetector(SentenceMatcher(TopicEncoder(), min_score=min_score), DictionaryAligner(renderings),
+                                  WordEncoder(), known=known)
+
+
+def test_one_prediction_per_occurrence_translated():
+    preds = detector({'governance': ['治理', '管控']}).detect(Focal('governance', 'en'), SOURCE, TARGET)
+    assert [p.uptake for p in preds] == [TRANSLATED, TRANSLATED]
     assert [p.target_text for p in preds] == ['治理', '管控']
     assert all(TARGET.text[a:b] == p.target_text for p in preds for a, b in p.target_spans)
 
 
-def test_dropped_and_not_found():
-    aligner = DictionaryAligner({'prices': ['不存在']})
-    matcher = SentenceMatcher(TopicEncoder(), min_score=0.7)   # the fake's no-topic vector scores ~0.58
-    (fell,) = align(Focal('Prices', 'en'), SOURCE, TARGET, matcher, aligner)
-    assert fell.status == DROPPED and fell.target_sentence.text == '价格下降了。'
-    (gone,) = align(Focal('Prices', 'en'), SOURCE, Doc('t', 'zh', '无关的句子。'), matcher, aligner)
-    assert gone.status == NOT_FOUND
+def test_dropped_three_ways_and_verbatim():
+    d = detector({'prices': ['下降']}, min_score=0.7)       # the fake's no-topic vector scores ~0.58
+    (fell,) = d.detect(Focal('Prices', 'en'), SOURCE, TARGET)
+    assert (fell.uptake, fell.reason, fell.target_text) == (DROPPED, 'dissimilar', '下降')   # aligned, unlike it
+    (none,) = detector({}, min_score=0.7).detect(Focal('Prices', 'en'), SOURCE, TARGET)
+    assert (none.uptake, none.reason) == (DROPPED, 'no span')
+    (gone,) = d.detect(Focal('Prices', 'en'), SOURCE, Doc('t', 'zh', '无关的句子。'))
+    assert (gone.uptake, gone.reason) == (DROPPED, 'no sentence')
+    kept = Doc('k', 'zh', '我们需要更好的AI governance。')
+    assert [p.uptake for p in detector({}).detect(Focal('governance', 'en'), SOURCE, kept)][0] == VERBATIM
 
 
-def test_dispersion_counts_renderings():
-    aligner = DictionaryAligner({'governance': ['治理', '管控']})
-    preds = align(Focal('governance', 'en'), SOURCE, TARGET, SentenceMatcher(TopicEncoder(), min_score=0.5), aligner)
+def test_known_renderings_and_whole_sentences():
+    d = detector({'governance': ['人工智能']}, known={'governance': ['人工智能']})
+    assert d.detect(Focal('governance', 'en'), SOURCE, TARGET)[0].reason == 'known rendering'
+    whole = Focal('Prices fell.', 'en', span=(30, 42))
+    (p,) = detector({}).detect(whole, SOURCE, TARGET)
+    assert p.level == 'sentence' and p.target_text == '价格下降了。' and p.uptake == TRANSLATED
+
+
+def test_dispersion_and_selection():
+    preds = detector({'governance': ['治理', '管控']}).detect(Focal('governance', 'en'), SOURCE, TARGET)
     d = dispersion(preds + preds)
     assert d['distinct'] == 2 and d['entropy'] == 1.0 and d['rendered'] == 4
+    shares = selection(preds + [preds[0].__class__((0, 1), DROPPED, 'no span')])
+    assert shares[TRANSLATED] == 0.667 and shares[DROPPED] == 0.333 and shares[PARAPHRASED] == 0.0
 
 
 def test_split_spans_and_scoring():

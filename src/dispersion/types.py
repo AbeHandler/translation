@@ -5,7 +5,9 @@ from typing import Optional
 
 Span = tuple[int, int]
 
-RENDERED, DROPPED, NOT_FOUND = 'rendered', 'dropped', 'not_found'
+# uptake: how a focal span (a phrase or a whole sentence) crosses into the target
+VERBATIM, TRANSLATED, PARAPHRASED, DROPPED = 'verbatim', 'translated', 'paraphrased', 'dropped'
+RENDERINGS = (VERBATIM, TRANSLATED, PARAPHRASED)     # the uptakes with a counterpart span in the target
 
 
 @dataclass(frozen=True)
@@ -31,11 +33,16 @@ class Sentence:
 @dataclass
 class Prediction:
     focal_span: Span                               # the occurrence in the source
-    status: str                                    # RENDERED, DROPPED (its sentence crossed, it didn't), NOT_FOUND
-    target_spans: list[Span] = field(default_factory=list)   # in the target document; [] unless RENDERED
+    uptake: str                                    # VERBATIM, TRANSLATED, PARAPHRASED or DROPPED
+    # reason: same text, known rendering, similarity, or for DROPPED: no sentence, no span (nothing aligned),
+    # dissimilar (aligned, but not close in meaning)
+    reason: str = ''
+    # the counterpart in the target (also kept for DROPPED 'dissimilar', to inspect)
+    target_spans: list[Span] = field(default_factory=list)
     target_text: str = ''                          # the pieces joined with '…'
-    score: float = 0.0
-    method: str = ''
+    span_score: float = 0.0                        # similarity of the focal span and its counterpart
+    sentence_score: float = 0.0                    # similarity of their sentences
+    level: str = 'phrase'                          # 'phrase', or 'sentence' when the focal span is a whole sentence
+    method: str = ''                               # the phrase aligner
     source_sentence: Optional[Sentence] = None
     target_sentence: Optional[Sentence] = None
-    sentence_score: float = 0.0

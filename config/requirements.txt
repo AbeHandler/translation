@@ -18,6 +18,7 @@ sentence-transformers==5.2.0
 annoy==1.17.3
 httpx==0.28.1
 pyyaml==6.0.3  # config files, screenshot reviews
+simalign==0.4  # word alignment (src/dispersion/aligners/simalign.py)
 tenacity==9.1.2
 google-auth==2.48.0  # the google_llm engine
 python-dotenv==1.1.1  # API keys from .env

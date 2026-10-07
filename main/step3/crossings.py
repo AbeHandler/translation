@@ -13,11 +13,14 @@ Step 3: target transmission, which seeds cross into Chinese news and into which 
     -step fit          model1 (src/model/model1.py) on the evidence: P(crossed) per pair
                        -> data/processed/seed_crossings.parquet, and per seed (crossed, Chinese articles and outlets,
                        first date and lag, evidence) -> data/processed/seed_transmission.tsv
+    -step one          one seed (-seed URL or seed_id) end to end in one job: its candidates, screenshots, link and
+                       quote evidence -> data/interim/step3/one_<seed_id>.tsv (no model fit). Needs embed_zh done.
 Needs steps 1 and 2. Workers skip what is done. All of step 3: bash main/step3/go_step3.sh.
 
 Run as a module from the repo root:
     python -m main.step3.crossings -step embed_zh -max-files 1          # test
     python -m main.step3.crossings -step fit
+    python -m main.step3.crossings -step one -seed https://www.anthropic.com/news/statement-department-of-war
 """
 import argparse
 import csv
@@ -55,7 +58,9 @@ MAX_SEED_SENTENCES = 80
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Step 3: which seeds cross into Chinese news')
-    parser.add_argument('-step', required=True, choices=('embed_zh', 'screenshots', 'candidates', 'table', 'fit'))
+    parser.add_argument('-step', required=True,
+                        choices=('embed_zh', 'screenshots', 'candidates', 'table', 'fit', 'one'))
+    parser.add_argument('-seed', help="one: a seed's URL or seed_id")
     parser.add_argument('-seeds', default=str(SEEDS_PATH))
     parser.add_argument('-sources', default=str(PRIMARY_DB_PATH))
     parser.add_argument('-crawls-dir', default=str(SITE_CRAWLS_DIR))
@@ -128,102 +133,155 @@ def embed_zh_step(args):
     process_files(paths, lambda p: os.path.join(zh_dir(args), name(p)), run, args.max_files)
 
 
-def screenshots_step(args):
-    seeds = [s for s in read_seeds(args) if s['text']]
-    index = SourceIndex([{'url': s['seed_id'], 'title': s['title'], 'text': s['text']} for s in seeds])
-    with open(args.screenshots, encoding='utf-8', newline='') as f:
+def screenshot_matches(seeds, screenshots_path):
+    """[{seed_id, article, shared, date, src}]: the English screenshots in Chinese articles matched to the seeds."""
+    index = SourceIndex([{'url': s['seed_id'], 'title': s['title'], 'text': s['text']} for s in seeds if s['text']])
+    with open(screenshots_path, encoding='utf-8', newline='') as f:
         shots = list(csv.DictReader(f, delimiter='\t'))
-    rows = []
-    for shot in shots:
-        for seed_id, shared in index.match(shot['ocr']):
-            rows.append({'seed_id': seed_id, 'article': shot['page'], 'shared': shared,
-                         'date': shot.get('date', ''), 'src': shot['src']})
+    return [{'seed_id': seed_id, 'article': shot['page'], 'shared': shared, 'date': shot.get('date', ''),
+             'src': shot['src']} for shot in shots for seed_id, shared in index.match(shot['ocr'])]
+
+
+def screenshots_step(args):
+    seeds = read_seeds(args)
+    rows = screenshot_matches(seeds, args.screenshots)
     pd.DataFrame(rows, columns=['seed_id', 'article', 'shared', 'date', 'src']).to_parquet(
         os.path.join(args.work_dir, 'screenshots.parquet'))
-    print(f'{len(shots)} screenshots against {len(seeds)} seeds with text -> {len(rows)} matches, '
+    print(f'screenshots against {sum(1 for s in seeds if s["text"])} seeds with text -> {len(rows)} matches, '
           f'{len({r["seed_id"] for r in rows})} seeds')
+
+
+class CandidateScorer:
+    """Per seed: the Chinese pages in its window most similar to it (LaBSE), scored sentence by sentence."""
+
+    def __init__(self, args):
+        self.zh = read_zh(args, ['url', 'outlet', 'date', 'lead', 'vector'])
+        self.vectors = np.vstack(self.zh.vector.to_numpy()).astype(np.float32)
+        self.days = pd.to_datetime(self.zh.date, errors='coerce')
+        self.model = model()
+        self.sentence_cache = {}
+
+    def zh_sentence_vectors(self, i):
+        if i not in self.sentence_cache:
+            sentences = chinese_sentences(self.zh.lead.iat[i])[:MAX_SEED_SENTENCES]
+            self.sentence_cache[i] = embed(self.model, sentences) if sentences else np.zeros((0, self.vectors.shape[1]))
+        return self.sentence_cache[i]
+
+    def score(self, seed, top_k=TOP_K):
+        """[{seed_id, article, outlet, date, doc_sim, sent_sim, n_translated}] best first, and the window's size."""
+        start = pd.Timestamp(seed['first_seen'])
+        window = np.where((self.days >= start + pd.Timedelta(days=WINDOW[0])) &
+                          (self.days <= start + pd.Timedelta(days=WINDOW[1])))[0]
+        seed_vec = embed(self.model, [f"{seed['title']}\n{seed['text'][:600]}"])[0]
+        seed_sentences = english_sentences(seed['text'])[:MAX_SEED_SENTENCES]
+        seed_sent_vecs = embed(self.model, seed_sentences) if seed_sentences else np.zeros((0, len(seed_vec)))
+        rows = []
+        if len(window):
+            sims = self.vectors[window] @ seed_vec
+            for j in np.argsort(-sims)[:top_k]:
+                i = window[j]
+                best, n_translated = sentence_scores(seed_sent_vecs, self.zh_sentence_vectors(i))
+                rows.append({'seed_id': seed['seed_id'], 'article': self.zh.url.iat[i], 'outlet': self.zh.outlet.iat[i],
+                             'date': self.zh.date.iat[i], 'doc_sim': float(sims[j]), 'sent_sim': best,
+                             'n_translated': n_translated})
+        return rows, len(window)
 
 
 def candidates_step(args):
     out_dir = os.path.join(args.work_dir, 'candidates')
     os.makedirs(out_dir, exist_ok=True)
     seeds = {s['seed_id']: s for s in read_seeds(args) if s['text'] and s['first_seen']}
-    zh = read_zh(args, ['url', 'outlet', 'date', 'lead', 'vector'])
-    vectors = np.vstack(zh.vector.to_numpy()).astype(np.float32)
-    days = pd.to_datetime(zh.date, errors='coerce')
-    m = model()
-    sentence_cache = {}
-
-    def zh_sentence_vectors(i):
-        if i not in sentence_cache:
-            sentences = chinese_sentences(zh.lead.iat[i])[:MAX_SEED_SENTENCES]
-            sentence_cache[i] = embed(m, sentences) if sentences else np.zeros((0, vectors.shape[1]))
-        return sentence_cache[i]
+    scorer = CandidateScorer(args)
 
     def run(seed_id, out):
-        seed = seeds[seed_id]
-        start = pd.Timestamp(seed['first_seen'])
-        window = np.where((days >= start + pd.Timedelta(days=WINDOW[0])) &
-                          (days <= start + pd.Timedelta(days=WINDOW[1])))[0]
-        seed_vec = embed(m, [f"{seed['title']}\n{seed['text'][:600]}"])[0]
-        seed_sentences = english_sentences(seed['text'])[:MAX_SEED_SENTENCES]
-        seed_sent_vecs = embed(m, seed_sentences) if seed_sentences else np.zeros((0, len(seed_vec)))
-        rows = []
-        if len(window):
-            sims = vectors[window] @ seed_vec
-            for j in np.argsort(-sims)[:TOP_K]:
-                i = window[j]
-                best, n_translated = sentence_scores(seed_sent_vecs, zh_sentence_vectors(i))
-                rows.append({'seed_id': seed_id, 'article': zh.url.iat[i], 'outlet': zh.outlet.iat[i],
-                             'date': zh.date.iat[i], 'doc_sim': float(sims[j]), 'sent_sim': best,
-                             'n_translated': n_translated})
+        rows, window = scorer.score(seeds[seed_id])
         pq.write_table(pa.Table.from_pylist(rows, CANDIDATE_SCHEMA), out + '.part')
         os.replace(out + '.part', out)
-        return {'window': len(window), 'best_sent': max((r['sent_sim'] or 0 for r in rows), default=0)}
+        return {'window': window, 'best_sent': max((r['sent_sim'] or 0 for r in rows), default=0)}
     ids = list(seeds)
     random.shuffle(ids)
     process_files(ids, lambda s: os.path.join(out_dir, s + '.parquet'), run, args.max_files)
 
 
-def table_step(args):
-    """Every (seed, Chinese article) pair with evidence, one row each, with all its evidence."""
-    seeds = {s['seed_id']: s for s in read_seeds(args)}
+def assemble_pairs(seeds, cites, quotes, shots, candidates, zh_dates):
+    """Every (seed, Chinese article) pair with any evidence, one row each: link and English quote (step 2's
+    Chinese citations and quotes), screenshot, the candidates' similarities, the date and date gap."""
     pairs = {}
 
     def pair(seed_id, article):
         return pairs.setdefault((seed_id, article), {
             'seed_id': seed_id, 'article': article, 'outlet': registered_domain(article), 'date': '',
             'link': 0, 'screenshot': 0, 'en_quote': 0, 'doc_sim': None, 'sent_sim': None, 'n_translated': 0})
-    cites = pd.read_parquet(args.citations, columns=['seed_id', 'language', 'article', 'date'])
-    for r in cites[cites.language == 'zh'].itertuples():
-        p = pair(r.seed_id, r.article)
-        p.update(link=1, date=p['date'] or r.date)
-    quotes = pd.read_parquet(args.quotes, columns=['seed_id', 'language', 'article'])
-    for r in quotes[quotes.language == 'zh'].drop_duplicates(['seed_id', 'article']).itertuples():
-        pair(r.seed_id, r.article)['en_quote'] = 1
-    shots_path = os.path.join(args.work_dir, 'screenshots.parquet')
-    if os.path.exists(shots_path):
-        for r in pd.read_parquet(shots_path).itertuples():
-            p = pair(r.seed_id, r.article)
-            p.update(screenshot=1, date=p['date'] or r.date)
-    for path in glob.glob(os.path.join(args.work_dir, 'candidates', '*.parquet')):
-        for r in pq.read_table(path).to_pylist():
-            p = pair(r['seed_id'], r['article'])
-            p.update(doc_sim=r['doc_sim'], sent_sim=r['sent_sim'], n_translated=r['n_translated'],
-                     date=p['date'] or r['date'])
-    zh_dates = dict(read_zh(args, ['url', 'date']).itertuples(index=False))
-    rows = []
+    for r in cites:
+        p = pair(r['seed_id'], r['article'])
+        p.update(link=1, date=p['date'] or r['date'])
+    for r in quotes:
+        pair(r['seed_id'], r['article'])['en_quote'] = 1
+    for r in shots:
+        p = pair(r['seed_id'], r['article'])
+        p.update(screenshot=1, date=p['date'] or r['date'])
+    for r in candidates:
+        p = pair(r['seed_id'], r['article'])
+        p.update(doc_sim=r['doc_sim'], sent_sim=r['sent_sim'], n_translated=r['n_translated'],
+                 date=p['date'] or r['date'])
     for p in pairs.values():
         p['date'] = p['date'] or zh_dates.get(p['article'], '')
         seed = seeds.get(p['seed_id'])
         p['date_gap'] = days_between(seed['first_seen'], p['date']) if seed and seed['first_seen'] and p['date'] \
             else None
-        rows.append(p)
-    df = pd.DataFrame(rows)
+    return list(pairs.values())
+
+
+def step2_evidence(args, seed_ids=None):
+    """(citations, quotes): step 2's Chinese rows, for the given seeds (default all)."""
+    cites = pd.read_parquet(args.citations, columns=['seed_id', 'language', 'article', 'date'])
+    quotes = pd.read_parquet(args.quotes, columns=['seed_id', 'language', 'article'])
+    cites = cites[cites.language == 'zh']
+    quotes = quotes[quotes.language == 'zh'].drop_duplicates(['seed_id', 'article'])
+    if seed_ids is not None:
+        cites, quotes = cites[cites.seed_id.isin(seed_ids)], quotes[quotes.seed_id.isin(seed_ids)]
+    return cites.to_dict('records'), quotes.to_dict('records')
+
+
+def table_step(args):
+    seeds = {s['seed_id']: s for s in read_seeds(args)}
+    cites, quotes = step2_evidence(args)
+    shots_path = os.path.join(args.work_dir, 'screenshots.parquet')
+    shots = pd.read_parquet(shots_path).to_dict('records') if os.path.exists(shots_path) else []
+    candidates = [r for path in glob.glob(os.path.join(args.work_dir, 'candidates', '*.parquet'))
+                  for r in pq.read_table(path).to_pylist()]
+    zh_dates = dict(read_zh(args, ['url', 'date']).itertuples(index=False))
+    df = pd.DataFrame(assemble_pairs(seeds, cites, quotes, shots, candidates, zh_dates))
     df.to_parquet(os.path.join(args.work_dir, 'pairs.parquet'))
     print(f'{len(df)} (seed, Chinese article) pairs with evidence, {df.seed_id.nunique()} seeds: '
           f'link {int(df.link.sum())}, screenshot {int(df.screenshot.sum())}, English quote {int(df.en_quote.sum())}, '
           f'similarity scored {int(df.doc_sim.notna().sum())}')
+
+
+def one_step(args):
+    """One seed, all its evidence, in one job (no model fit: that needs every seed's pairs) -> a TSV to read."""
+    seeds = {s['seed_id']: s for s in read_seeds(args)}
+    match = [s for s in seeds.values() if args.seed in (s['seed_id'], s['url'], s['key'])]
+    if not match:
+        raise SystemExit(f'{args.seed} is not in {args.seeds}: add it to config/seeds_extra.tsv and rerun step 1')
+    seed = match[0]
+    if not seed['text'] or not seed['first_seen']:
+        print(f'note: {seed["url"]} has no stored text or no first_seen; similarity can\'t be scored')
+    candidates, window = CandidateScorer(args).score(seed) if seed['text'] and seed['first_seen'] else ([], 0)
+    shots = screenshot_matches([seed], args.screenshots) if seed['text'] else []
+    cites, quotes = step2_evidence(args, [seed['seed_id']])
+    zh_dates = dict(read_zh(args, ['url', 'date']).itertuples(index=False))
+    df = pd.DataFrame(assemble_pairs(seeds, cites, quotes, shots, candidates, zh_dates))
+    out = os.path.join(args.work_dir, f'one_{seed["seed_id"]}.tsv')
+    if len(df):
+        df = df.sort_values(['link', 'screenshot', 'en_quote', 'sent_sim'], ascending=False, na_position='last')
+    df.to_csv(out, sep='\t', index=False)
+    print(f'{seed["url"]} (first seen {seed["first_seen"] or "?"}): {window} Chinese pages in its window; '
+          f'{len(df)} pairs with evidence -> {out}')
+    for r in df.head(25).to_dict('records'):
+        sim = f"{r['sent_sim']:.2f}" if r['sent_sim'] == r['sent_sim'] and r['sent_sim'] is not None else '  - '
+        print(f"  link {r['link']} shot {r['screenshot']} quote {r['en_quote']} sent {sim} "
+              f"transl {r['n_translated']:2d} {r['date'] or '?':10}  {r['article'][:70]}")
 
 
 def fit_step(args):
@@ -263,7 +321,7 @@ def main():
     args = parse_args()
     os.makedirs(args.work_dir, exist_ok=True)
     {'embed_zh': embed_zh_step, 'screenshots': screenshots_step, 'candidates': candidates_step,
-     'table': table_step, 'fit': fit_step}[args.step](args)
+     'table': table_step, 'fit': fit_step, 'one': one_step}[args.step](args)
 
 
 if __name__ == '__main__':

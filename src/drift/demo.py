@@ -4,13 +4,18 @@ https://www.jiemian.com/article/12349458.html), each attributed to its speaker i
     Sundar Pichai   rendered faithfully
     Satya Nadella   "a commodity we just can't get enough of" (appetite) rendered as 一种永远无法满足的商品,
                     "a commodity that can never be satisfied" (demand that is never met): a shift in meaning
-plus a faithful rendering of Nadella's phrase for comparison. Downloads LaBSE and an NLI model (~1 GB) once.
+plus a faithful rendering of Nadella's phrase for comparison. Downloads LaBSE and an NLI model (~1 GB) once. -llm
+adds the LLM rater (gpt-6-luna, OPENAI_API_KEY from .env; paid: three calls, a fraction of a cent).
 
 Run from the repo root:
     python -m src.drift.demo
+    python -m src.drift.demo -llm
 """
+import sys
+
 from src.dispersion.encoders import labse
 from src.drift.quotes import is_quoted
+from src.drift.llm import LLMDrift
 from src.drift.scorers import EmbeddingDrift, NLIDrift
 
 ARTICLE = ('谷歌CEOSundar Pichai反复强调，对谷歌而言，“在AI领域投资不足的风险远远大于过度投资的风险。” '
@@ -32,6 +37,11 @@ CASES = [
 
 def main():
     scorers = [EmbeddingDrift(labse()), NLIDrift()]
+    if '-llm' in sys.argv:
+        from dotenv import load_dotenv
+        from config.paths import ENV_PATH
+        load_dotenv(ENV_PATH)
+        scorers.append(LLMDrift())
     for name, source, rendering in CASES:
         start = ARTICLE.find(rendering.rstrip('。'))
         quoted = start >= 0 and is_quoted((start, start + len(rendering.rstrip('。'))), ARTICLE)

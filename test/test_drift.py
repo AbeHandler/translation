@@ -36,3 +36,29 @@ def test_quotations():
     assert [text[a:b] for a, b in quoted_spans(text)] == ['AI将成为一种永远无法满足的商品', '投资不足']
     assert is_quoted((text.index('永远'), text.index('永远') + 2), text)
     assert not is_quoted((0, 2), text)
+
+
+def test_llm_drift_from_a_json_reply():
+    import json
+    from src.drift.llm import LLMDrift
+    from src.drift.types import DriftScorer
+    sent = []
+
+    def chat(messages):
+        sent.append(messages[0]['content'])
+        return json.dumps({'faithfulness': 2, 'kind': 'shifted', 'changes': 'appetite becomes unmet demand',
+                           'direction': 'towards scarcity'})
+    scorer = LLMDrift(chat=chat, model='fake')
+    d = scorer.score("a commodity we just can't get enough of", '一种永远无法满足的商品')
+    assert (d.size, d.kind, d.method, d.details['faithfulness']) == (0.75, 'shifted', 'llm:fake', 2)
+    assert "can't get enough of" in sent[0] and '一种永远无法满足的商品' in sent[0]
+    odd = LLMDrift(chat=lambda m: json.dumps({'faithfulness': 9, 'kind': 'weird'}), model='fake').score('a', 'b')
+    assert (odd.size, odd.kind) == (0.0, None)                                   # clamped; unknown kinds dropped
+    assert isinstance(scorer, DriftScorer)
+
+
+def test_every_scorer_meets_the_interface():
+    from src.drift.llm import LLMDrift
+    from src.drift.types import DriftScorer
+    for scorer in (EmbeddingDrift(lambda t: None), NLIDrift(nli_table({})), LLMDrift(chat=lambda m: '{}', model='x')):
+        assert isinstance(scorer, DriftScorer) and scorer.name

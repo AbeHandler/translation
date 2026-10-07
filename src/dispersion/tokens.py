@@ -5,9 +5,10 @@ import re
 WORD = re.compile(r"[A-Za-z0-9]+(?:[-'.][A-Za-z0-9]+)*|[^\sA-Za-z0-9]")
 
 
-# AI terms jieba would otherwise cut up (智能体 -> 智能 + 体), on top of config/chinese_ai_terms.txt
+# AI terms jieba would otherwise cut up (智能体 -> 智能 + 体), on top of config/chinese_ai_terms.txt. Single
+# terms only: compounds like 人工智能治理 would make one token of what aligns to two English words
 EXTRA_ZH_WORDS = ['智能体', '大模型', '大语言模型', '多模态', '算力', '开源', '闭源', '对齐', '推理模型', '前沿模型',
-                  '通用人工智能', '超级智能', '具身智能', '生成式人工智能', '人工智能治理', '出口管制', '蒸馏']
+                  '通用人工智能', '超级智能', '具身智能', '生成式人工智能', '出口管制', '蒸馏']
 _jieba = None
 
 

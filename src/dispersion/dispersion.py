@@ -6,9 +6,15 @@ from collections import Counter
 from src.dispersion.types import RENDERED
 
 
+CJK = '\u4e00-\u9fff'
+
+
 def normalise(text):
-    """A rendering for counting: lowercased, no spaces or punctuation (but … between pieces kept)."""
-    return re.sub(r'[\s\.,;:!?"\'“”‘’()（）《》，。；：！？、]', '', text.lower())
+    """A rendering for counting: lowercased, punctuation dropped, its pieces joined (自主…武器, split by 的, counts
+    as 自主武器; governance…law as governance law), spaces kept only between Latin words."""
+    text = re.sub(r'[.,;:!?"\'“”‘’()（）《》，。；：！？、]', '', text.lower().replace('…', ' '))
+    text = re.sub(rf'\s+(?=[{CJK}])|(?<=[{CJK}])\s+', '', text)
+    return ' '.join(text.split())
 
 
 def dispersion(predictions):

@@ -97,3 +97,10 @@ def test_chinese_ai_terms_stay_whole():
     from src.dispersion.tokens import tokens
     words = [w for w, _, _ in tokens('推动下一代个人智能体发展，大模型与算力', 'zh')]
     assert '智能体' in words and '大模型' in words and '算力' in words
+
+
+def test_split_renderings_count_as_their_words():
+    from src.dispersion.dispersion import normalise
+    assert normalise('自主…武器') == normalise('自主武器') == '自主武器'
+    assert normalise('training data…processing') == 'training data processing'
+    assert normalise('尖端 AI 模型') == '尖端ai模型'

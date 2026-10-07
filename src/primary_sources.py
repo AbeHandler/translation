@@ -73,20 +73,27 @@ def primary_sources(rows, outlets=None, spread_days=SPREAD_DAYS, min_outlets=MIN
     return sorted(found, key=lambda s: (-s['outlets_first'], -s['outlets']))
 
 
-def chinese_page_links(row, last_day):
-    """(date, body hrefs) of one crawled page if it is Chinese and about AI (title or article body: config/
-    chinese_ai_terms.txt), with a date (src/media_storms.py page_date) from FIRST_DAY to last_day; else None.
-    Body links only (readability), so a site's menus and footers aren't counted."""
-    import lxml.html
-    from readability import Document
+def chinese_ai_page(row, last_day):
+    """(html, date) of one crawled page if it is Chinese and about AI (title or article body: config/
+    chinese_ai_terms.txt), with a date (src/media_storms.py page_date) from FIRST_DAY to last_day; else None."""
     from src.ai_mentions import about_ai_article
     from src.media_storms import is_chinese, page_date
     html = row['html'].decode('utf-8', errors='replace') if isinstance(row['html'], bytes) else row['html']
     if not html or not is_chinese(row.get('language'), html) or not about_ai_article(html):
         return None
     date = (page_date(html, row['url']) or '')[:10]
-    if not (FIRST_DAY <= date <= last_day):
+    return (html, date) if FIRST_DAY <= date <= last_day else None
+
+
+def chinese_page_links(row, last_day):
+    """(date, body hrefs) of one crawled Chinese AI page (chinese_ai_page); else None. Body links only
+    (readability), so a site's menus and footers aren't counted."""
+    import lxml.html
+    from readability import Document
+    page = chinese_ai_page(row, last_day)
+    if page is None:
         return None
+    html, date = page
     try:
         body = lxml.html.fromstring(Document(html).summary())
         body.make_links_absolute(row['url'])

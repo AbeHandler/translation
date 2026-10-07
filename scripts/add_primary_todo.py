@@ -17,7 +17,7 @@ import csv
 import os
 
 from config.paths import PRIMARY_TEXTS_DIR
-from src.source_texts import as_url, read_todo, source_key
+from src.source_texts import add_to_todo, read_todo
 
 
 def parse_args():
@@ -57,18 +57,8 @@ def main():
     args = parse_args()
     os.makedirs(args.store_dir, exist_ok=True)
     path = os.path.join(args.store_dir, 'todo.tsv')
-    known = read_todo(path)
-    new = {}
-    for text, _ in candidate_urls(args):
-        url = as_url(text)
-        if not url:
-            continue
-        key = source_key(url)
-        if key not in known and key not in new:
-            new[key] = url
-    with open(path, 'a', encoding='utf-8') as f:
-        f.writelines(url + '\n' for url in new.values())
-    print(f'{len(new)} URLs added to {path} ({len(known) + len(new)} on the list)')
+    added = add_to_todo(path, (url for url, _ in candidate_urls(args)))
+    print(f'{added} URLs added to {path} ({len(read_todo(path))} on the list)')
 
 
 if __name__ == '__main__':

@@ -16,6 +16,7 @@ import io
 import json
 import os
 import re
+import threading
 
 import httpx
 import lxml.html
@@ -174,3 +175,33 @@ def compile_store(store_dir, out_path):
     pq.write_table(pa.Table.from_pylist(rows, schema), part, compression='zstd')
     os.replace(part, out_path)
     return rows
+
+
+def store_source(fetcher, url, store_dir):
+    """Fetch url into the store (<store_dir>/<sha1>.json via a temp file of this process's own); a failed fetch is
+    stored too, with status 0 and the error, so it isn't refetched on every run. Returns the stored row."""
+    try:
+        row = fetcher.text(url)
+    except Exception as exc:
+        row = {'status': 0, 'final_url': url, 'content_type': '', 'title': '', 'text': '', 'n_chars': 0,
+               'error': f'{type(exc).__name__}: {exc}'[:300]}
+    row = {'key': source_key(url), 'url': url, **row}
+    path = source_path(store_dir, url)
+    part = f'{path}.{os.getpid()}.{threading.get_ident()}.part'
+    with open(part, 'w', encoding='utf-8') as f:
+        json.dump(row, f, ensure_ascii=False)
+    os.replace(part, path)
+    return row
+
+
+def add_to_todo(path, urls):
+    """Append the URLs not on the to-do list yet (by key). Returns how many were added."""
+    known = read_todo(path)
+    new = {}
+    for text in urls:
+        url = as_url(text)
+        if url and source_key(url) not in known:
+            new.setdefault(source_key(url), url)
+    with open(path, 'a', encoding='utf-8') as f:
+        f.writelines(url + '\n' for url in new.values())
+    return len(new)

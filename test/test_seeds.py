@@ -29,3 +29,13 @@ def test_organisation_is_the_handle_or_the_site():
     assert organisation('x.com/sama/status/1790075827666796666') == '@sama'
     assert organisation('truthsocial.com/@realDonaldTrump/posts/115684148454828379') == '@realDonaldTrump'
     assert organisation('www.anthropic.com/news/claude-4') == 'anthropic.com'
+
+
+def test_text_status_from_the_store():
+    from src.seeds import add_text_status
+    seeds = [{'key': k} for k in ('a', 'b', 'c', 'd')]
+    store = {'a': {'status': 200, 'n_chars': 5000, 'title': 'A\tpost'},
+             'b': {'status': 200, 'n_chars': 40, 'title': ''},
+             'c': {'status': 404, 'n_chars': 0, 'title': ''}}
+    assert [s['text_status'] for s in add_text_status(seeds, store)] == ['text', 'short', 'failed', 'not fetched']
+    assert seeds[0]['title'] == 'A post'

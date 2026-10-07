@@ -11,7 +11,8 @@ from src.source_texts import as_url, source_key
 
 COLUMNS = ['seed_id', 'url', 'key', 'kind', 'organisation', 'first_seen', 'outlets', 'outlets_first', 'en_outlets',
            'en_outlets_first', 'en_first_seen', 'zh_outlets', 'zh_outlets_first', 'zh_first_seen', 'added_from',
-           'example_en', 'example_zh']
+           'text_status', 'n_chars', 'title', 'example_en', 'example_zh']
+MIN_TEXT_CHARS = 200   # a fetched seed with less text than this is a shell (a JavaScript-only page), not its text
 
 
 def seed_id(key):
@@ -58,3 +59,22 @@ def merge_seeds(en, zh, manual=(), min_outlets=5):
         r['outlets_first'] = r['en_outlets_first'] + r['zh_outlets_first']
         r['added_from'] = '+'.join(dict.fromkeys(r['added_from']))
     return sorted(seeds.values(), key=lambda r: (-r['outlets_first'], -r['outlets'], r['key']))
+
+
+def text_status(stored):
+    """'text', 'short' (fetched, under MIN_TEXT_CHARS), 'failed' (status not 200) or 'not fetched' (stored: the
+    store's row for the seed, or None)."""
+    if stored is None:
+        return 'not fetched'
+    if stored['status'] != 200:
+        return 'failed'
+    return 'text' if (stored['n_chars'] or 0) >= MIN_TEXT_CHARS else 'short'
+
+
+def add_text_status(seeds, stored_by_key):
+    """Set each seed's text_status, n_chars and title from the store ({key: stored row})."""
+    for seed in seeds:
+        stored = stored_by_key.get(seed['key'])
+        seed.update(text_status=text_status(stored), n_chars=(stored or {}).get('n_chars') or 0,
+                    title=((stored or {}).get('title') or '').replace('\t', ' ').replace('\n', ' ')[:200])
+    return seeds

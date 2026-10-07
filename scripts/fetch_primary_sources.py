@@ -19,7 +19,7 @@ import os
 
 from config.paths import PRIMARY_DB_PATH, PRIMARY_TEXTS_DIR
 from src.file_worker import process_files
-from src.source_texts import SourceFetcher, compile_store, read_todo, source_path
+from src.source_texts import SourceFetcher, compile_store, read_todo, source_path, store_source
 from src.warc_worker_cli import optional_int, setup_worker_process
 
 
@@ -51,15 +51,7 @@ def main():
     fetcher = SourceFetcher()
 
     def fetch(key, out_path):
-        href = todo[key]
-        try:
-            row = fetcher.text(href)
-        except Exception as exc:   # recorded, so the source isn't refetched on every run (-retry-failed does)
-            row = {'status': 0, 'final_url': href, 'content_type': '', 'title': '', 'text': '', 'n_chars': 0,
-                   'error': f'{type(exc).__name__}: {exc}'[:300]}
-        with open(out_path + '.part', 'w', encoding='utf-8') as f:
-            json.dump({'key': key, 'url': href, **row}, f, ensure_ascii=False)
-        os.rename(out_path + '.part', out_path)
+        row = store_source(fetcher, todo[key], args.store_dir)
         return {'status': row['status'], 'chars': row['n_chars']}
     process_files(list(todo), lambda key: source_path(args.store_dir, todo[key]), fetch, args.max_files)
     rows = compile_store(args.store_dir, args.db)   # keep the table current: the last worker to finish leaves it whole

@@ -91,3 +91,9 @@ def test_simalign_aligner_maps_focal_words_to_target_pieces():
     aligner = SimAlignAligner('en', 'zh', aligner=FakeSimAlign(pairs))
     spans, score = aligner.align((6, 24), src, tgt)              # "autonomous weapons"
     assert '…'.join(tgt[a:b] for a, b in spans) == '自主…武器' and score == 1.0
+
+
+def test_chinese_ai_terms_stay_whole():
+    from src.dispersion.tokens import tokens
+    words = [w for w, _, _ in tokens('推动下一代个人智能体发展，大模型与算力', 'zh')]
+    assert '智能体' in words and '大模型' in words and '算力' in words

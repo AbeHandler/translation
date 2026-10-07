@@ -17,6 +17,6 @@ def dispersion(predictions):
     rendered = [normalise(p.target_text) for p in predictions if p.status == RENDERED]
     counts = Counter(rendered)
     total = sum(counts.values())
-    entropy = -sum(n / total * math.log2(n / total) for n in counts.values()) if total else 0.0
+    entropy = max(0.0, -sum(n / total * math.log2(n / total) for n in counts.values())) if total else 0.0
     return {'distinct': len(counts), 'entropy': round(entropy, 3), 'renderings': counts,
             'rendered': total, 'dropped': sum(1 for p in predictions if p.status == 'dropped')}

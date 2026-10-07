@@ -31,16 +31,14 @@ import re
 import shutil
 
 import pyarrow as pa
-import pyarrow.compute as pc
-import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 
 from config.paths import (CC_HTML_DIR, CC_LINKS_DIR, CC_NEWS_PUBDATES_DIR, PRIMARY_SOURCES_DIR, PRIMARY_SOURCES_PATH,
                           SITE_CRAWLS_DIR)
 from src.cc_news import ai_article_links
 from src.file_worker import process_files
-from src.primary_sources import (LINK_SCHEMA, MIN_NEWS_ARTICLES, MIN_OUTLETS, NEWS_DOMAINS_ZH, chinese_page_links,
-                                 link_rows, primary_sources)
+from src.primary_sources import (LINK_SCHEMA, MIN_NEWS_ARTICLES, MIN_OUTLETS, chinese_page_links, link_rows,
+                                 sources_from_link_tables)
 from src.warc_worker_cli import optional_int, setup_worker_process
 
 COLUMNS = ['document', 'href', 'kind', 'first_seen', 'outlets_first', 'outlets', 'articles', 'en_outlets',
@@ -132,20 +130,9 @@ def links_step(args):
 
 
 def sources_step(args):
-    table = ds.dataset(os.path.join(args.out_dir, 'links'), format='parquet').to_table()
-    volume = table.select(['outlet', 'article']).group_by('outlet').aggregate([('article', 'count_distinct')])
-    if args.corpus == 'zh':   # the crawled sites are news outlets we chose, whatever their volume
-        outlets = set(volume['outlet'].to_pylist()) | NEWS_DOMAINS_ZH
-    else:
-        outlets = set(volume.filter(pc.greater_equal(volume['article_count_distinct'], args.min_news_articles))
-                      ['outlet'].to_pylist())
-    counts = table.group_by('document').aggregate([('outlet', 'count_distinct')])
-    keep = counts.filter(pc.greater_equal(counts['outlet_count_distinct'], args.min_outlets))['document']
-    rows = table.filter(pc.is_in(table['document'], keep)).to_pylist()
-    rule = 'every crawled site and major portal' if args.corpus == 'zh' else f'>= {args.min_news_articles} AI articles'
-    print(f'{table.num_rows} links from {volume.num_rows} sites, {len(outlets)} news outlets ({rule}); '
-          f'{len(keep)} documents linked by >= {args.min_outlets} outlets', flush=True)
-    found = primary_sources(rows, outlets, min_outlets=args.min_outlets)
+    found, summary = sources_from_link_tables(os.path.join(args.out_dir, 'links'), args.corpus, args.min_outlets,
+                                              args.min_news_articles)
+    print(summary, flush=True)
     with open(args.out + '.part', 'w', encoding='utf-8', newline='') as f:
         writer = csv.DictWriter(f, COLUMNS, delimiter='\t')
         writer.writeheader()

@@ -94,3 +94,25 @@ def chinese_page_links(row, last_day):
     except Exception:
         hrefs = []
     return date, hrefs
+
+
+def sources_from_link_tables(links_dir, corpus, min_outlets=MIN_OUTLETS, min_news_articles=MIN_NEWS_ARTICLES):
+    """(primary sources, summary) from a corpus's link tables (<links_dir>/*.parquet, LINK_SCHEMA). News outlets:
+    for en, sites with min_news_articles+ AI articles; for zh, every crawled site and NEWS_DOMAINS_ZH (the crawls
+    are news outlets we chose, whatever their volume)."""
+    import pyarrow.compute as pc
+    import pyarrow.dataset as ds
+    table = ds.dataset(links_dir, format='parquet').to_table()
+    volume = table.select(['outlet', 'article']).group_by('outlet').aggregate([('article', 'count_distinct')])
+    if corpus == 'zh':
+        outlets = set(volume['outlet'].to_pylist()) | NEWS_DOMAINS_ZH
+    else:
+        outlets = set(volume.filter(pc.greater_equal(volume['article_count_distinct'], min_news_articles))
+                      ['outlet'].to_pylist())
+    counts = table.group_by('document').aggregate([('outlet', 'count_distinct')])
+    keep = counts.filter(pc.greater_equal(counts['outlet_count_distinct'], min_outlets))['document']
+    rows = table.filter(pc.is_in(table['document'], keep)).to_pylist()
+    rule = 'every crawled site and major portal' if corpus == 'zh' else f'>= {min_news_articles} AI articles'
+    summary = (f'{corpus}: {table.num_rows} links from {volume.num_rows} sites, {len(outlets)} news outlets ({rule}); '
+               f'{len(keep)} documents linked by >= {min_outlets} outlets')
+    return primary_sources(rows, outlets, min_outlets=min_outlets), summary

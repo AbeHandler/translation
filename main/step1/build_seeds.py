@@ -14,6 +14,8 @@ One row per seed: seed_id, url, key, kind, organisation, first_seen, outlets, ou
 language en_/zh_ outlets, outlets_first (within 14 days of the first link), first_seen, an example article; and
 text_status (text, short, failed, not fetched), n_chars, title. -retry-failed fetches failed seeds again.
 
+All of step 1, with the link tables built first: bash main/step1/go_step1.sh.
+
 Run as a module from the repo root:
     python -m main.step1.build_seeds
     python -m main.step1.build_seeds -min-outlets 10

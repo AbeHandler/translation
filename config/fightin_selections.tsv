@@ -6,4 +6,4 @@ name	pattern	from	to
 all
 openai	OpenAI|ChatGPT
 anthropic	Anthropic|Claude
-huggingface_jul_aug26	Hugging Face|HuggingFace|抱抱脸	2026-07-01	2026-08-31
+deepseek	DeepSeek|深度求索

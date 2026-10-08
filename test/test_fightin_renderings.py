@@ -15,3 +15,12 @@ def test_longest_name_first_and_counted_as_a_name():
 def test_reads_the_config():
     r = KnownRenderings.read('config/fightin_known_renderings.tsv')
     assert r.apply('通义千问').strip() == 'Qwen' and r.apply('千问').strip() == 'Qwen'
+
+
+def test_slogans_match_english_phrases():
+    r = KnownRenderings.read('config/fightin_known_renderings.tsv')
+    zh = units([t for t, _, _ in tokens(r.apply('推动高质量发展，共建一带一路'), 'zh')], 'zh', (2, 3))
+    english = 'China pushes high-quality development and the Belt and Road'
+    en = units([t for t, _, _ in tokens(english, 'en')], 'en', (2, 3))
+    assert 'high-quality development' in zh and 'high-quality development' in en
+    assert 'belt and road' in zh and 'belt and road' in en

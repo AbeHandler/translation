@@ -21,8 +21,21 @@ COMPOUND_CHARS = 4
 ONE_WORD_IN_ENGLISH = {'人工智能'}     # compounds English says in one word (AI): not phrases
 
 
+def join_hyphens(raw_tokens):
+    """Latin words joined by hyphens made one word again (jieba splits High-Quality; the English regex doesn't)."""
+    out = []
+    for tok in raw_tokens:
+        if len(out) >= 2 and out[-1] == '-' and LATIN.match(out[-2]) and LATIN.match(tok):
+            out[-2:] = [out[-2] + '-' + tok]
+        else:
+            out.append(tok)
+    return out
+
+
 def runs(raw_tokens, lang):
     """The document's kept words (normalised), split into runs at breaks."""
+    if lang == 'zh':
+        raw_tokens = join_hyphens(raw_tokens)
     out, run = [], []
     for raw in raw_tokens:
         word = normalise(raw)

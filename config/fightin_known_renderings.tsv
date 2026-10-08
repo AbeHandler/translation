@@ -2,6 +2,9 @@
 # English in the Chinese texts before counting (LaBSE can't match names whose Chinese is unrelated to the English:
 # 文心一言 vs "ERNIE Bot" scored 0.44). Write the English as English coverage does, capitalised (in Chinese texts,
 # lowercase Latin words are dropped as quoted English). Longer names are replaced first (文心一言 before 文心).
+# Also the official slogans (新质生产力, 中国式现代化 ...), in their standard English (Xinhua, State Council), so
+# each is counted once rather than split across loose phrase matches. Every English word capitalised (Belt And
+# Road: a lowercase word in a Chinese text breaks the phrase), and at least two words (phrases are 2-3 words).
 chinese	english
 文心一言	ERNIE Bot
 文心大模型	ERNIE
@@ -45,3 +48,29 @@ chinese	english
 奥特曼	Altman
 黄仁勋	Jensen Huang
 扎克伯格	Zuckerberg
+生成式人工智能	Generative AI
+具身智能	Embodied AI
+习近平	Xi Jinping
+新质生产力	New Quality Productive Forces
+中国式现代化	Chinese Modernization
+高质量发展	High-Quality Development
+新发展理念	New Development Philosophy
+深度融合	Deep Integration
+融合发展	Integrated Development
+协同发展	Coordinated Development
+科技创新	Technological Innovation
+科技自立自强	Scientific And Technological Self-Reliance
+科技强国	Science And Technology Powerhouse
+数字经济	Digital Economy
+数字中国	Digital China
+实体经济	Real Economy
+营商环境	Business Environment
+新型工业化	New Industrialization
+现代化产业体系	Modern Industrial System
+产业链供应链	Industrial And Supply Chains
+东数西算	East Data West Computing
+新基建	New Infrastructure
+人工智能+	AI Plus
+共同富裕	Common Prosperity
+双循环	Dual Circulation
+一带一路	Belt And Road

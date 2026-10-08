@@ -39,7 +39,8 @@ def funnel_plot(words, frequency, z, path, chinese=None, top=20, title='', group
     chinese = list(chinese) if chinese is not None else [''] * len(words)
     significant = np.abs(z) >= 1.96
     size = 2 + 40 * np.abs(z) / max(np.abs(z).max(), 1e-9)
-    fig, (ax, table) = plt.subplots(1, 2, figsize=(15, 9), gridspec_kw={'width_ratios': [3, 1.4], 'wspace': 0.05})
+    height = max(9, 0.2 * (2 * top + 4))      # the table needs room for 2 * top rows
+    fig, (ax, table) = plt.subplots(1, 2, figsize=(15, height), gridspec_kw={'width_ratios': [3, 1.4], 'wspace': 0.05})
     ax.scatter(frequency[~significant], z[~significant], s=size[~significant], c='lightgrey', lw=0)
     for side, color in zip((z >= 1.96, z <= -1.96), colors):
         ax.scatter(frequency[side], z[side], s=size[side], c=color, lw=0)
@@ -69,7 +70,7 @@ def funnel_plot(words, frequency, z, path, chinese=None, top=20, title='', group
     plt.close(fig)
 
 
-def funnel_plot_tsv(tsv, png, title='', font_paths=()):
+def funnel_plot_tsv(tsv, png, title='', font_paths=(), top=20):
     """The funnel plot of a fightin.tsv (scripts/fightin.py: concept, zh_forms, en, zh, z): English blue, Chinese
     red."""
     import pandas as pd
@@ -77,4 +78,4 @@ def funnel_plot_tsv(tsv, png, title='', font_paths=()):
     words = table['english'].where(table['english'] != '', table['concept']) if 'english' in table else table['concept']
     funnel_plot(words, table['en'] + table['zh'], table['z'], png,
                 chinese=table['zh_forms'].map(chinese_form), groups=('English', 'Chinese'),
-                colors=('tab:blue', 'tab:red'), title=title, font_paths=font_paths)
+                colors=('tab:blue', 'tab:red'), title=title, font_paths=font_paths, top=top)

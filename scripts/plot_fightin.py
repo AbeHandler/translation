@@ -6,6 +6,7 @@ used first (bash scripts/fetch_cjk_font.sh).
 
 Run as a module from the repo root:
     python -m scripts.plot_fightin -tsv /tmp/fightin/fightin.tsv          # -> /tmp/fightin/funnel.png
+    python -m scripts.plot_fightin -tsv /tmp/fightin/all_1k/fightin_ngrams2-3.tsv -top 50      # 50 per side
 """
 import argparse
 import os
@@ -19,6 +20,7 @@ def parse_args():
     parser.add_argument('-tsv', required=True)
     parser.add_argument('-png', default=None, help='default: funnel.png next to the tsv')
     parser.add_argument('-title', default="Fightin' Words: English vs Chinese AI")
+    parser.add_argument('-top', type=int, default=20, help='words listed and numbered on each side')
     args = parser.parse_args()
     args.png = args.png or os.path.join(os.path.dirname(args.tsv), 'funnel.png')
     return args
@@ -26,7 +28,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    funnel_plot_tsv(args.tsv, args.png, args.title, font_paths=sorted(FONTS_DIR.glob('*.[ot]tf')))
+    funnel_plot_tsv(args.tsv, args.png, args.title, font_paths=sorted(FONTS_DIR.glob('*.[ot]tf')), top=args.top)
     print(f'-> {args.png}')
 
 

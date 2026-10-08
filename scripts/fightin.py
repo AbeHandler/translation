@@ -60,6 +60,7 @@ from src.dispersion.tokens import tokens
 from src.external_links import registered_domain
 from src.fightin.concepts import (EMBED_VERSION, concept_counts, for_embedding, nearest_pivots, pivot_concepts,
                                   read_stopwords)
+from src.fightin.contexts import dedupe, evidence
 from src.fightin.counts import GroupCounts
 from src.fightin.documents import is_templated
 from src.fightin.embeddings.backends import from_encoder
@@ -142,9 +143,10 @@ def path(args, name):
 
 
 def counted_docs(args):
-    """The sample, with each document's text replaced by what is counted: with -window, its excerpts
-    (windows.parquet, written by the windows step)."""
-    docs = pd.read_parquet(path(args, 'docs.parquet'))
+    """The sample without duplicates (a story syndicated to many outlets counts once: src/fightin/contexts.py
+    dedupe), each document's text replaced by what is counted: with -window, its excerpts (windows.parquet)."""
+    docs, dropped = dedupe(pd.read_parquet(path(args, 'docs.parquet')))
+    print(f'duplicates (syndicated copies) left out: {dropped or "none"}')
     if args.window:
         excerpts = pd.read_parquet(path(args, 'windows.parquet'), columns=['url', 'lang', 'excerpt'])
         docs = docs.merge(excerpts, on=['url', 'lang'])
@@ -368,6 +370,7 @@ def fight(args, docs, mapping, nearest, nearest_zh):
                           'label': labels, 'kind': kind, 'en': counts.i, 'zh': counts.j, 'delta': lo.delta, 'z': lo.z})
     table = table.sort_values('z', ascending=False)
     table.to_csv(path(args, 'fightin.tsv'), sep='\t', index=False, float_format='%.4g')
+    write_contexts(args, docs, table, members)
     funnel_plot_tsv(path(args, 'fightin.tsv'), path(args, 'funnel.png'),
                     font_paths=sorted(FONTS_DIR.glob('*.[ot]tf')),
                     title=f"Fightin' Words: English vs Chinese AI ({args.experiment_name}, {args.unit_name})")
@@ -376,6 +379,37 @@ def fight(args, docs, mapping, nearest, nearest_zh):
     print('  most English:', ', '.join(table['label'].head(10)))
     print('  most Chinese:', ', '.join(table['label'].tail(10)[::-1]))
     print(f"  -> {path(args, 'fightin.tsv')}, {path(args, 'funnel.png')}")
+
+
+def write_contexts(args, docs, table, members, top=50):
+    """For the top concepts of each side: the documents and outlets using them in each language, and snippets
+    from different outlets -> contexts_<unit>.jsonl, and contexts_<unit>.md to read."""
+    sets = docs['units'].map(set)
+    texts = {'en': docs['text'], 'zh': docs['text'].map(args.renderings.apply)}   # Chinese: the rewritten text
+    picks = [('english', r) for r in table.head(top).itertuples()] + \
+        [('chinese', r) for r in table.tail(top)[::-1].itertuples()]
+    out = []
+    for side, row in picks:
+        found = {'concept': row.concept, 'label': row.label, 'kind': row.kind, 'side': side, 'z': round(row.z, 2),
+                 'en': int(row.en), 'zh': int(row.zh)}
+        for lang, units_ in (('en', [row.concept]), ('zh', list(members[row.concept]))):
+            rows = (docs['lang'] == lang) & sets.map(lambda s_: any(u in s_ for u in units_))
+            found[lang + '_evidence'] = evidence(docs[rows].assign(text=texts[lang][rows]), units_, lang)
+        out.append(found)
+    with open(path(args, 'contexts.jsonl'), 'w', encoding='utf-8') as f:
+        f.writelines(json.dumps(r, ensure_ascii=False) + '\n' for r in out)
+    with open(path(args, 'contexts.md'), 'w', encoding='utf-8') as f:
+        f.write(f'# Where the top concepts come from: {args.experiment_name}, {args.unit_name}'
+                f"{f', window {args.window}' if args.window else ''}\n")
+        for r in out:
+            f.write(f"\n## {r['side']} {r['label']}  (z {r['z']}, {r['kind']}; en {r['en']}, zh {r['zh']})\n")
+            for lang in ('en', 'zh'):
+                e = r[lang + '_evidence']
+                if e['documents']:
+                    outlets = ', '.join(f'{o} {n}' for o, n in e['top_outlets'])
+                    f.write(f"- **{lang}**: {e['documents']} documents, {e['outlets']} outlets ({outlets})\n")
+                    f.writelines(f"  - {x['outlet']}: {x['snippet']}\n" for x in e['examples'])
+    print(f"  -> {path(args, 'contexts.md')} (where the top {top} concepts of each side come from)")
 
 
 def compare_step(args):

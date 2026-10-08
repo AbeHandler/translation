@@ -210,7 +210,8 @@ def fight_step(args):
 def plot_step(args):
     table = pd.read_csv(path(args, 'fightin.tsv'), sep='\t', keep_default_na=False)
     funnel_plot(table['label'], table['en'] + table['zh'], table['z'], path(args, 'funnel.png'),
-                groups=('English', 'Chinese'), title=f"Fightin' Words: English vs Chinese AI ({args.experiment_name})")
+                groups=('English', 'Chinese'), colors=('tab:blue', 'tab:red'),
+                title=f"Fightin' Words: English vs Chinese AI ({args.experiment_name})")
     print(f"-> {path(args, 'funnel.png')}")
 
 

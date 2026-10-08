@@ -7,3 +7,6 @@ all
 openai	OpenAI|ChatGPT
 anthropic	Anthropic|Claude
 deepseek	DeepSeek|深度求索
+distillation	distill|蒸馏
+nvidia	Nvidia|英伟达|辉达|輝達
+qwen	(?<![A-Za-z])Qwen|通义千问|千问|通义

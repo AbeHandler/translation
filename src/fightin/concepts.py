@@ -4,6 +4,11 @@ Shared concepts for comparing word use across languages with Fightin' Words: eac
 close enough (治理 -> governance); Latin-script words (AI, OpenAI, GPT-4o) are their own lowercased concept in either
 language; Chinese words with no close English word stay their own concept. Then both groups count concepts, not
 words, so English and Chinese texts share one vocabulary.
+
+Two leaks to keep out of the comparison: stray words of the other language (Chinese characters on English pages,
+"of" or "is" inside Chinese pages), and function words, which have no counterpart across languages (该 -> the,
+以及 -> and). So English documents count only Latin-script words, and concepts that are stopwords (in either
+language: a Chinese word mapped to "the" is dropped too) are left out.
 """
 import re
 
@@ -42,14 +47,24 @@ def pivot_concepts(index, words, threshold=0.6, source='zh', pivot='en'):
     return out
 
 
-def concept_counts(docs, mapping=None):
-    """Counter of concepts over tokenised documents; mapping: {word: (concept, similarity)} (pivot_concepts), or
-    None for the pivot language (each word its own concept)."""
+def concept_counts(docs, mapping=None, stopwords=frozenset()):
+    """Counter of concepts over tokenised documents. mapping: {word: (concept, similarity)} (pivot_concepts) for
+    the source language; None for the pivot language, whose documents then count only Latin-script words (each its
+    own concept). Concepts in stopwords are left out."""
     from collections import Counter
     counts = Counter()
     for doc in docs:
         for word in doc:
             word = normalise(word)
-            if word:
-                counts[mapping[word][0] if mapping and word in mapping else word] += 1
+            if not word or (mapping is None and not LATIN.match(word)):
+                continue
+            concept = mapping[word][0] if mapping and word in mapping else word
+            if concept not in stopwords:
+                counts[concept] += 1
     return counts
+
+
+def read_stopwords(path):
+    """The words of a stopword file: one per line, # comments."""
+    with open(path, encoding='utf-8') as f:
+        return frozenset(line.strip() for line in f if line.strip() and not line.startswith('#'))

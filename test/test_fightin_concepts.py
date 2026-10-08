@@ -1,5 +1,5 @@
 """Run from the repo root: python -m pytest test/"""
-from src.fightin.concepts import concept_counts, normalise, pivot_concepts
+from src.fightin.concepts import concept_counts, normalise, pivot_concepts, read_stopwords
 from src.fightin.embeddings.backends import from_dict
 from src.fightin.embeddings.index import VectorIndex
 
@@ -26,3 +26,16 @@ def test_concept_counts():
     m = pivot_concepts(index(), ['治理', '芯片'], threshold=0.8)
     assert concept_counts([['治理', '芯片', '治理', 'AI', '，']], m) == {'governance': 2, 'chips': 1, 'ai': 1}
     assert concept_counts([['Governance', 'the']]) == {'governance': 1, 'the': 1}
+
+
+def test_stray_script_and_stopwords_are_left_out():
+    m = {'治理': ('governance', 0.9), '该': ('the', 0.8), 'of': ('of', 1.0)}
+    stop = frozenset({'the', 'of'})
+    # English pages: Chinese characters on them don't count; Chinese pages: 该 -> the and stray "of" are dropped
+    assert concept_counts([['Governance', 'the', '治理', '的']], None, stop) == {'governance': 1}
+    assert concept_counts([['治理', '该', 'of', 'AI']], m, stop) == {'governance': 1, 'ai': 1}
+
+
+def test_read_stopwords(tmp_path):
+    (tmp_path / 's.txt').write_text('# comment\nthe\n\nof\n', encoding='utf-8')
+    assert read_stopwords(tmp_path / 's.txt') == {'the', 'of'}

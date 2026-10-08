@@ -41,6 +41,7 @@ SEED_TRANSMISSION_PATH = REPO_ROOT / 'data' / 'processed' / 'seed_transmission.t
 SEEDS_EXTRA_PATH = REPO_ROOT / 'config' / 'seeds_extra.tsv'  # hand-picked seeds, one URL per line
 PRIMARY_TEXTS_DIR = REPO_ROOT / 'data' / 'interim' / 'primary'  # todo.tsv, <sha1 of the URL>.json (src/source_texts.py)
 PRIMARY_DB_PATH = REPO_ROOT / 'data' / 'processed' / 'primary.pq'  # the store as one table (compile_primary_sources)
+STOPWORDS_EN_PATH = REPO_ROOT / 'config' / 'stopwords_en.txt'  # scripts/fightin.py
 FONTS_DIR = REPO_ROOT / 'data' / 'external' / 'fonts'  # e.g. a Chinese font for plots (scripts/fetch_cjk_font.sh)
 NOTABLE_ACCOUNTS_PATH = REPO_ROOT / 'data' / 'external' / 'notable_accounts.tsv'  # scripts/fetch_notable_accounts.py
 NOTABLE_ACCOUNTS_EXTRA_PATH = REPO_ROOT / 'config' / 'notable_accounts_extra.tsv'  # hand-added, missing in Wikidata

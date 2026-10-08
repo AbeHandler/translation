@@ -13,6 +13,8 @@ English word, src/fightin/concepts.py). All outputs in results/fightin/<experime
              (each word encoded as a one-word sentence; contextual word vectors averaged over the corpus would be
              truly word-level: see src/fightin/embeddings/backends.py)
     fight    Chinese words -> English concepts (cosine >= -threshold)        -> concepts.tsv
+             English documents count only Latin-script words; concepts in -stopwords are left out (function words
+             have no counterpart across languages: 该 -> the, 以及 -> and)
              Fightin' Words over concepts used in both languages, English (i) vs Chinese (j): log-odds with an
              informative Dirichlet prior (-alpha0; the background is both groups), z-scores
                                                                              -> fightin.tsv
@@ -37,11 +39,11 @@ import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 
-from config.paths import CC_HTML_DIR, FONTS_DIR, REPO_ROOT, SITE_CRAWLS_DIR
+from config.paths import CC_HTML_DIR, FONTS_DIR, REPO_ROOT, SITE_CRAWLS_DIR, STOPWORDS_EN_PATH
 from src.ai_mentions import mentions_ai, mentions_ai_html
 from src.dispersion.tokens import tokens
 from src.external_links import registered_domain
-from src.fightin.concepts import concept_counts, normalise, pivot_concepts
+from src.fightin.concepts import concept_counts, normalise, pivot_concepts, read_stopwords
 from src.fightin.counts import GroupCounts
 from src.fightin.embeddings.backends import from_encoder
 from src.fightin.embeddings.index import VectorIndex
@@ -64,6 +66,7 @@ def parse_args():
     parser.add_argument('-min-df', type=int, default=5, help='words in fewer documents of their language: no vector')
     parser.add_argument('-threshold', type=float, default=0.6, help='Chinese word -> English concept at this cosine')
     parser.add_argument('-alpha0', type=float, default=1000, help="the prior's size (the paper's alpha_0)")
+    parser.add_argument('-stopwords', default=str(STOPWORDS_EN_PATH), help="concepts left out; '' keeps all")
     parser.add_argument('-seed', type=int, default=0)
     parser.add_argument('-cc-html-dir', default=str(CC_HTML_DIR))
     parser.add_argument('-crawls-dir', default=str(SITE_CRAWLS_DIR))
@@ -178,7 +181,8 @@ def fight_step(args):
     zh_docs = [doc_words(t, 'zh') for t in docs.loc[docs['lang'] == 'zh', 'text']]
     en_docs = [doc_words(t, 'en') for t in docs.loc[docs['lang'] == 'en', 'text']]
     mapping = pivot_concepts(index, sorted({w for d in zh_docs for w in d}), args.threshold)
-    zh_counts, en_counts = concept_counts(zh_docs, mapping), concept_counts(en_docs)
+    stopwords = read_stopwords(args.stopwords) if args.stopwords else frozenset()
+    zh_counts, en_counts = concept_counts(zh_docs, mapping, stopwords), concept_counts(en_docs, None, stopwords)
     zh_word_counts = Counter(w for d in zh_docs for w in d)
     members = defaultdict(Counter)       # concept -> its Chinese words, by count
     for w, n in zh_word_counts.items():

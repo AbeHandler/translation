@@ -66,7 +66,8 @@ def test_additive_facets():
     etas = [lang[i] + topic[j] for i in range(2) for j in range(2)]
     X, cell, _ = corpus(etas, n_per=30)
     facets = {'lang': cell // 2, 'topic': cell % 2}
-    model = AdditiveSAGE(rounds=10).fit(X, facets)
+    model = AdditiveSAGE().fit(X, facets)
     assert set(torch.argsort(model.component('lang', 1), descending=True)[:5].tolist()) == set(range(20, 25))
     assert set(torch.argsort(model.component('topic', 0), descending=True)[:5].tolist()) == set(range(100, 105))
+    assert sparsity(model.eta['lang']) > 0.8 and sparsity(model.eta['topic']) > 0.8
     assert background(X).shape == (V,)

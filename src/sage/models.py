@@ -6,14 +6,14 @@ SAGE models over term-count matrices (documents x V; numpy, scipy.sparse or torc
                       classifier of Application 1
     AdditiveSAGE      several facets of observed labels per document (language, topic, outlet ...), their
                       components added in log space: P(w | labels) ~ exp(m + sum_f eta_f[label_f]) (sec. 5),
-                      with no switching variables. Estimated jointly (L-BFGS), alternating with the variances
+                      with no switching variables. Coordinate ascent: the same Newton steps, other facets as
+                      offsets
     top_terms         a component's largest positive (or negative) deviations
 """
 import numpy as np
 import torch
 
-from src.sage.estimate import estimate_component
-from src.sage.variance import exponential_inv_tau, jeffreys_inv_tau
+from src.sage.estimate import estimate_component, inv_tau_of, newton_step
 
 DTYPE = torch.float64
 ZERO = 1e-4         # |eta| below this counts as zero (the Jeffreys prior drives unsupported deviations to 0)
@@ -26,9 +26,21 @@ def as_tensor(X):
     return torch.as_tensor(np.asarray(X), dtype=DTYPE)
 
 
+def group_sums(X, which, n_groups):
+    """The summed counts of each group's documents (G x V tensor); which: each document's group (n). X may be a
+    scipy.sparse matrix: documents are pooled before anything is dense."""
+    if hasattr(X, 'tocsr'):
+        import scipy.sparse as sp
+        member = sp.csr_matrix((np.ones(len(which)), (np.asarray(which), np.arange(len(which)))),
+                               shape=(n_groups, X.shape[0]))
+        return as_tensor(member @ X)
+    X = as_tensor(X)
+    return torch.zeros(n_groups, X.shape[1], dtype=DTYPE).index_add_(0, torch.as_tensor(np.asarray(which)), X)
+
+
 def background(X, smooth=1.0):
     """m: log of each term's share of all counts (smoothed, so no term is -inf)."""
-    total = as_tensor(X).sum(0) + smooth
+    total = group_sums(X, np.zeros(X.shape[0], dtype=int), 1)[0] + smooth
     return torch.log(total / total.sum())
 
 
@@ -42,11 +54,10 @@ class SAGE:
 
     def fit(self, X, y, m=None):
         """One component per class from the documents' counts X (n x V) and labels y (n)."""
-        X, y = as_tensor(X), np.asarray(y)
-        self.classes = np.unique(y)
+        self.classes, which = np.unique(np.asarray(y), return_inverse=True)
         self.m = background(X) if m is None else torch.as_tensor(m, dtype=DTYPE)
-        self.eta = torch.stack([estimate_component(X[torch.as_tensor(y == k)].sum(0), self.m, self.prior,
-                                                   self.gamma, self.iters) for k in self.classes])
+        sums = group_sums(X, which.reshape(-1), len(self.classes))
+        self.eta = torch.stack([estimate_component(c, self.m, self.prior, self.gamma, self.iters) for c in sums])
         return self
 
     def log_beta(self):
@@ -55,6 +66,8 @@ class SAGE:
 
     def log_likelihood(self, X):
         """log P(document | class), n x K (the multinomial coefficient left out)."""
+        if hasattr(X, 'tocsr'):
+            return torch.as_tensor(X @ self.log_beta().T.numpy())
         return as_tensor(X) @ self.log_beta().T
 
     def predict(self, X):
@@ -62,45 +75,42 @@ class SAGE:
 
 
 class AdditiveSAGE:
-    def __init__(self, prior='jeffreys', gamma=1.0, rounds=30, lbfgs_iters=50):
-        self.prior, self.gamma, self.rounds, self.lbfgs_iters = prior, gamma, rounds, lbfgs_iters
+    def __init__(self, prior='jeffreys', gamma=1.0, rounds=50, tol=1e-5):
+        self.prior, self.gamma, self.rounds, self.tol = prior, gamma, rounds, tol
 
     def fit(self, X, facets, m=None):
-        """facets: {name: labels (n)}. Documents with the same labels in every facet are pooled (the model
-        only sees their summed counts), then all components are fitted jointly."""
-        X = as_tensor(X)
+        """facets: {name: labels (n)}. Documents with the same labels in every facet are pooled (the model only
+        sees their summed counts). Coordinate ascent (sec. 5): each component in turn takes a variance update and
+        a Newton step, the other facets' components held fixed as offsets."""
         self.m = background(X) if m is None else torch.as_tensor(m, dtype=DTYPE)
         self.levels = {f: np.unique(np.asarray(v)) for f, v in facets.items()}
+        names = list(self.levels)
         codes = np.stack([np.searchsorted(self.levels[f], np.asarray(v)) for f, v in facets.items()], 1)
         groups, which = np.unique(codes, axis=0, return_inverse=True)
-        which = torch.as_tensor(which.reshape(-1))
-        counts = torch.zeros(len(groups), X.shape[1], dtype=DTYPE).index_add_(0, which, X)
+        counts = group_sums(X, which.reshape(-1), len(groups))
         groups = torch.as_tensor(groups)
-        V = X.shape[1]
-        self.eta = {f: (0.01 * torch.randn(len(lv), V, dtype=DTYPE, generator=torch.Generator().manual_seed(0)))
-                    .requires_grad_() for f, lv in self.levels.items()}
-        names = list(self.levels)
-        inv_tau = {f: torch.ones_like(e) for f, e in self.eta.items()}
-        a = {f: None for f in names}
-        for _ in range(self.rounds):
-            opt = torch.optim.LBFGS(list(self.eta.values()), max_iter=self.lbfgs_iters, line_search_fn='strong_wolfe')
+        V = counts.shape[1]
+        self.eta = {f: torch.zeros(len(lv), V, dtype=DTYPE) for f, lv in self.levels.items()}
+        state = {(f, k): None for f in names for k in range(len(self.levels[f]))}
 
-            def closure():
-                opt.zero_grad()
-                logits = self.m + sum(self.eta[f][groups[:, k]] for k, f in enumerate(names))
-                loglik = (counts * torch.log_softmax(logits, 1)).sum()
-                penalty = sum(0.5 * (inv_tau[f] * self.eta[f] ** 2).sum() for f in names)
-                loss = -(loglik - penalty) / counts.sum()
-                loss.backward()
-                return loss
-            opt.step(closure)
-            with torch.no_grad():
-                for f in names:
-                    if self.prior == 'jeffreys':
-                        inv_tau[f] = jeffreys_inv_tau(self.eta[f])
-                    else:
-                        inv_tau[f], a[f], _ = exponential_inv_tau(self.eta[f], self.gamma, a[f])
-        self.eta = {f: e.detach() for f, e in self.eta.items()}
+        def offsets(f, rows):
+            return self.m + sum(self.eta[h][groups[rows, j]] for j, h in enumerate(names) if h != f)
+        for f in names:                      # start: each component's smoothed ML deviation, given the background
+            for k in range(len(self.levels[f])):
+                rows = groups[:, names.index(f)] == k
+                self.eta[f][k] = estimate_component(counts[rows], self.m.expand(int(rows.sum()), V), iters=0)
+        for _ in range(self.rounds):
+            moved = 0.0
+            for j, f in enumerate(names):
+                for k in range(len(self.levels[f])):
+                    rows = groups[:, j] == k
+                    eta = self.eta[f][k]
+                    inv_tau, state[f, k] = inv_tau_of(eta, self.prior, self.gamma, state[f, k])
+                    new = newton_step(eta, counts[rows], offsets(f, rows), inv_tau)
+                    moved = max(moved, float(torch.max(torch.abs(new - eta))))
+                    self.eta[f][k] = new
+            if moved < self.tol:
+                break
         return self
 
     def component(self, facet, label):

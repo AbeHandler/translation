@@ -5,12 +5,14 @@
 # embeddings are reused, only the comparison and plot are redone. An experiment whose job is still queued or running
 # is skipped, so a rerun never puts two jobs on one folder.
 #   bash scripts/go_fightin.sh                  (from the repo root, on a login node)
+#   bash scripts/go_fightin.sh openai anthropic # only these selections
 #   NGRAMS=1 bash scripts/go_fightin.sh         # words instead of phrases, on the same samples
 set -eo pipefail
 SIZES="1000 5000 20000"
 mkdir -p logs/scripts/slurm
 active=$(squeue -u "$USER" -h -o '%200j' | sed 's/^ *//; s/ *$//')   # full job names
-for SELECTION in $(grep -v '^#' config/fightin_selections.tsv | tail -n +2 | cut -f1); do
+SELECTIONS=${*:-$(grep -v '^#' config/fightin_selections.tsv | tail -n +2 | cut -f1)}
+for SELECTION in $SELECTIONS; do
     for N in $SIZES; do
         name="fightin_${SELECTION}_$((N / 1000))k"
         if grep -qx "$name" <<< "$active"; then

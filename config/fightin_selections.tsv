@@ -16,3 +16,6 @@ alignment	alignment|对齐
 agi	(?<![A-Za-z])AGI(?![A-Za-z])|artificial general intelligence|superintelligence|通用人工智能|超级智能
 jobs	job loss|layoffs|unemployment|replace workers|失业|裁员|就业
 military	military|Pentagon|Department of War|weapon|军事|国防|武器
+governance	AI governance|governance of AI|人工智能治理|AI治理
+governance_broad	governance|治理
+interpretability	interpretab|explainab|可解释

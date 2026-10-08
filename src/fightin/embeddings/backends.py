@@ -38,10 +38,18 @@ def read_vec(path, max_words=200_000, keep=None):
     return words, np.vstack(rows) if rows else np.zeros((0, dim), np.float32)
 
 
-def from_encoder(words, encode, batch=1024):
-    """(words, vectors) of a word list by an encoder (list of str -> array)."""
+def from_encoder(words, encode, batch=1024, say=None):
+    """(words, vectors) of a word list by an encoder (list of str -> array). say: called with a progress line after
+    each batch (e.g. print, for a job's log)."""
+    import time
     words = list(dict.fromkeys(words))
-    vectors = [np.asarray(encode(words[k:k + batch]), dtype=np.float32) for k in range(0, len(words), batch)]
+    vectors, start = [], time.time()
+    for k in range(0, len(words), batch):
+        vectors.append(np.asarray(encode(words[k:k + batch]), dtype=np.float32))
+        if say:
+            done = min(k + batch, len(words))
+            rate = done / max(time.time() - start, 1e-9)
+            say(f'  {done}/{len(words)} embedded, {rate:.0f}/s, ~{(len(words) - done) / rate / 60:.1f} min left')
     return words, np.vstack(vectors) if vectors else np.zeros((0, 0), np.float32)
 
 

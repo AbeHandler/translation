@@ -197,7 +197,7 @@ def embed_step(args):
     index = VectorIndex()
     for lang, ws in wanted.items():
         print(f'embedding {len(ws)} {lang} {args.unit_name}', flush=True)
-        index.add(*from_encoder(ws, encode), lang=lang)
+        index.add(*from_encoder(ws, encode, say=lambda line: print(line, flush=True)), lang=lang)
     index.save(path(args, 'index.npz'))
 
 

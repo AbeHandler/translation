@@ -1,0 +1,8 @@
+# Selections compared by scripts/fightin.py: one comparison (English vs Chinese documents of the sample) per row.
+# name: the outputs' suffix (all = the whole sample, no suffix). pattern: regex on title and text, case-insensitive.
+# from/to: dates (YYYY-MM-DD; English documents carry their CC-NEWS crawl date). ids: a file of document ids
+# (src/fightin/select.py doc_id of the URL), one per line. Empty cells: no condition.
+name	pattern	from	to	ids
+all
+openai	OpenAI|ChatGPT
+anthropic	Anthropic|Claude

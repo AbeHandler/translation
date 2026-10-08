@@ -49,7 +49,7 @@ from src.fightin.counts import GroupCounts
 from src.fightin.embeddings.backends import from_encoder
 from src.fightin.embeddings.index import VectorIndex
 from src.fightin.measures import log_odds_dirichlet
-from src.fightin.plot import funnel_plot_tsv
+from src.fightin.plot import chinese_form, funnel_plot_tsv
 from src.primary_sources import chinese_ai_page
 from src.source_texts import html_text
 
@@ -202,7 +202,7 @@ def fight_step(args):
                          np.array([zh_counts[c] for c in shared], float))
     lo = log_odds_dirichlet(counts, alpha0=args.alpha0)
     zh_forms = {c: ' '.join(w for w, _ in members[c].most_common(3)) for c in shared}
-    labels = [c if zh_forms[c] == c else f'{c} / {zh_forms[c].split()[0]}' for c in shared]
+    labels = [f'{c} / {chinese_form(zh_forms[c])}' if chinese_form(zh_forms[c]) else c for c in shared]
     table = pd.DataFrame({'concept': shared, 'zh_forms': [zh_forms[c] for c in shared], 'label': labels,
                           'en': counts.i, 'zh': counts.j, 'delta': lo.delta, 'z': lo.z})
     table = table.sort_values('z', ascending=False)

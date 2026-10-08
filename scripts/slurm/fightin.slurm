@@ -1,12 +1,12 @@
 #!/bin/bash
 # Fightin' Words between English (CC-NEWS) and Chinese (site crawls) AI coverage, on concepts shared via LaBSE
-# (scripts/fightin.py). STEP=all (the default) runs sample, words, embed, fight, plot in order: the slow steps skip
-# if their output exists (a rerun picks up where it stopped); fight and plot always rerun. So after any change, just
+# (scripts/fightin.py). STEP=all (the default) runs sample, words, embed, fight, plot in order: sample is reused if
+# docs.parquet exists, embed if index.npz already has the units; the rest always rerun. So after any change, just
 # sbatch this again. Outputs: results/fightin/<EXPERIMENT>/.
 #
 # Usage (from the repo root):
 #   sbatch scripts/slurm/fightin.slurm
-#   sbatch --export=STEP=fight,THRESHOLD=0.7,EXPERIMENT=en_vs_zh_ai scripts/slurm/fightin.slurm   # rerun one step
+#   sbatch --export=NGRAMS=2-3 scripts/slurm/fightin.slurm          # phrases of 2-3 words, on the same sample
 #   sbatch --export=N=5000,EXPERIMENT=en_vs_zh_ai_5k scripts/slurm/fightin.slurm
 #   sbatch --export=STEP=flush,EXPERIMENT=en_vs_zh_ai scripts/slurm/fightin.slurm                # delete outputs
 
@@ -32,4 +32,4 @@ export TOKENIZERS_PARALLELISM=false
 export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK:-1}
 
 python -m scripts.fightin -step "${STEP:-all}" -experiment-name "${EXPERIMENT:-en_vs_zh_ai}" -n "${N:-2000}" \
-    -threshold "${THRESHOLD:-0.6}" -alpha0 "${ALPHA0:-1000}"
+    -ngrams "${NGRAMS:-1}" -alpha0 "${ALPHA0:-1000}" ${THRESHOLD:+-threshold "$THRESHOLD"}

@@ -1,15 +1,19 @@
 #!/usr/bin/env python
 """
 Fightin' Words (src/fightin) between English and Chinese AI coverage: which concepts each emphasises more, with
-English and Chinese words put on one vocabulary by a multilingual embedding (each Chinese word -> its nearest
-English word, src/fightin/concepts.py). All outputs in results/fightin/<experiment_name>/:
+English and Chinese words (or phrases) put on one vocabulary by a multilingual embedding (each Chinese unit -> its
+nearest English unit, src/fightin/concepts.py). All outputs in results/fightin/<experiment_name>/; phrase runs'
+files carry a suffix (fightin_ngrams2-3.tsv ...), so words and phrases share one sample:
     sample   -n AI documents per language, random files and row groups, at most -per-file from each file:
                  English: CC-NEWS pages (data/interim/cc_html), English, saying "AI" at least twice
                  Chinese: the site crawls (data/interim/site_crawls/*/html), Chinese and about AI (primary_sources
                  chinese_ai_page)
              main text by readability                                        -> docs.parquet
-    words    tokens (English regex, Chinese jieba with the AI terms), counted -> words.parquet (lang, word, count, df)
-    embed    words in at least -min-df documents of their language, by LaBSE -> index.npz (src/fightin/embeddings)
+    words    the units counted (src/fightin/units.py): words, or with -ngrams 2-3 phrases of 2-3 words with content
+             words at both ends; English by regex, Chinese by jieba with the AI terms
+                                                                             -> words.parquet (lang, word, count, df)
+    embed    units in at least -min-df documents of their language (at most -max-vocab), by LaBSE
+                                                                             -> index.npz (src/fightin/embeddings)
              (each word encoded as a one-word sentence; contextual word vectors averaged over the corpus would be
              truly word-level: see src/fightin/embeddings/backends.py)
     fight    Chinese words -> English concepts (cosine >= -threshold)        -> concepts.tsv
@@ -21,13 +25,13 @@ English word, src/fightin/concepts.py). All outputs in results/fightin/<experime
     plot     the funnel plot: z against frequency, top 20 concepts each side    -> funnel.png
              (Chinese labels need a Chinese font: bash scripts/fetch_cjk_font.sh puts one in data/external/fonts;
              or redraw on a laptop from fightin.tsv: scripts/plot_fightin.py)
-    all      the steps in order: the slow ones (sample, words, embed) skip if their output exists; fight and plot
-             (minutes) always rerun, so after a change to the analysis one run of -step all redoes what's needed
+    all      the steps in order: sample skips if docs.parquet exists, embed if index.npz has exactly the units
+             to embed; the rest (minutes) always rerun, so after any change one run of -step all redoes what's needed
     flush    deletes results/fightin/<experiment_name>/
 
 Run as a module from the repo root (normally via scripts/slurm/fightin.slurm):
     python -m scripts.fightin -step all
-    python -m scripts.fightin -step fight -threshold 0.7 -experiment-name t07   # needs the earlier steps' outputs
+    python -m scripts.fightin -step all -ngrams 2-3     # phrases: same docs.parquet, outputs *_ngrams2-3.*
 """
 import argparse
 import glob
@@ -44,18 +48,19 @@ from config.paths import CC_HTML_DIR, FONTS_DIR, REPO_ROOT, SITE_CRAWLS_DIR, STO
 from src.ai_mentions import mentions_ai, mentions_ai_html
 from src.dispersion.tokens import tokens
 from src.external_links import registered_domain
-from src.fightin.concepts import concept_counts, normalise, pivot_concepts, read_stopwords
+from src.fightin.concepts import concept_counts, pivot_concepts, read_stopwords
 from src.fightin.counts import GroupCounts
 from src.fightin.embeddings.backends import from_encoder
 from src.fightin.embeddings.index import VectorIndex
 from src.fightin.measures import log_odds_dirichlet
 from src.fightin.plot import chinese_form, funnel_plot_tsv
+from src.fightin.units import parse_ns, units
 from src.primary_sources import chinese_ai_page
 from src.source_texts import html_text
 
 NAME = 'fightin'
 STEPS = ('sample', 'words', 'embed', 'fight', 'plot')
-REUSED = ('sample', 'words', 'embed')    # -step all skips these if their output exists
+REUSED = ('sample',)    # -step all skips it if docs.parquet exists; embed reuses index.npz if its vocabulary matches
 MIN_TEXT_CHARS = 300
 
 
@@ -66,7 +71,10 @@ def parse_args():
     parser.add_argument('-n', type=int, default=2000, help='documents per language')
     parser.add_argument('-per-file', type=int, default=20, help='at most this many documents from one file')
     parser.add_argument('-min-df', type=int, default=5, help='words in fewer documents of their language: no vector')
-    parser.add_argument('-threshold', type=float, default=0.6, help='Chinese word -> English concept at this cosine')
+    parser.add_argument('-ngrams', default='1', help="unit: 1 = words; '2-3' = phrases of 2 to 3 words")
+    parser.add_argument('-max-vocab', type=int, default=30000, help='embed at most this many units per language')
+    parser.add_argument('-threshold', type=float, default=None,
+                        help='Chinese unit -> English concept at this cosine (default 0.6 for words, 0.7 phrases)')
     parser.add_argument('-alpha0', type=float, default=1000, help="the prior's size (the paper's alpha_0)")
     parser.add_argument('-stopwords', default=str(STOPWORDS_EN_PATH), help="concepts left out; '' keeps all")
     parser.add_argument('-seed', type=int, default=0)
@@ -74,10 +82,19 @@ def parse_args():
     parser.add_argument('-crawls-dir', default=str(SITE_CRAWLS_DIR))
     args = parser.parse_args()
     args.out = os.path.join(REPO_ROOT, 'results', NAME, args.experiment_name)
+    args.ns = parse_ns(args.ngrams)
+    args.unit_name = 'words' if args.ns == (1,) else 'phrases'
+    args.suffix = '' if args.ns == (1,) else f'_ngrams{args.ngrams}'   # words and phrases share docs.parquet
+    args.threshold = args.threshold or (0.6 if args.ns == (1,) else 0.7)
+    args.stop = read_stopwords(args.stopwords) if args.stopwords else frozenset()
     return args
 
 
 def path(args, name):
+    """A file of the experiment; per-unit outputs (all but docs.parquet) carry the unit's suffix."""
+    if name != 'docs.parquet':
+        stem, ext = os.path.splitext(name)
+        name = f'{stem}{args.suffix}{ext}'
     return os.path.join(args.out, name)
 
 
@@ -145,12 +162,8 @@ def sample_step(args):
                                    median_chars=('text', lambda t: int(t.str.len().median()))))
 
 
-def raw_words(text, lang):
-    return [t for t, _, _ in tokens(text, lang)]
-
-
-def doc_words(text, lang):
-    return [w for w in map(normalise, raw_words(text, lang)) if w]
+def doc_units(text, lang, args):
+    return units([t for t, _, _ in tokens(text, lang)], lang, args.ns, args.stop)
 
 
 def words_step(args):
@@ -159,37 +172,43 @@ def words_step(args):
     for lang, group in docs.groupby('lang'):
         count, df = Counter(), Counter()
         for text in group['text']:
-            words = doc_words(text, lang)
-            count.update(words)
-            df.update(set(words))
+            found = doc_units(text, lang, args)
+            count.update(found)
+            df.update(set(found))
         rows += [{'lang': lang, 'word': w, 'count': c, 'df': df[w]} for w, c in count.items()]
     words = pd.DataFrame(rows)
     words.to_parquet(path(args, 'words.parquet'))
     for lang, group in words.groupby('lang'):
-        print(f'{lang}: {len(group)} words, {group["count"].sum()} tokens, {(group["df"] >= args.min_df).sum()} in '
-              f'{args.min_df}+ documents')
+        print(f'{lang}: {len(group)} {args.unit_name}, {group["count"].sum()} occurrences, '
+              f'{(group["df"] >= args.min_df).sum()} in {args.min_df}+ documents')
 
 
 def embed_step(args):
     from src.dispersion.encoders import labse
-    encode = labse()
     words = pd.read_parquet(path(args, 'words.parquet'))
+    wanted = {lang: group.sort_values('df', ascending=False).head(args.max_vocab)['word'].tolist()
+              for lang, group in words[words['df'] >= args.min_df].groupby('lang')}
+    if os.path.exists(path(args, 'index.npz')):
+        old = VectorIndex.load(path(args, 'index.npz'))
+        if set(old.position) == {(lang, w) for lang, ws in wanted.items() for w in ws}:
+            print('index.npz already has these units, reused')
+            return
+    encode = labse()
     index = VectorIndex()
-    for lang, group in words[words['df'] >= args.min_df].groupby('lang'):
-        print(f'embedding {len(group)} {lang} words', flush=True)
-        index.add(*from_encoder(group.sort_values('count', ascending=False)['word'].tolist(), encode), lang=lang)
+    for lang, ws in wanted.items():
+        print(f'embedding {len(ws)} {lang} {args.unit_name}', flush=True)
+        index.add(*from_encoder(ws, encode), lang=lang)
     index.save(path(args, 'index.npz'))
 
 
 def fight_step(args):
     docs = pd.read_parquet(path(args, 'docs.parquet'))
     index = VectorIndex.load(path(args, 'index.npz'))
-    zh_docs = [raw_words(t, 'zh') for t in docs.loc[docs['lang'] == 'zh', 'text']]   # case kept: concept_counts
-    en_docs = [raw_words(t, 'en') for t in docs.loc[docs['lang'] == 'en', 'text']]   # tells names from quoted English
-    mapping = pivot_concepts(index, sorted({w for d in zh_docs for w in map(normalise, d) if w}), args.threshold)
-    stopwords = read_stopwords(args.stopwords) if args.stopwords else frozenset()
-    zh_counts, en_counts = concept_counts(zh_docs, mapping, stopwords), concept_counts(en_docs, None, stopwords)
-    zh_word_counts = Counter(w for d in zh_docs for w in map(normalise, d) if w)
+    zh_docs = [doc_units(t, 'zh', args) for t in docs.loc[docs['lang'] == 'zh', 'text']]
+    en_docs = [doc_units(t, 'en', args) for t in docs.loc[docs['lang'] == 'en', 'text']]
+    mapping = pivot_concepts(index, sorted({w for d in zh_docs for w in d}), args.threshold)
+    zh_counts, en_counts = concept_counts(zh_docs, mapping, args.stop), concept_counts(en_docs, None, args.stop)
+    zh_word_counts = Counter(w for d in zh_docs for w in d)
     members = defaultdict(Counter)       # concept -> its Chinese words, by count
     for w, n in zh_word_counts.items():
         members[mapping[w][0]][w] = n
@@ -207,7 +226,8 @@ def fight_step(args):
                           'en': counts.i, 'zh': counts.j, 'delta': lo.delta, 'z': lo.z})
     table = table.sort_values('z', ascending=False)
     table.to_csv(path(args, 'fightin.tsv'), sep='\t', index=False, float_format='%.4g')
-    print(f'{len(mapping)} Chinese words: {sum(1 for c, s in mapping.values() if s >= args.threshold)} mapped to an '
+    mapped = sum(1 for c, s in mapping.values() if s >= args.threshold)
+    print(f'{len(mapping)} Chinese {args.unit_name}: {mapped} mapped to an '
           f'English concept; {len(shared)} concepts used in both languages')
     print('\nmost English:', ', '.join(table['concept'].head(20)))
     tail = table.tail(20)[::-1]

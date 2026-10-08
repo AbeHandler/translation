@@ -24,18 +24,11 @@ def test_chinese_words_map_to_close_english_words_only():
 
 def test_concept_counts():
     m = pivot_concepts(index(), ['治理', '芯片'], threshold=0.8)
-    assert concept_counts([['治理', '芯片', '治理', 'AI', '，']], m) == {'governance': 2, 'chips': 1, 'ai': 1}
-    assert concept_counts([['Governance', 'the']]) == {'governance': 1, 'the': 1}
-
-
-def test_stray_script_and_stopwords_are_left_out():
-    m = {'治理': ('governance', 0.9), '该': ('the', 0.8), 'of': ('of', 1.0)}
-    stop = frozenset({'the', 'of'})
-    # English pages: Chinese characters on them don't count; Chinese pages: 该 -> the and stray "of" are dropped
-    assert concept_counts([['Governance', 'the', '治理', '的']], None, stop) == {'governance': 1}
-    assert concept_counts([['治理', '该', 'of', 'AI']], m, stop) == {'governance': 1, 'ai': 1}
-    # Chinese pages: lowercase English words are quoted text, names and acronyms count
-    assert concept_counts([['new', 'data', 'OpenAI', 'GPT-4o', '治理']], m) == {'openai': 1, 'gpt-4o': 1, 'governance': 1}
+    assert concept_counts([['治理', '芯片', '治理', 'ai']], m) == {'governance': 2, 'chips': 1, 'ai': 1}
+    assert concept_counts([['governance', 'the']]) == {'governance': 1, 'the': 1}
+    # stopword concepts dropped, also when a Chinese word maps to one (该 -> the)
+    m = {'治理': ('governance', 0.9), '该': ('the', 0.8)}
+    assert concept_counts([['治理', '该']], m, frozenset({'the'})) == {'governance': 1}
 
 
 def test_read_stopwords(tmp_path):

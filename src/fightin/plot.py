@@ -39,7 +39,7 @@ def funnel_plot(words, frequency, z, path, chinese=None, top=20, title='', group
     chinese = list(chinese) if chinese is not None else [''] * len(words)
     significant = np.abs(z) >= 1.96
     size = 2 + 40 * np.abs(z) / max(np.abs(z).max(), 1e-9)
-    fig, (ax, table) = plt.subplots(1, 2, figsize=(15, 9), gridspec_kw={'width_ratios': [3, 1.1], 'wspace': 0.05})
+    fig, (ax, table) = plt.subplots(1, 2, figsize=(15, 9), gridspec_kw={'width_ratios': [3, 1.4], 'wspace': 0.05})
     ax.scatter(frequency[~significant], z[~significant], s=size[~significant], c='lightgrey', lw=0)
     for side, color in zip((z >= 1.96, z <= -1.96), colors):
         ax.scatter(frequency[side], z[side], s=size[side], c=color, lw=0)
@@ -54,14 +54,15 @@ def funnel_plot(words, frequency, z, path, chinese=None, top=20, title='', group
         for rank, k in enumerate(ranked, 1):
             ax.annotate(str(rank), (frequency[k], z[k]), fontsize=7, xytext=(3, 2), textcoords='offset points',
                         color=color, fontweight='bold')
-            for x, text, align in ((0.0, f'{rank}.', 'left'), (0.1, words[k], 'left'), (0.6, chinese[k], 'left'),
-                                   (1.0, f'{z[k]:.1f}', 'right')):
+            cells = ((0.0, f'{rank}.', 'left'), (0.09, words[k][:28], 'left'), (0.6, chinese[k][:10], 'left'),
+                     (1.0, f'{z[k]:.1f}', 'right'))
+            for x, text, align in cells:
                 table.text(x, row, text, color=color, fontsize=9, va='top', ha=align)
             row -= step
         row -= step
     ax.set_xscale('log')
     ax.axhline(0, c='grey', lw=0.5)
-    ax.set_xlabel('Frequency of word (both groups)')
+    ax.set_xlabel('Frequency (both groups)')
     ax.set_ylabel(f'z-score of log-odds-ratio ({groups[0]} up, {groups[1]} down)')
     ax.set_title(title)
     fig.savefig(path, dpi=150, bbox_inches='tight')

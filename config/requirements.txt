@@ -19,6 +19,7 @@ annoy==1.17.3
 httpx==0.28.1
 pyyaml==6.0.3  # config files, screenshot reviews
 matplotlib>=3.9  # plots (scripts/fightin.py); 3.9+ works with numpy 2
+jieba==0.42.1  # Chinese word segmentation (src/dispersion/tokens.py)
 simalign==0.4  # word alignment (src/dispersion/aligners/simalign.py)
 sentencepiece==0.2.2  # XLM-R's tokenizer (SimAlign model='xlmr')
 tenacity==9.1.2

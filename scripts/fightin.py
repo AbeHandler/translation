@@ -11,7 +11,7 @@ Anthropic ...) at a sample size, with its own sample, embeddings and comparison,
              from each file (a second pass takes every match left if that falls short):
                  Chinese: the site crawls (data/interim/site_crawls/*/html), Chinese and about AI (primary_sources
                  chinese_ai_page); sampled first, as the smaller pool
-                 English: CC-NEWS pages (data/interim/cc_html), English (checked on the text), saying "AI" at least
+                 English: CC-NEWS pages (data/interim/cc_html), tagged English, saying "AI" at least
                  twice, not templated stock notices, at most n/100 from one outlet, dated by crawl
              the selection's pattern on title and text, and its dates; main text by readability -> docs.parquet
     words    the units counted (src/fightin/units.py): with -ngrams 2-3 (default) phrases of 2-3 words with content
@@ -55,7 +55,7 @@ from src.external_links import registered_domain
 from src.fightin.concepts import (EMBED_VERSION, concept_counts, for_embedding, nearest_pivots, pivot_concepts,
                                   read_stopwords)
 from src.fightin.counts import GroupCounts
-from src.fightin.documents import is_english, is_templated
+from src.fightin.documents import is_templated
 from src.fightin.embeddings.backends import from_encoder
 from src.fightin.embeddings.index import VectorIndex
 from src.fightin.measures import dirichlet_prior, log_odds_dirichlet
@@ -69,7 +69,7 @@ NAME = 'fightin'
 STEPS = ('sample', 'words', 'embed', 'compare')
 MIN_TEXT_CHARS = 300
 # raise a language's number when its sampling changes: its sample is then drawn again (the other's is kept)
-SAMPLE_VERSION = {'en': 2, 'zh': 1}   # en 2: English text check, no templated stock notices, outlet cap
+SAMPLE_VERSION = {'en': 3, 'zh': 1}   # en 3: no templated stock notices, outlet cap
 GLOSS_MIN = 0.5      # a Chinese-only concept's nearest English unit is shown as its gloss from this cosine
 
 
@@ -120,15 +120,16 @@ def path(args, name):
 
 
 def english_doc(row, sel):
-    """{title, text, date} of an English CC-NEWS page about AI in the selection, else None. The text must be
-    English (CC-NEWS's tag is wrong for some pages) and not a templated stock notice (src/fightin/documents.py)."""
+    """{title, text, date} of an English CC-NEWS page about AI in the selection, else None; not a templated stock
+    notice (src/fightin/documents.py). The language is CC-NEWS's tag, which is wrong for a few pages (Romanian ones
+    gave "apare prima"): a language check could go here if that keeps showing up."""
     if not (row.get('language') or '').startswith('en') or not sel.may_match(row['html']) \
             or mentions_ai_html(row['html'])[0] < 2:
         return None
     title, text = html_text(row['html'].decode('utf-8', errors='replace'))
     date = (row.get('warc_date') or '')[:10]      # crawl date, near publication
     if len(text) < MIN_TEXT_CHARS or not mentions_ai(text) or not sel.matches(title, text, date) \
-            or not is_english(text) or is_templated(text):
+            or is_templated(text):
         return None
     return {'title': title, 'text': text, 'date': date}
 

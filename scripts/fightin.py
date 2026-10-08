@@ -11,7 +11,8 @@ Anthropic ...) at a sample size, with its own sample, embeddings and comparison,
              from each file (a second pass takes every match left if that falls short):
                  Chinese: the site crawls (data/interim/site_crawls/*/html), Chinese and about AI (primary_sources
                  chinese_ai_page); sampled first, as the smaller pool
-                 English: CC-NEWS pages (data/interim/cc_html), English, saying "AI" at least twice, dated by crawl
+                 English: CC-NEWS pages (data/interim/cc_html), English (checked on the text), saying "AI" at least
+                 twice, not templated stock notices, at most n/100 from one outlet, dated by crawl
              the selection's pattern on title and text, and its dates; main text by readability -> docs.parquet
     words    the units counted (src/fightin/units.py): with -ngrams 2-3 (default) phrases of 2-3 words with content
              words at both ends, with -ngrams 1 words; English by regex, Chinese by jieba with the AI terms
@@ -25,8 +26,9 @@ Anthropic ...) at a sample size, with its own sample, embeddings and comparison,
              English (i) vs Chinese (j): log-odds with an informative Dirichlet prior (-alpha0; background: both)
              plus -smooth on every count, z                                  -> fightin_<unit>.tsv
              the funnel plot (font: bash scripts/fetch_cjk_font.sh)          -> funnel_<unit>.png
-    all      the steps in order: sample is reused if docs.parquet exists, embed if the index has exactly the units;
-             the rest always rerun, so after any change one run redoes what's needed
+    all      the steps in order: each language's sample is reused unless its sampling changed (SAMPLE_VERSION),
+             embed if the index has exactly the units; the rest always rerun, so after any change one run redoes
+             what's needed
     flush    deletes results/fightin/<experiment>/
 
 Run as a module from the repo root (normally: bash scripts/go_fightin.sh):
@@ -35,6 +37,7 @@ Run as a module from the repo root (normally: bash scripts/go_fightin.sh):
 """
 import argparse
 import glob
+import json
 import os
 import random
 import shutil
@@ -52,6 +55,7 @@ from src.external_links import registered_domain
 from src.fightin.concepts import (EMBED_VERSION, concept_counts, for_embedding, nearest_pivots, pivot_concepts,
                                   read_stopwords)
 from src.fightin.counts import GroupCounts
+from src.fightin.documents import is_english, is_templated
 from src.fightin.embeddings.backends import from_encoder
 from src.fightin.embeddings.index import VectorIndex
 from src.fightin.measures import dirichlet_prior, log_odds_dirichlet
@@ -64,6 +68,8 @@ from src.source_texts import html_text
 NAME = 'fightin'
 STEPS = ('sample', 'words', 'embed', 'compare')
 MIN_TEXT_CHARS = 300
+# raise a language's number when its sampling changes: its sample is then drawn again (the other's is kept)
+SAMPLE_VERSION = {'en': 2, 'zh': 1}   # en 2: English text check, no templated stock notices, outlet cap
 GLOSS_MIN = 0.5      # a Chinese-only concept's nearest English unit is shown as its gloss from this cosine
 
 
@@ -114,13 +120,15 @@ def path(args, name):
 
 
 def english_doc(row, sel):
-    """{title, text, date} of an English CC-NEWS page about AI in the selection, else None."""
+    """{title, text, date} of an English CC-NEWS page about AI in the selection, else None. The text must be
+    English (CC-NEWS's tag is wrong for some pages) and not a templated stock notice (src/fightin/documents.py)."""
     if not (row.get('language') or '').startswith('en') or not sel.may_match(row['html']) \
             or mentions_ai_html(row['html'])[0] < 2:
         return None
     title, text = html_text(row['html'].decode('utf-8', errors='replace'))
     date = (row.get('warc_date') or '')[:10]      # crawl date, near publication
-    if len(text) < MIN_TEXT_CHARS or not mentions_ai(text) or not sel.matches(title, text, date):
+    if len(text) < MIN_TEXT_CHARS or not mentions_ai(text) or not sel.matches(title, text, date) \
+            or not is_english(text) or is_templated(text):
         return None
     return {'title': title, 'text': text, 'date': date}
 
@@ -137,12 +145,13 @@ def chinese_doc(row, sel):
         if len(text) >= MIN_TEXT_CHARS and sel.matches(title, text, page[1]) else None
 
 
-def sample_language(paths, read_doc, lang, args, rng, columns=('url', 'language', 'html')):
+def sample_language(paths, read_doc, lang, args, rng, columns=('url', 'language', 'html'), per_outlet=None):
     """Up to args.n documents: files in random order, each file's row groups in random order, at most
     args.per_file documents from one file (so no outlet dominates). If that falls short (a narrow selection), a
     second pass takes every matching document left, so the sample is then all there is. Fewer than args.min_docs:
-    an error."""
-    docs, seen = [], set()
+    an error. per_outlet: at most this many documents from one outlet (English: thousands of outlets, some of
+    them content farms)."""
+    docs, seen, outlets = [], set(), Counter()
     rng.shuffle(paths)
     for cap in (args.per_file, None):
         for n, file in enumerate(paths, 1):
@@ -153,7 +162,8 @@ def sample_language(paths, read_doc, lang, args, rng, columns=('url', 'language'
                 found = 0
                 for g in groups:
                     for row in reader.read_row_group(g, columns=list(columns)).to_pylist():
-                        if row['url'] in seen:
+                        outlet = registered_domain(row['url'])
+                        if row['url'] in seen or (per_outlet and outlets[outlet] >= per_outlet):
                             continue
                         try:
                             doc = read_doc(row)
@@ -161,7 +171,8 @@ def sample_language(paths, read_doc, lang, args, rng, columns=('url', 'language'
                             continue
                         if doc:
                             seen.add(row['url'])
-                            docs.append({'lang': lang, 'url': row['url'], 'outlet': registered_domain(row['url']),
+                            outlets[outlet] += 1
+                            docs.append({'lang': lang, 'url': row['url'], 'outlet': outlet,
                                          'date': doc.get('date', ''), 'title': doc['title'], 'text': doc['text']})
                             found += 1
                         if (cap and found >= cap) or len(docs) >= args.n:
@@ -185,14 +196,32 @@ def sample_language(paths, read_doc, lang, args, rng, columns=('url', 'language'
 
 
 def sample_step(args):
+    """Each language's sample is reused if docs.parquet has it at the current SAMPLE_VERSION (docs.version), else
+    drawn again; so a change to one language's sampling redoes only that language."""
     rng = random.Random(args.seed)
-    # Chinese first: the crawls are the smaller pool, so a selection too narrow fails before the English hours
-    zh = sample_language(glob.glob(os.path.join(args.crawls_dir, '*', 'html', '*.parquet')),
-                         lambda row: chinese_doc(row, args.sel), 'zh', args, rng)
-    en = sample_language(glob.glob(os.path.join(args.cc_html_dir, '*.parquet')), lambda row: english_doc(row, args.sel),
-                         'en', args, rng, columns=('url', 'language', 'warc_date', 'html'))
-    docs = pd.DataFrame(en + zh)
+    old = pd.read_parquet(path(args, 'docs.parquet')) if os.path.exists(path(args, 'docs.parquet')) else None
+    version_file = os.path.join(args.out, 'docs.version')
+    versions = json.load(open(version_file)) if os.path.exists(version_file) else {'en': 1, 'zh': 1}
+    english_per_outlet = max(10, args.n // 100)
+    draws = {   # Chinese first: the crawls are the smaller pool, so a selection too narrow fails sooner
+        'zh': lambda: sample_language(glob.glob(os.path.join(args.crawls_dir, '*', 'html', '*.parquet')),
+                                      lambda row: chinese_doc(row, args.sel), 'zh', args, rng),
+        'en': lambda: sample_language(glob.glob(os.path.join(args.cc_html_dir, '*.parquet')),
+                                      lambda row: english_doc(row, args.sel), 'en', args, rng,
+                                      columns=('url', 'language', 'warc_date', 'html'),
+                                      per_outlet=english_per_outlet)}
+    parts = []
+    for lang, draw in draws.items():
+        if old is not None and (old['lang'] == lang).any() and versions.get(lang) == SAMPLE_VERSION[lang]:
+            print(f'{lang}: sample reused (version {SAMPLE_VERSION[lang]})')
+            parts.append(old[old['lang'] == lang])
+        else:
+            print(f'{lang}: sampling (version {SAMPLE_VERSION[lang]})', flush=True)
+            parts.append(pd.DataFrame(draw()))
+    docs = pd.concat(parts, ignore_index=True)
     docs.to_parquet(path(args, 'docs.parquet'))
+    with open(version_file, 'w') as f:
+        json.dump(SAMPLE_VERSION, f)
     print(docs.groupby('lang').agg(docs=('url', 'size'), outlets=('outlet', 'nunique'),
                                    median_chars=('text', lambda t: int(t.str.len().median()))))
 
@@ -325,9 +354,6 @@ def main():
     print(f'experiment {args.experiment_name}: {args.n} documents per language, {args.unit_name} -> {args.out}')
     run = {'sample': sample_step, 'words': words_step, 'embed': embed_step, 'compare': compare_step}
     for step in STEPS if args.step == 'all' else (args.step,):
-        if args.step == 'all' and step == 'sample' and os.path.exists(path(args, 'docs.parquet')):
-            print('sample: docs.parquet exists, reused')
-            continue
         print(f'\n=== {step}', flush=True)
         run[step](args)
 

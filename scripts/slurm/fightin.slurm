@@ -7,7 +7,11 @@
 # Usage (from the repo root):
 #   sbatch scripts/slurm/fightin.slurm
 #   sbatch --export=NGRAMS=2-3 scripts/slurm/fightin.slurm          # phrases of 2-3 words, on the same sample
-#   sbatch --export=N=5000,EXPERIMENT=en_vs_zh_ai_5k scripts/slurm/fightin.slurm
+#   sbatch --export=SELECTION=openai,PATTERN=OpenAI scripts/slurm/fightin.slurm         # only documents naming OpenAI
+#   sbatch --export=SELECTION=anthropic,PATTERN='Anthropic|Claude' scripts/slurm/fightin.slurm
+#   sbatch --export=SELECTION=h1_2025,FROM=2025-01-01,TO=2025-06-30 scripts/slurm/fightin.slurm
+#   sbatch --export=SELECTION=mine,IDS=path/to/ids.txt scripts/slurm/fightin.slurm     # any list of document ids
+#   sbatch --export=EXPERIMENT=en_vs_zh_ai_20k,N=20000,PER_FILE=100 scripts/slurm/fightin.slurm   # a bigger sample
 #   sbatch --export=STEP=flush,EXPERIMENT=en_vs_zh_ai scripts/slurm/fightin.slurm                # delete outputs
 
 #SBATCH --partition=acpu
@@ -32,4 +36,6 @@ export TOKENIZERS_PARALLELISM=false
 export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK:-1}
 
 python -m scripts.fightin -step "${STEP:-all}" -experiment-name "${EXPERIMENT:-en_vs_zh_ai}" -n "${N:-2000}" \
-    -ngrams "${NGRAMS:-1}" -alpha0 "${ALPHA0:-1000}" ${THRESHOLD:+-threshold "$THRESHOLD"}
+    -per-file "${PER_FILE:-20}" -ngrams "${NGRAMS:-1}" -alpha0 "${ALPHA0:-1000}" ${THRESHOLD:+-threshold "$THRESHOLD"} \
+    -selection "${SELECTION:-all}" ${PATTERN:+-pattern "$PATTERN"} ${FROM:+-from "$FROM"} ${TO:+-to "$TO"} \
+    ${IDS:+-ids "$IDS"}

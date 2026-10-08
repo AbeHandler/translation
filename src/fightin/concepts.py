@@ -8,7 +8,9 @@ words, so English and Chinese texts share one vocabulary.
 Two leaks to keep out of the comparison: stray words of the other language (Chinese characters on English pages,
 "of" or "is" inside Chinese pages), and function words, which have no counterpart across languages (该 -> the,
 以及 -> and). So English documents count only Latin-script words, and concepts that are stopwords (in either
-language: a Chinese word mapped to "the" is dropped too) are left out.
+language: a Chinese word mapped to "the" is dropped too) are left out. In Chinese documents, Latin-script words
+count only as names and acronyms (any capital: AI, OpenAI, GPT-4o, Google): all-lowercase ones ("new", "data") are
+running English text quoted in the page, not Chinese usage.
 """
 import re
 
@@ -49,14 +51,16 @@ def pivot_concepts(index, words, threshold=0.6, source='zh', pivot='en'):
 
 def concept_counts(docs, mapping=None, stopwords=frozenset()):
     """Counter of concepts over tokenised documents. mapping: {word: (concept, similarity)} (pivot_concepts) for
-    the source language; None for the pivot language, whose documents then count only Latin-script words (each its
-    own concept). Concepts in stopwords are left out."""
+    the source language, whose documents then count Latin-script words only when they have a capital (names,
+    acronyms); None for the pivot language, whose documents count only Latin-script words (each its own concept).
+    Concepts in stopwords are left out."""
     from collections import Counter
     counts = Counter()
     for doc in docs:
-        for word in doc:
-            word = normalise(word)
-            if not word or (mapping is None and not LATIN.match(word)):
+        for raw in doc:
+            word = normalise(raw)
+            quoted_english = mapping is not None and LATIN.match(word) and raw.islower()
+            if not word or (mapping is None and not LATIN.match(word)) or quoted_english:
                 continue
             concept = mapping[word][0] if mapping and word in mapping else word
             if concept not in stopwords:

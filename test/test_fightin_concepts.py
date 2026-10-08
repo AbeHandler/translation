@@ -34,6 +34,8 @@ def test_stray_script_and_stopwords_are_left_out():
     # English pages: Chinese characters on them don't count; Chinese pages: 该 -> the and stray "of" are dropped
     assert concept_counts([['Governance', 'the', '治理', '的']], None, stop) == {'governance': 1}
     assert concept_counts([['治理', '该', 'of', 'AI']], m, stop) == {'governance': 1, 'ai': 1}
+    # Chinese pages: lowercase English words are quoted text, names and acronyms count
+    assert concept_counts([['new', 'data', 'OpenAI', 'GPT-4o', '治理']], m) == {'openai': 1, 'gpt-4o': 1, 'governance': 1}
 
 
 def test_read_stopwords(tmp_path):

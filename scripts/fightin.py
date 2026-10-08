@@ -145,8 +145,12 @@ def sample_step(args):
                                    median_chars=('text', lambda t: int(t.str.len().median()))))
 
 
+def raw_words(text, lang):
+    return [t for t, _, _ in tokens(text, lang)]
+
+
 def doc_words(text, lang):
-    return [w for w in (normalise(t) for t, _, _ in tokens(text, lang)) if w]
+    return [w for w in map(normalise, raw_words(text, lang)) if w]
 
 
 def words_step(args):
@@ -180,12 +184,12 @@ def embed_step(args):
 def fight_step(args):
     docs = pd.read_parquet(path(args, 'docs.parquet'))
     index = VectorIndex.load(path(args, 'index.npz'))
-    zh_docs = [doc_words(t, 'zh') for t in docs.loc[docs['lang'] == 'zh', 'text']]
-    en_docs = [doc_words(t, 'en') for t in docs.loc[docs['lang'] == 'en', 'text']]
-    mapping = pivot_concepts(index, sorted({w for d in zh_docs for w in d}), args.threshold)
+    zh_docs = [raw_words(t, 'zh') for t in docs.loc[docs['lang'] == 'zh', 'text']]   # case kept: concept_counts
+    en_docs = [raw_words(t, 'en') for t in docs.loc[docs['lang'] == 'en', 'text']]   # tells names from quoted English
+    mapping = pivot_concepts(index, sorted({w for d in zh_docs for w in map(normalise, d) if w}), args.threshold)
     stopwords = read_stopwords(args.stopwords) if args.stopwords else frozenset()
     zh_counts, en_counts = concept_counts(zh_docs, mapping, stopwords), concept_counts(en_docs, None, stopwords)
-    zh_word_counts = Counter(w for d in zh_docs for w in d)
+    zh_word_counts = Counter(w for d in zh_docs for w in map(normalise, d) if w)
     members = defaultdict(Counter)       # concept -> its Chinese words, by count
     for w, n in zh_word_counts.items():
         members[mapping[w][0]][w] = n

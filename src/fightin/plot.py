@@ -7,11 +7,23 @@ CJK_FONTS = ['Noto Sans CJK SC', 'Source Han Sans SC', 'WenQuanYi Zen Hei', 'Sim
              'DejaVu Sans']   # matplotlib falls back through these, so Chinese labels render where a font exists
 
 
-def funnel_plot(labels, frequency, z, path, top=20, title='', groups=('i', 'j'), colors=('tab:blue', 'tab:red')):
+def use_fonts(font_paths=()):
+    """Register extra font files (e.g. Noto Sans SC, for machines without a Chinese font) and put them first."""
     import matplotlib
     matplotlib.use('Agg')
+    from matplotlib import font_manager
     import matplotlib.pyplot as plt
-    plt.rcParams['font.sans-serif'] = CJK_FONTS
+    names = []
+    for p in font_paths:
+        font_manager.fontManager.addfont(str(p))
+        names.append(font_manager.FontProperties(fname=str(p)).get_name())
+    plt.rcParams['font.sans-serif'] = names + CJK_FONTS
+
+
+def funnel_plot(labels, frequency, z, path, top=20, title='', groups=('i', 'j'), colors=('tab:blue', 'tab:red'),
+                font_paths=()):
+    use_fonts(font_paths)
+    import matplotlib.pyplot as plt
     labels, frequency, z = list(labels), np.asarray(frequency, float), np.asarray(z, float)
     significant = np.abs(z) >= 1.96
     size = 2 + 40 * np.abs(z) / max(np.abs(z).max(), 1e-9)
@@ -20,13 +32,14 @@ def funnel_plot(labels, frequency, z, path, top=20, title='', groups=('i', 'j'),
     for side, color in zip((z >= 1.96, z <= -1.96), colors):
         ax.scatter(frequency[side], z[side], s=size[side], c=color, lw=0)
     order = np.argsort(z)
-    top_i, top_j = order[::-1][:top], order[:top]
+    top_i = [k for k in order[::-1][:top] if z[k] > 0]     # each side lists only its own words
+    top_j = [k for k in order[:top] if z[k] < 0]
     for ks, color in ((top_i, colors[0]), (top_j, colors[1])):
         for k in ks:
             ax.annotate(labels[k], (frequency[k], z[k]), fontsize=7, xytext=(3, 0), textcoords='offset points',
                         color=color)
     fig.text(0.83, 0.88, f'{groups[0]}\n' + '\n'.join(labels[k] for k in top_i), fontsize=7, va='top', color=colors[0])
-    fig.text(0.83, 0.48, f'{groups[1]}\n' + '\n'.join(labels[k] for k in top_j[::-1]), fontsize=7, va='top',
+    fig.text(0.83, 0.48, f'{groups[1]}\n' + '\n'.join(labels[k] for k in top_j), fontsize=7, va='top',
              color=colors[1])
     ax.set_xscale('log')
     ax.axhline(0, c='grey', lw=0.5)
@@ -36,3 +49,11 @@ def funnel_plot(labels, frequency, z, path, top=20, title='', groups=('i', 'j'),
     fig.subplots_adjust(right=0.8)
     fig.savefig(path, dpi=150)
     plt.close(fig)
+
+
+def funnel_plot_tsv(tsv, png, title='', font_paths=()):
+    """The funnel plot of a fightin.tsv (scripts/fightin.py: label, en, zh, z): English blue, Chinese red."""
+    import pandas as pd
+    table = pd.read_csv(tsv, sep='\t', keep_default_na=False)
+    funnel_plot(table['label'], table['en'] + table['zh'], table['z'], png, groups=('English', 'Chinese'),
+                colors=('tab:blue', 'tab:red'), title=title, font_paths=font_paths)

@@ -17,6 +17,8 @@ English word, src/fightin/concepts.py). All outputs in results/fightin/<experime
              informative Dirichlet prior (-alpha0; the background is both groups), z-scores
                                                                              -> fightin.tsv
     plot     the funnel plot: z against frequency, top 20 concepts each side    -> funnel.png
+             (Chinese labels need a Chinese font: bash scripts/fetch_cjk_font.sh puts one in data/external/fonts;
+             or redraw on a laptop from fightin.tsv: scripts/plot_fightin.py)
     all      the steps in order (each skips if its output exists)
     flush    deletes results/fightin/<experiment_name>/
 
@@ -35,7 +37,7 @@ import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 
-from config.paths import CC_HTML_DIR, REPO_ROOT, SITE_CRAWLS_DIR
+from config.paths import CC_HTML_DIR, FONTS_DIR, REPO_ROOT, SITE_CRAWLS_DIR
 from src.ai_mentions import mentions_ai, mentions_ai_html
 from src.dispersion.tokens import tokens
 from src.external_links import registered_domain
@@ -44,7 +46,7 @@ from src.fightin.counts import GroupCounts
 from src.fightin.embeddings.backends import from_encoder
 from src.fightin.embeddings.index import VectorIndex
 from src.fightin.measures import log_odds_dirichlet
-from src.fightin.plot import funnel_plot
+from src.fightin.plot import funnel_plot_tsv
 from src.primary_sources import chinese_ai_page
 from src.source_texts import html_text
 
@@ -208,10 +210,8 @@ def fight_step(args):
 
 
 def plot_step(args):
-    table = pd.read_csv(path(args, 'fightin.tsv'), sep='\t', keep_default_na=False)
-    funnel_plot(table['label'], table['en'] + table['zh'], table['z'], path(args, 'funnel.png'),
-                groups=('English', 'Chinese'), colors=('tab:blue', 'tab:red'),
-                title=f"Fightin' Words: English vs Chinese AI ({args.experiment_name})")
+    funnel_plot_tsv(path(args, 'fightin.tsv'), path(args, 'funnel.png'), font_paths=sorted(FONTS_DIR.glob('*.[ot]tf')),
+                    title=f"Fightin' Words: English vs Chinese AI ({args.experiment_name})")
     print(f"-> {path(args, 'funnel.png')}")
 
 

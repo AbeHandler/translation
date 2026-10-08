@@ -1,5 +1,5 @@
 """Run from the repo root: python -m pytest test/"""
-from src.fightin.units import parse_ns, units
+from src.fightin.units import parse_ns, units, widespread
 
 STOP = frozenset({'the', 'of', 'a'})
 
@@ -27,3 +27,9 @@ def test_chinese_phrases():
 
 def test_parse_ns():
     assert parse_ns('1') == (1,) and parse_ns('2-3') == (2, 3)
+
+
+def test_widespread_drops_one_outlet_phrases():
+    docs = [['ai safety', 'apare prima'], ['apare prima', 'ai safety'], ['ai safety']]
+    got = widespread(docs, ['a.ro', 'a.ro', 'b.com'])
+    assert got == [['ai safety'], ['ai safety'], ['ai safety']]

@@ -15,7 +15,8 @@ Anthropic ...) at a sample size, with its own sample, embeddings and comparison,
                  twice, not templated stock notices, at most n/100 from one outlet, dated by crawl
              the selection's pattern on title and text, and its dates; main text by readability -> docs.parquet
     words    the units counted (src/fightin/units.py): with -ngrams 2-3 (default) phrases of 2-3 words with content
-             words at both ends, with -ngrams 1 words; English by regex, Chinese by jieba with the AI terms
+             words at both ends, with -ngrams 1 words; English by regex, Chinese by jieba with the AI terms; only
+             units used at -min-outlets+ outlets of their language (a phrase from one site is its boilerplate)
                                                                              -> units_<unit>.parquet
     embed    units in at least -min-df documents of their language (at most -max-vocab), by LaBSE
                                                                              -> index_<unit>.npz
@@ -61,7 +62,7 @@ from src.fightin.embeddings.index import VectorIndex
 from src.fightin.measures import dirichlet_prior, log_odds_dirichlet
 from src.fightin.plot import chinese_form, funnel_plot_tsv
 from src.fightin.select import read_selections
-from src.fightin.units import CJK, parse_ns, units
+from src.fightin.units import CJK, parse_ns, units, widespread
 from src.primary_sources import chinese_ai_page
 from src.source_texts import html_text
 
@@ -82,6 +83,8 @@ def parse_args():
     parser.add_argument('-per-file', type=int, default=100, help='at most this many documents from one file')
     parser.add_argument('-ngrams', default='2-3', help="unit: '2-3' = phrases of 2 to 3 words; 1 = words")
     parser.add_argument('-selections', default=str(FIGHTIN_SELECTIONS_PATH), help='the selections table')
+    parser.add_argument('-min-outlets', type=int, default=2,
+                        help="units used by fewer of a language's outlets are left out (one site's boilerplate)")
     parser.add_argument('-min-df', type=int, default=5, help='units in fewer documents of their language: no vector')
     parser.add_argument('-max-vocab', type=int, default=30000, help='embed at most this many units per language')
     parser.add_argument('-threshold', type=float, default=None,
@@ -236,8 +239,8 @@ def words_step(args):
     rows = []
     for lang, group in docs.groupby('lang'):
         count, df = Counter(), Counter()
-        for text in group['text']:
-            found = doc_units(text, lang, args)
+        found_units = widespread([doc_units(t, lang, args) for t in group['text']], group['outlet'], args.min_outlets)
+        for found in found_units:
             count.update(found)
             df.update(set(found))
         rows += [{'lang': lang, 'word': w, 'count': c, 'df': df[w]} for w, c in count.items()]
@@ -245,7 +248,7 @@ def words_step(args):
     words.to_parquet(path(args, 'units.parquet'))
     for lang, group in words.groupby('lang'):
         print(f'{lang}: {len(group)} {args.unit_name}, {group["count"].sum()} occurrences, '
-              f'{(group["df"] >= args.min_df).sum()} in {args.min_df}+ documents')
+              f'{(group["df"] >= args.min_df).sum()} in {args.min_df}+ documents (all at {args.min_outlets}+ outlets)')
 
 
 def embed_step(args):
@@ -330,6 +333,10 @@ def compare_step(args):
     print(f"{args.unit_name} of {(docs['lang'] == 'en').sum()} English and {(docs['lang'] == 'zh').sum()} Chinese "
           'documents', flush=True)
     docs['units'] = [doc_units(t, lang, args) for t, lang in zip(docs['text'], docs['lang'])]
+    for lang in ('en', 'zh'):     # each language's units used at min_outlets+ of its outlets
+        rows = docs['lang'] == lang
+        docs.loc[rows, 'units'] = pd.Series(widespread(docs.loc[rows, 'units'], docs.loc[rows, 'outlet'],
+                                                       args.min_outlets), index=docs.index[rows])
     zh_units = sorted({w for d in docs.loc[docs['lang'] == 'zh', 'units'] for w in d})
     nearest = nearest_pivots(index, zh_units)
     mapping = pivot_concepts(index, zh_units, args.threshold, nearest=nearest)

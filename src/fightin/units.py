@@ -12,6 +12,7 @@ characters counts as a phrase on its own: jieba keeps compounds like 大语言�
 needs several words ("large language models"), so without it they would look like English-only phrases.
 """
 import re
+from collections import defaultdict
 
 from src.fightin.concepts import LATIN, normalise
 
@@ -74,3 +75,14 @@ def parse_ns(spec):
     """'1' -> (1,); '2-3' -> (2, 3)."""
     low, _, high = str(spec).partition('-')
     return tuple(range(int(low), int(high or low) + 1))
+
+
+def widespread(docs_units, outlets, min_outlets=2):
+    """The documents' units (lists, one per document) keeping only units found at min_outlets+ distinct outlets
+    (outlets: one per document): a phrase from one site only is usually its boilerplate (menus, footers, a
+    recurring tagline), not the coverage's language."""
+    spread = defaultdict(set)
+    for found, outlet in zip(docs_units, outlets):
+        for unit in set(found):
+            spread[unit].add(outlet)
+    return [[u for u in found if len(spread[u]) >= min_outlets] for found in docs_units]

@@ -1,7 +1,8 @@
 #!/bin/bash
 # Fightin' Words between English (CC-NEWS) and Chinese (site crawls) AI coverage, on concepts shared via LaBSE
-# (scripts/fightin.py). STEP=all runs sample, words, embed, fight, plot in order; each skips if its output exists,
-# so a rerun after a failure picks up where it stopped. Outputs: results/fightin/<EXPERIMENT>/.
+# (scripts/fightin.py). STEP=all (the default) runs sample, words, embed, fight, plot in order: the slow steps skip
+# if their output exists (a rerun picks up where it stopped); fight and plot always rerun. So after any change, just
+# sbatch this again. Outputs: results/fightin/<EXPERIMENT>/.
 #
 # Usage (from the repo root):
 #   sbatch scripts/slurm/fightin.slurm

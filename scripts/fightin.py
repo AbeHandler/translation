@@ -21,7 +21,8 @@ English word, src/fightin/concepts.py). All outputs in results/fightin/<experime
     plot     the funnel plot: z against frequency, top 20 concepts each side    -> funnel.png
              (Chinese labels need a Chinese font: bash scripts/fetch_cjk_font.sh puts one in data/external/fonts;
              or redraw on a laptop from fightin.tsv: scripts/plot_fightin.py)
-    all      the steps in order (each skips if its output exists)
+    all      the steps in order: the slow ones (sample, words, embed) skip if their output exists; fight and plot
+             (minutes) always rerun, so after a change to the analysis one run of -step all redoes what's needed
     flush    deletes results/fightin/<experiment_name>/
 
 Run as a module from the repo root (normally via scripts/slurm/fightin.slurm):
@@ -54,6 +55,7 @@ from src.source_texts import html_text
 
 NAME = 'fightin'
 STEPS = ('sample', 'words', 'embed', 'fight', 'plot')
+REUSED = ('sample', 'words', 'embed')    # -step all skips these if their output exists
 MIN_TEXT_CHARS = 300
 
 
@@ -234,7 +236,7 @@ def main():
                'plot': 'funnel.png'}
     run = {'sample': sample_step, 'words': words_step, 'embed': embed_step, 'fight': fight_step, 'plot': plot_step}
     for step in STEPS if args.step == 'all' else (args.step,):
-        if args.step == 'all' and os.path.exists(path(args, outputs[step])):
+        if args.step == 'all' and step in REUSED and os.path.exists(path(args, outputs[step])):
             print(f'{step}: {outputs[step]} exists, skipped')
             continue
         print(f'--- {step}', flush=True)

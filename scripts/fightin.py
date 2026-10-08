@@ -21,9 +21,9 @@ Anthropic ...) at a sample size, with its own sample, embeddings and comparison,
                                                                              -> units_<unit>.parquet
     embed    units in at least -min-df documents of their language (at most -max-vocab), by LaBSE
                                                                              -> index_<unit>.npz
-    -window  (optional) count only the words within -window words of a mention of the selection's pattern
-             (src/fightin/windows.py): how the subject is talked about, not all the documents cover; same sample,
-             files suffixed _w<window> (fightin_ngrams2-3_w200.tsv)
+    windows  with -window: only the words within -window words of a mention of the selection's pattern
+             (src/fightin/windows.py): how the subject is talked about, not all the documents cover. Same sample;
+             this run's files go in w<window>/                                -> w200/windows.parquet (excerpts)
     compare  Chinese units -> English concepts (cosine >= -threshold); concepts in -stopwords left out
                                                                              -> concepts_<unit>.tsv
              Fightin' Words over concepts used -min-count+ times, in either language or both (a Chinese-only
@@ -74,7 +74,7 @@ from src.primary_sources import chinese_ai_page
 from src.source_texts import html_text
 
 NAME = 'fightin'
-STEPS = ('sample', 'words', 'embed', 'compare')
+STEPS = ('sample', 'windows', 'words', 'embed', 'compare')
 MIN_TEXT_CHARS = 300
 # raise a language's number when its sampling changes: its sample is then drawn again (the other's is kept)
 SAMPLE_VERSION = {'en': 3, 'zh': 1}   # en 3: no templated stock notices, outlet cap
@@ -92,7 +92,7 @@ def parse_args():
     parser.add_argument('-selections', default=str(FIGHTIN_SELECTIONS_PATH), help='the selections table')
     parser.add_argument('-window', type=int, default=0,
                         help='count only the words within this many words of a mention of the pattern (0: whole '
-                             'documents); same sample, outputs suffixed _w<window>')
+                             'documents); same sample, outputs in w<window>/')
     parser.add_argument('-min-outlets', type=int, default=2,
                         help="units used by fewer of a language's outlets are left out (one site's boilerplate)")
     parser.add_argument('-min-df', type=int, default=5, help='units in fewer documents of their language: no vector')
@@ -121,7 +121,7 @@ def parse_args():
     args.out = os.path.join(REPO_ROOT, 'results', NAME, args.experiment_name)
     args.ns = parse_ns(args.ngrams)
     args.unit_name = 'words' if args.ns == (1,) else 'phrases'
-    args.unit = ('words' if args.ns == (1,) else f'ngrams{args.ngrams}') + (f'_w{args.window}' if args.window else '')
+    args.unit = 'words' if args.ns == (1,) else f'ngrams{args.ngrams}'
     args.threshold = args.threshold or (0.6 if args.ns == (1,) else 0.7)
     args.stop = read_stopwords(args.stopwords) if args.stopwords else frozenset()
     args.renderings = KnownRenderings.read(args.known_renderings) if args.known_renderings else KnownRenderings([])
@@ -129,12 +129,27 @@ def parse_args():
 
 
 def path(args, name):
-    """A file of the experiment: docs.parquet is shared by words and phrases; the rest carry the unit
-    (units_ngrams2-3.parquet, fightin_words.tsv)."""
+    """A file of the experiment. docs.parquet (the sample) is shared by every run on it; with -window, that run's
+    files are in a subfolder named for it (w200/: windows.parquet, the excerpts counted, and the results); the
+    results carry the unit (units_ngrams2-3.parquet, fightin_words.tsv)."""
     if name == 'docs.parquet':
         return os.path.join(args.out, name)
+    folder = os.path.join(args.out, f'w{args.window}') if args.window else args.out
+    if name == 'windows.parquet':
+        return os.path.join(folder, name)
     stem, ext = os.path.splitext(name)
-    return os.path.join(args.out, f'{stem}_{args.unit}{ext}')
+    return os.path.join(folder, f'{stem}_{args.unit}{ext}')
+
+
+def counted_docs(args):
+    """The sample, with each document's text replaced by what is counted: with -window, its excerpts
+    (windows.parquet, written by the windows step)."""
+    docs = pd.read_parquet(path(args, 'docs.parquet'))
+    if args.window:
+        excerpts = pd.read_parquet(path(args, 'windows.parquet'), columns=['url', 'lang', 'excerpt'])
+        docs = docs.merge(excerpts, on=['url', 'lang'])
+        docs['text'] = docs.pop('excerpt')
+    return docs
 
 
 def english_doc(row, sel):
@@ -245,16 +260,33 @@ def sample_step(args):
                                    median_chars=('text', lambda t: int(t.str.len().median()))))
 
 
+def windows_step(args):
+    """With -window: each document's excerpts, the words within -window words of a mention of the selection's
+    pattern -> w<window>/windows.parquet (url, lang, outlet, date, title, mentions, excerpt). Without: nothing."""
+    if not args.window:
+        print('whole documents: no windows')
+        return
+    docs = pd.read_parquet(path(args, 'docs.parquet'))
+    docs['mentions'] = [len(args.sel.regex.findall(t)) for t in docs['text']]
+    docs['excerpt'] = [windows(t, args.sel.regex, lang, args.window) for t, lang in zip(docs['text'], docs['lang'])]
+    os.makedirs(os.path.dirname(path(args, 'windows.parquet')), exist_ok=True)
+    docs.drop(columns=['text']).to_parquet(path(args, 'windows.parquet'))
+    for lang, group in docs.groupby('lang'):
+        kept = (group['excerpt'] != '').sum()
+        print(f'{lang}: {kept}/{len(group)} documents with a mention in their main text, '
+              f"median excerpt {int(group['excerpt'].str.len().median())} characters "
+              f"(whole text {int(group['text'].str.len().median())})")
+    print(f"-> {path(args, 'windows.parquet')}")
+
+
 def doc_units(text, lang, args):
-    if args.window and args.sel.regex:   # only the words around the selection's mentions
-        text = windows(text, args.sel.regex, lang, args.window)
     if lang == 'zh':       # known Chinese names in English (文心一言 -> ERNIE Bot), so they match across languages
         text = args.renderings.apply(text)
     return units([t for t, _, _ in tokens(text, lang)], lang, args.ns, args.stop)
 
 
 def words_step(args):
-    docs = pd.read_parquet(path(args, 'docs.parquet'))
+    docs = counted_docs(args)
     rows = []
     for lang, group in docs.groupby('lang'):
         count, df = Counter(), Counter()
@@ -347,7 +379,7 @@ def fight(args, docs, mapping, nearest, nearest_zh):
 
 
 def compare_step(args):
-    docs = pd.read_parquet(path(args, 'docs.parquet'))
+    docs = counted_docs(args)
     index = VectorIndex.load(path(args, 'index.npz'))
     print(f"{args.unit_name} of {(docs['lang'] == 'en').sum()} English and {(docs['lang'] == 'zh').sum()} Chinese "
           'documents', flush=True)
@@ -379,7 +411,8 @@ def main():
         return flush_step(args)
     os.makedirs(args.out, exist_ok=True)
     print(f'experiment {args.experiment_name}: {args.n} documents per language, {args.unit_name} -> {args.out}')
-    run = {'sample': sample_step, 'words': words_step, 'embed': embed_step, 'compare': compare_step}
+    run = {'sample': sample_step, 'windows': windows_step, 'words': words_step, 'embed': embed_step,
+           'compare': compare_step}
     for step in STEPS if args.step == 'all' else (args.step,):
         print(f'\n=== {step}', flush=True)
         run[step](args)

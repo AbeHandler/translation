@@ -15,7 +15,8 @@ Anthropic ...) at a sample size, with its own sample, embeddings and comparison,
                  twice, not templated stock notices, at most n/100 from one outlet, dated by crawl
              the selection's pattern on title and text, and its dates; main text by readability -> docs.parquet
     words    the units counted (src/fightin/units.py): with -ngrams 2-3 (default) phrases of 2-3 words with content
-             words at both ends, with -ngrams 1 words; English by regex, Chinese by jieba with the AI terms; only
+             words at both ends, with -ngrams 1 words; English by regex, Chinese by jieba with the AI terms, after
+             writing known names in English (config/fightin_known_renderings.tsv: 文心一言 -> ERNIE Bot); only
              units used at -min-outlets+ outlets of their language (a phrase from one site is its boilerplate)
                                                                              -> units_<unit>.parquet
     embed    units in at least -min-df documents of their language (at most -max-vocab), by LaBSE
@@ -48,8 +49,8 @@ import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 
-from config.paths import (CC_HTML_DIR, FIGHTIN_SELECTIONS_PATH, FONTS_DIR, REPO_ROOT, SITE_CRAWLS_DIR,
-                          STOPWORDS_EN_PATH)
+from config.paths import (CC_HTML_DIR, FIGHTIN_RENDERINGS_PATH, FIGHTIN_SELECTIONS_PATH, FONTS_DIR, REPO_ROOT,
+                          SITE_CRAWLS_DIR, STOPWORDS_EN_PATH)
 from src.ai_mentions import mentions_ai, mentions_ai_html
 from src.dispersion.tokens import tokens
 from src.external_links import registered_domain
@@ -61,6 +62,7 @@ from src.fightin.embeddings.backends import from_encoder
 from src.fightin.embeddings.index import VectorIndex
 from src.fightin.measures import dirichlet_prior, log_odds_dirichlet
 from src.fightin.plot import chinese_form, funnel_plot_tsv
+from src.fightin.renderings import KnownRenderings
 from src.fightin.select import read_selections
 from src.fightin.units import CJK, parse_ns, units, widespread
 from src.primary_sources import chinese_ai_page
@@ -93,6 +95,8 @@ def parse_args():
     parser.add_argument('-smooth', type=float, default=1.0, help='pseudo-count added to every count (on the prior)')
     parser.add_argument('-min-count', type=int, default=20, help='concepts used fewer times (both languages): left out')
     parser.add_argument('-stopwords', default=str(STOPWORDS_EN_PATH), help="concepts left out; '' keeps all")
+    parser.add_argument('-known-renderings', default=str(FIGHTIN_RENDERINGS_PATH),
+                        help="Chinese names written in English before counting; '' for none")
     parser.add_argument('-min-docs', type=int, default=30, help='fewer documents in a language: an error')
     parser.add_argument('-seed', type=int, default=0)
     parser.add_argument('-cc-html-dir', default=str(CC_HTML_DIR))
@@ -110,6 +114,7 @@ def parse_args():
     args.unit = 'words' if args.ns == (1,) else f'ngrams{args.ngrams}'
     args.threshold = args.threshold or (0.6 if args.ns == (1,) else 0.7)
     args.stop = read_stopwords(args.stopwords) if args.stopwords else frozenset()
+    args.renderings = KnownRenderings.read(args.known_renderings) if args.known_renderings else KnownRenderings([])
     return args
 
 
@@ -231,6 +236,8 @@ def sample_step(args):
 
 
 def doc_units(text, lang, args):
+    if lang == 'zh':       # known Chinese names in English (文心一言 -> ERNIE Bot), so they match across languages
+        text = args.renderings.apply(text)
     return units([t for t, _, _ in tokens(text, lang)], lang, args.ns, args.stop)
 
 

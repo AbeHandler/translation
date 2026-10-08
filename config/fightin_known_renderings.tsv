@@ -1,0 +1,47 @@
+# Chinese names of AI companies, products and people, and their usual English: scripts/fightin.py writes them in
+# English in the Chinese texts before counting (LaBSE can't match names whose Chinese is unrelated to the English:
+# 文心一言 vs "ERNIE Bot" scored 0.44). Write the English as English coverage does, capitalised (in Chinese texts,
+# lowercase Latin words are dropped as quoted English). Longer names are replaced first (文心一言 before 文心).
+chinese	english
+文心一言	ERNIE Bot
+文心大模型	ERNIE
+文心	ERNIE
+通义千问	Qwen
+千问	Qwen
+通义	Tongyi
+豆包	Doubao
+月之暗面	Moonshot AI
+深度求索	DeepSeek
+字节跳动	ByteDance
+百度	Baidu
+阿里巴巴	Alibaba
+阿里云	Alibaba Cloud
+腾讯	Tencent
+混元	Hunyuan
+华为	Huawei
+昇腾	Ascend
+盘古	Pangu
+英伟达	Nvidia
+智谱清言	Zhipu Qingyan
+智谱	Zhipu
+商汤	SenseTime
+科大讯飞	iFlytek
+讯飞星火	iFlytek Spark
+零一万物	01.AI
+百川智能	Baichuan
+阶跃星辰	StepFun
+可灵	Kling
+快手	Kuaishou
+宇树	Unitree
+小米	Xiaomi
+中芯国际	SMIC
+寒武纪	Cambricon
+台积电	TSMC
+谷歌	Google
+微软	Microsoft
+亚马逊	Amazon
+特斯拉	Tesla
+马斯克	Musk
+奥特曼	Altman
+黄仁勋	Jensen Huang
+扎克伯格	Zuckerberg

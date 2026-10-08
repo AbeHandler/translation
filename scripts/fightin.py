@@ -10,6 +10,8 @@ English word, src/fightin/concepts.py). All outputs in results/fightin/<experime
              main text by readability                                        -> docs.parquet
     words    tokens (English regex, Chinese jieba with the AI terms), counted -> words.parquet (lang, word, count, df)
     embed    words in at least -min-df documents of their language, by LaBSE -> index.npz (src/fightin/embeddings)
+             (each word encoded as a one-word sentence; contextual word vectors averaged over the corpus would be
+             truly word-level: see src/fightin/embeddings/backends.py)
     fight    Chinese words -> English concepts (cosine >= -threshold)        -> concepts.tsv
              Fightin' Words over concepts used in both languages, English (i) vs Chinese (j): log-odds with an
              informative Dirichlet prior (-alpha0; the background is both groups), z-scores

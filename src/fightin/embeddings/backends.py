@@ -6,6 +6,11 @@ Ways to fill a VectorIndex, each giving (words, vectors):
                    space, so 治理 sits near "governance")
     from_encoder   any encoder (a callable: list of words -> vectors), e.g. LaBSE or bge via sentence-transformers
     from_dict      a {word: vector} mapping
+
+Possible later: contextual word vectors from the corpus itself. Run a multilingual encoder (LaBSE's token outputs
+before pooling, or XLM-R) over the documents, average each word's token vectors over its occurrences, and use those
+as the word's vector. Truly word-level (from_encoder on single words treats each word as a one-word sentence) and
+current: new terms like 智能体 get a meaning from how our articles use them. Slower: one pass over the corpus.
 """
 import gzip
 

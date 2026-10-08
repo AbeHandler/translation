@@ -1,0 +1,28 @@
+"""Run from the repo root: python -m pytest test/"""
+from src.fightin.concepts import concept_counts, normalise, pivot_concepts
+from src.fightin.embeddings.backends import from_dict
+from src.fightin.embeddings.index import VectorIndex
+
+
+def index():
+    idx = VectorIndex()
+    idx.add(*from_dict({'governance': [1, 0, 0], 'chips': [0, 1, 0]}), lang='en')
+    idx.add(*from_dict({'治理': [0.95, 0.1, 0], '芯片': [0, 0.9, 0.1], '了': [0, 0, 1]}), lang='zh')
+    return idx
+
+
+def test_normalise():
+    assert [normalise(w) for w in ['OpenAI', 'GPT-4o', '治理', '2025', '，', 'AI']] == \
+        ['openai', 'gpt-4o', '治理', '', '', 'ai']
+
+
+def test_chinese_words_map_to_close_english_words_only():
+    m = pivot_concepts(index(), ['治理', '芯片', '了', 'ai', '未知'], threshold=0.8)
+    assert m['治理'][0] == 'governance' and m['芯片'][0] == 'chips'
+    assert m['了'][0] == '了' and m['ai'] == ('ai', 1.0) and m['未知'] == ('未知', 0.0)
+
+
+def test_concept_counts():
+    m = pivot_concepts(index(), ['治理', '芯片'], threshold=0.8)
+    assert concept_counts([['治理', '芯片', '治理', 'AI', '，']], m) == {'governance': 2, 'chips': 1, 'ai': 1}
+    assert concept_counts([['Governance', 'the']]) == {'governance': 1, 'the': 1}

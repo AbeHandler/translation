@@ -21,6 +21,9 @@ Anthropic ...) at a sample size, with its own sample, embeddings and comparison,
                                                                              -> units_<unit>.parquet
     embed    units in at least -min-df documents of their language (at most -max-vocab), by LaBSE
                                                                              -> index_<unit>.npz
+    -window  (optional) count only the words within -window words of a mention of the selection's pattern
+             (src/fightin/windows.py): how the subject is talked about, not all the documents cover; same sample,
+             files suffixed _w<window> (fightin_ngrams2-3_w200.tsv)
     compare  Chinese units -> English concepts (cosine >= -threshold); concepts in -stopwords left out
                                                                              -> concepts_<unit>.tsv
              Fightin' Words over concepts used -min-count+ times, in either language or both (a Chinese-only
@@ -35,6 +38,7 @@ Anthropic ...) at a sample size, with its own sample, embeddings and comparison,
 
 Run as a module from the repo root (normally: bash scripts/go_fightin.sh):
     python -m scripts.fightin -selection openai -n 5000
+    python -m scripts.fightin -selection anthropic -n 5000 -window 200   # Anthropic +/- 200 words
     python -m scripts.fightin -selection all -n 20000 -ngrams 1        # words, on the same sample as phrases
 """
 import argparse
@@ -65,6 +69,7 @@ from src.fightin.plot import chinese_form, funnel_plot_tsv
 from src.fightin.renderings import KnownRenderings
 from src.fightin.select import read_selections
 from src.fightin.units import CJK, parse_ns, units, widespread
+from src.fightin.windows import windows
 from src.primary_sources import chinese_ai_page
 from src.source_texts import html_text
 
@@ -85,6 +90,9 @@ def parse_args():
     parser.add_argument('-per-file', type=int, default=100, help='at most this many documents from one file')
     parser.add_argument('-ngrams', default='2-3', help="unit: '2-3' = phrases of 2 to 3 words; 1 = words")
     parser.add_argument('-selections', default=str(FIGHTIN_SELECTIONS_PATH), help='the selections table')
+    parser.add_argument('-window', type=int, default=0,
+                        help='count only the words within this many words of a mention of the pattern (0: whole '
+                             'documents); same sample, outputs suffixed _w<window>')
     parser.add_argument('-min-outlets', type=int, default=2,
                         help="units used by fewer of a language's outlets are left out (one site's boilerplate)")
     parser.add_argument('-min-df', type=int, default=5, help='units in fewer documents of their language: no vector')
@@ -106,12 +114,14 @@ def parse_args():
     if args.selection not in selections:
         raise SystemExit(f'no selection {args.selection!r} in {args.selections}: one of {", ".join(selections)}')
     args.sel = selections[args.selection]
+    if args.window and not args.sel.pattern:
+        raise SystemExit(f'-window needs a selection with a pattern; {args.selection} has none')
     size = f'{args.n // 1000}k' if args.n % 1000 == 0 else str(args.n)
     args.experiment_name = args.experiment_name or f'{args.selection}_{size}'
     args.out = os.path.join(REPO_ROOT, 'results', NAME, args.experiment_name)
     args.ns = parse_ns(args.ngrams)
     args.unit_name = 'words' if args.ns == (1,) else 'phrases'
-    args.unit = 'words' if args.ns == (1,) else f'ngrams{args.ngrams}'
+    args.unit = ('words' if args.ns == (1,) else f'ngrams{args.ngrams}') + (f'_w{args.window}' if args.window else '')
     args.threshold = args.threshold or (0.6 if args.ns == (1,) else 0.7)
     args.stop = read_stopwords(args.stopwords) if args.stopwords else frozenset()
     args.renderings = KnownRenderings.read(args.known_renderings) if args.known_renderings else KnownRenderings([])
@@ -236,6 +246,8 @@ def sample_step(args):
 
 
 def doc_units(text, lang, args):
+    if args.window and args.sel.regex:   # only the words around the selection's mentions
+        text = windows(text, args.sel.regex, lang, args.window)
     if lang == 'zh':       # known Chinese names in English (文心一言 -> ERNIE Bot), so they match across languages
         text = args.renderings.apply(text)
     return units([t for t, _, _ in tokens(text, lang)], lang, args.ns, args.stop)

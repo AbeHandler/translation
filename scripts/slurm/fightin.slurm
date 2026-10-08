@@ -7,6 +7,7 @@
 # Usage (from the repo root):
 #   sbatch --export=SELECTION=openai,N=5000 scripts/slurm/fightin.slurm
 #   sbatch --export=SELECTION=all,N=20000,NGRAMS=1 scripts/slurm/fightin.slurm   # words, same sample
+#   sbatch --export=SELECTION=anthropic,N=5000,WINDOW=200 scripts/slurm/fightin.slurm   # Anthropic +/- 200 words
 #   sbatch --export=SELECTION=openai,N=5000,STEP=flush scripts/slurm/fightin.slurm  # delete its outputs
 
 #SBATCH --partition=acpu
@@ -30,5 +31,6 @@ export HF_HOME=$TMP/huggingface               # LaBSE, downloaded once to the sh
 export TOKENIZERS_PARALLELISM=false
 export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK:-1}
 
-echo "fightin: SELECTION=${SELECTION:-all} N=${N:-20000} NGRAMS=${NGRAMS:-2-3}"
-python -m scripts.fightin -step "${STEP:-all}" -selection "${SELECTION:-all}" -n "${N:-20000}" -ngrams "${NGRAMS:-2-3}"
+echo "fightin: SELECTION=${SELECTION:-all} N=${N:-20000} NGRAMS=${NGRAMS:-2-3} WINDOW=${WINDOW:-0}"
+python -m scripts.fightin -step "${STEP:-all}" -selection "${SELECTION:-all}" -n "${N:-20000}" -ngrams "${NGRAMS:-2-3}" \
+    -window "${WINDOW:-0}"

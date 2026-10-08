@@ -221,11 +221,12 @@ def day_edges(days_dir, date, threshold=THRESHOLD, window=WINDOW_DAYS, cross_out
     if cross_outlet:
         outlet_ids = {}
         codes = np.array([outlet_ids.setdefault(registered_domain(u), len(outlet_ids)) for u in other_urls])
+        day_codes = codes[:len(urls)]     # the rows are this day's articles only; the columns, the whole window
     edges = []
     for start in range(0, len(urls), BLOCK):
         sims = vecs[start:start + BLOCK] @ others.T
         if cross_outlet:
-            sims[codes[start:start + BLOCK, None] == codes[None, :]] = -1
+            sims[day_codes[start:start + BLOCK, None] == codes[None, :]] = -1
         rows, cols = np.nonzero(sims >= threshold)
         for i, j in zip(rows, cols):
             if j < len(urls) and j <= start + i:   # same day: each pair once, no self-pairs

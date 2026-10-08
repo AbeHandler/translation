@@ -10,3 +10,9 @@ deepseek	DeepSeek|深度求索
 distillation	distill|蒸馏
 nvidia	Nvidia|英伟达|辉达|輝達
 qwen	(?<![A-Za-z])Qwen|通义千问|千问|通义
+safety	AI safety|人工智能安全|AI安全|安全治理
+safety_broad	safety|安全
+alignment	alignment|对齐
+agi	(?<![A-Za-z])AGI(?![A-Za-z])|artificial general intelligence|superintelligence|通用人工智能|超级智能
+jobs	job loss|layoffs|unemployment|replace workers|失业|裁员|就业
+military	military|Pentagon|Department of War|weapon|军事|国防|武器

@@ -74,6 +74,7 @@ def funnel_plot_tsv(tsv, png, title='', font_paths=()):
     red."""
     import pandas as pd
     table = pd.read_csv(tsv, sep='\t', keep_default_na=False)
-    funnel_plot(table['concept'], table['en'] + table['zh'], table['z'], png,
+    words = table['english'].where(table['english'] != '', table['concept']) if 'english' in table else table['concept']
+    funnel_plot(words, table['en'] + table['zh'], table['z'], png,
                 chinese=table['zh_forms'].map(chinese_form), groups=('English', 'Chinese'),
                 colors=('tab:blue', 'tab:red'), title=title, font_paths=font_paths)

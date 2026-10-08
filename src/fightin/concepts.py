@@ -17,6 +17,12 @@ import re
 
 import numpy as np
 
+# English abbreviations spelled out for the embedding only (counts and labels keep them): LaBSE puts "ai governance"
+# far from 人工智能治理 (0.49) but "artificial intelligence governance" close. Change EMBED_VERSION with them, so
+# indexes embedded the old way are redone
+EXPANSIONS = {'ai': 'artificial intelligence', 'llm': 'large language model', 'llms': 'large language models',
+              'agi': 'artificial general intelligence', 'genai': 'generative artificial intelligence'}
+EMBED_VERSION = 2
 LATIN = re.compile(r'^[A-Za-z0-9][A-Za-z0-9\-\'.]*$')
 WORDLIKE = re.compile(r'[A-Za-z一-鿿]')     # at least one letter or Chinese character: no bare numbers or
 CHUNK = 2048                                         # punctuation
@@ -29,16 +35,17 @@ def normalise(word):
     return word.lower() if LATIN.match(word) else word
 
 
-def pivot_concepts(index, words, threshold=0.6, source='zh', pivot='en'):
-    """{word: (concept, similarity)} for the source-language words: their nearest pivot-language word when the
-    cosine is at least threshold, else the word itself (similarity of its best match, for inspection). Latin words
-    map to themselves (similarity 1). Words missing from the index map to themselves (similarity 0)."""
-    out = {w: (w, 1.0) for w in words if LATIN.match(w)}
-    rows = [(w, index.position[(source, w)]) for w in words if w not in out and (source, w) in index.position]
-    out.update({w: (w, 0.0) for w in words if w not in out and (source, w) not in index.position})
+def for_embedding(unit):
+    """The text embedded for a unit: English abbreviations spelled out (EXPANSIONS)."""
+    return ' '.join(EXPANSIONS.get(w, w) for w in unit.split(' '))
+
+
+def nearest_pivots(index, words, source='zh', pivot='en'):
+    """{word: (nearest pivot-language word, cosine)} for the source-language words in the index."""
+    rows = [(w, index.position[(source, w)]) for w in words if (source, w) in index.position]
     targets = np.array([k for k, lang in enumerate(index.langs) if lang == pivot])
+    out = {}
     if not rows or not len(targets):
-        out.update({w: (w, 0.0) for w, _ in rows})
         return out
     pivots = index.matrix[targets]
     for start in range(0, len(rows), CHUNK):
@@ -46,7 +53,25 @@ def pivot_concepts(index, words, threshold=0.6, source='zh', pivot='en'):
         sims = index.matrix[[k for _, k in chunk]] @ pivots.T
         best = sims.argmax(axis=1)
         for (w, _), b, s in zip(chunk, best, sims[np.arange(len(chunk)), best]):
-            out[w] = (index.words[targets[b]], float(s)) if s >= threshold else (w, float(s))
+            out[w] = (index.words[targets[b]], float(s))
+    return out
+
+
+def pivot_concepts(index, words, threshold=0.6, source='zh', pivot='en', nearest=None):
+    """{word: (concept, similarity)} for the source-language words: their nearest pivot-language word when the
+    cosine is at least threshold, else the word itself (similarity of its best match, for inspection). Latin words
+    map to themselves (similarity 1). Words missing from the index map to themselves (similarity 0). nearest:
+    nearest_pivots' result, if already worked out."""
+    nearest = nearest_pivots(index, words, source, pivot) if nearest is None else nearest
+    out = {}
+    for w in words:
+        if LATIN.match(w):
+            out[w] = (w, 1.0)
+        elif w in nearest:
+            match, s = nearest[w]
+            out[w] = (match, s) if s >= threshold else (w, s)
+        else:
+            out[w] = (w, 0.0)
     return out
 
 

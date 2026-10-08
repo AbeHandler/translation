@@ -7,13 +7,17 @@ documents can be compared (see src/fightin/concepts.py for why):
 Numbers, punctuation and left-out words break the text into runs; n-grams never cross a break. A phrase's first and
 last words must carry content: in English not a stopword, one letter or less; in Chinese not a single character
 (的, 在, 是, 了 ...), or a capitalised Latin name. Interior words can be anything ("department of war", 人工智能的发展).
-English phrases are joined by spaces, Chinese ones without.
+English phrases are joined by spaces, Chinese ones without. With phrases, a Chinese word of COMPOUND_CHARS+
+characters counts as a phrase on its own: jieba keeps compounds like 大语言模型 or 出口管制 whole, where English
+needs several words ("large language models"), so without it they would look like English-only phrases.
 """
 import re
 
 from src.fightin.concepts import LATIN, normalise
 
 CJK = re.compile('[一-鿿]')
+COMPOUND_CHARS = 4
+ONE_WORD_IN_ENGLISH = {'人工智能'}     # compounds English says in one word (AI): not phrases
 
 
 def runs(raw_tokens, lang):
@@ -46,6 +50,9 @@ def units(raw_tokens, lang, ns=(1,), stopwords=frozenset()):
             if n == 1:
                 out += run
                 continue
+            if n == min(ns) and lang == 'zh':        # Chinese compounds, once per run
+                out += [w for w in run if len(w) >= COMPOUND_CHARS and CJK.search(w) and not LATIN.match(w)
+                        and w not in ONE_WORD_IN_ENGLISH]
             for k in range(len(run) - n + 1):
                 gram = run[k:k + n]
                 if is_edge(gram[0], lang, stopwords) and is_edge(gram[-1], lang, stopwords):

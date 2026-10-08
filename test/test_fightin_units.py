@@ -22,6 +22,7 @@ def test_chinese_phrases():
     assert '人工智能的发展' in got and 'openai gpt-5' in got and 'gpt-5发布' in got
     assert not any(g.startswith('的') or g.endswith('的') for g in got)
     assert not any('，' in g for g in got)
+    assert '大语言模型' in units(['大语言模型', '发布'], 'zh', (2, 3)) and '发布' not in units(['发布'], 'zh', (2, 3))
 
 
 def test_parse_ns():

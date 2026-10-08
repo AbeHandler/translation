@@ -20,8 +20,10 @@ Anthropic ...) at a sample size, with its own sample, embeddings and comparison,
                                                                              -> index_<unit>.npz
     compare  Chinese units -> English concepts (cosine >= -threshold); concepts in -stopwords left out
                                                                              -> concepts_<unit>.tsv
-             Fightin' Words over concepts used in both languages, English (i) vs Chinese (j): log-odds with an
-             informative Dirichlet prior (-alpha0; background: both), z      -> fightin_<unit>.tsv
+             Fightin' Words over concepts used -min-count+ times, in either language or both (a Chinese-only
+             phrase like 深度融合 counts 0 in English, glossed by its nearest English phrase: ≈ deep integration),
+             English (i) vs Chinese (j): log-odds with an informative Dirichlet prior (-alpha0; background: both)
+             plus -smooth on every count, z                                  -> fightin_<unit>.tsv
              the funnel plot (font: bash scripts/fetch_cjk_font.sh)          -> funnel_<unit>.png
     all      the steps in order: sample is reused if docs.parquet exists, embed if the index has exactly the units;
              the rest always rerun, so after any change one run redoes what's needed
@@ -47,20 +49,22 @@ from config.paths import (CC_HTML_DIR, FIGHTIN_SELECTIONS_PATH, FONTS_DIR, REPO_
 from src.ai_mentions import mentions_ai, mentions_ai_html
 from src.dispersion.tokens import tokens
 from src.external_links import registered_domain
-from src.fightin.concepts import concept_counts, pivot_concepts, read_stopwords
+from src.fightin.concepts import (EMBED_VERSION, concept_counts, for_embedding, nearest_pivots, pivot_concepts,
+                                  read_stopwords)
 from src.fightin.counts import GroupCounts
 from src.fightin.embeddings.backends import from_encoder
 from src.fightin.embeddings.index import VectorIndex
-from src.fightin.measures import log_odds_dirichlet
+from src.fightin.measures import dirichlet_prior, log_odds_dirichlet
 from src.fightin.plot import chinese_form, funnel_plot_tsv
 from src.fightin.select import read_selections
-from src.fightin.units import parse_ns, units
+from src.fightin.units import CJK, parse_ns, units
 from src.primary_sources import chinese_ai_page
 from src.source_texts import html_text
 
 NAME = 'fightin'
 STEPS = ('sample', 'words', 'embed', 'compare')
 MIN_TEXT_CHARS = 300
+GLOSS_MIN = 0.5      # a Chinese-only concept's nearest English unit is shown as its gloss from this cosine
 
 
 def parse_args():
@@ -77,6 +81,8 @@ def parse_args():
     parser.add_argument('-threshold', type=float, default=None,
                         help='Chinese unit -> English concept at this cosine (default 0.6 for words, 0.7 phrases)')
     parser.add_argument('-alpha0', type=float, default=1000, help="the prior's size (the paper's alpha_0)")
+    parser.add_argument('-smooth', type=float, default=1.0, help='pseudo-count added to every count (on the prior)')
+    parser.add_argument('-min-count', type=int, default=20, help='concepts used fewer times (both languages): left out')
     parser.add_argument('-stopwords', default=str(STOPWORDS_EN_PATH), help="concepts left out; '' keeps all")
     parser.add_argument('-min-docs', type=int, default=30, help='fewer documents in a language: an error')
     parser.add_argument('-seed', type=int, default=0)
@@ -217,49 +223,74 @@ def embed_step(args):
     words = pd.read_parquet(path(args, 'units.parquet'))
     wanted = {lang: group.sort_values('df', ascending=False).head(args.max_vocab)['word'].tolist()
               for lang, group in words[words['df'] >= args.min_df].groupby('lang')}
-    if os.path.exists(path(args, 'index.npz')):
+    version_file = path(args, 'index.version')
+    if os.path.exists(path(args, 'index.npz')) and os.path.exists(version_file) \
+            and open(version_file).read().strip() == str(EMBED_VERSION):
         old = VectorIndex.load(path(args, 'index.npz'))
         if set(old.position) == {(lang, w) for lang, ws in wanted.items() for w in ws}:
             print(f"{path(args, 'index.npz')} already has these {args.unit_name}, reused")
             return
-    encode = labse()
+    labse_encode = labse()
+
+    def encode(units_):      # abbreviations spelled out for the embedding only (src/fightin/concepts.py)
+        return labse_encode([for_embedding(u) for u in units_])
     index = VectorIndex()
     for lang, ws in wanted.items():
         print(f'embedding {len(ws)} {lang} {args.unit_name}', flush=True)
         index.add(*from_encoder(ws, encode, say=lambda line: print(line, flush=True)), lang=lang)
     index.save(path(args, 'index.npz'))
+    with open(version_file, 'w') as f:
+        f.write(f'{EMBED_VERSION}\n')
 
 
-def fight(args, docs, mapping):
-    """The English vs Chinese documents -> concepts, fightin and funnel files."""
+def fight(args, docs, mapping, nearest, nearest_zh):
+    """The English vs Chinese documents -> concepts, fightin and funnel files. Concepts used in one language only
+    are kept (count 0 on the other side): Chinese phrases with no English counterpart (深度融合) are often the most
+    telling. But a one-language concept with a close counterpart in the other language (cosine >= -threshold) is
+    left out: its meaning is counted under that counterpart's concept, and it is one only because the languages cut
+    phrases differently (English "chip export" inside "chip export controls"; jieba keeps 出口管制 whole). Every count
+    is smoothed by -smooth on top of the prior, so a 0 stays finite."""
     zh_docs, en_docs = docs.loc[docs['lang'] == 'zh', 'units'], docs.loc[docs['lang'] == 'en', 'units']
     zh_counts, en_counts = concept_counts(zh_docs, mapping, args.stop), concept_counts(en_docs, None, args.stop)
     zh_unit_counts = Counter(w for d in zh_docs for w in d)
     members = defaultdict(Counter)       # concept -> its Chinese units, by count
     for w, n in zh_unit_counts.items():
         members[mapping[w][0]][w] = n
-    concepts = pd.DataFrame([{'word': w, 'concept': c, 'similarity': round(s, 3), 'count': zh_unit_counts[w]}
+    concepts = pd.DataFrame([{'word': w, 'concept': c, 'similarity': round(s, 3), 'count': zh_unit_counts[w],
+                              'nearest_english': nearest.get(w, ('', 0))[0]}
                              for w, (c, s) in mapping.items() if zh_unit_counts[w]])
     concepts.sort_values('count', ascending=False).to_csv(path(args, 'concepts.tsv'), sep='\t', index=False)
 
-    shared = sorted(c for c in en_counts if zh_counts.get(c))
-    counts = GroupCounts(shared, np.array([en_counts[c] for c in shared], float),
-                         np.array([zh_counts[c] for c in shared], float))
-    lo = log_odds_dirichlet(counts, alpha0=args.alpha0)
-    zh_forms = {c: ' '.join(w for w, _ in members[c].most_common(3)) for c in shared}
-    labels = [f'{c} / {chinese_form(zh_forms[c])}' if chinese_form(zh_forms[c]) else c for c in shared]
-    table = pd.DataFrame({'concept': shared, 'zh_forms': [zh_forms[c] for c in shared], 'label': labels,
-                          'en': counts.i, 'zh': counts.j, 'delta': lo.delta, 'z': lo.z})
+    def kept(c):        # used in both languages, or in one with nothing close in the other
+        if en_counts[c] and zh_counts[c]:
+            return True
+        near = nearest_zh.get(c) if en_counts[c] else nearest.get(c)
+        return near is None or near[1] < args.threshold
+    vocab = sorted(c for c in set(en_counts) | set(zh_counts)
+                   if en_counts[c] + zh_counts[c] >= args.min_count and kept(c))
+    counts = GroupCounts(vocab, np.array([en_counts[c] for c in vocab], float),
+                         np.array([zh_counts[c] for c in vocab], float))
+    lo = log_odds_dirichlet(counts, alpha=dirichlet_prior(counts, alpha0=args.alpha0) + args.smooth)
+    zh_forms = {c: ' '.join(w for w, _ in members[c].most_common(3)) for c in vocab}
+
+    def english(c):     # a Chinese-only concept is glossed by its nearest English unit, if at all close
+        if not CJK.search(c):
+            return c
+        return f'≈ {nearest[c][0]}' if c in nearest and nearest[c][1] >= GLOSS_MIN else ''
+    kind = ['both' if en_counts[c] and zh_counts[c] else 'en only' if en_counts[c] else 'zh only' for c in vocab]
+    english_forms = [english(c) for c in vocab]
+    labels = [f'{e} / {chinese_form(zh_forms[c])}'.strip(' /') for c, e in zip(vocab, english_forms)]
+    table = pd.DataFrame({'concept': vocab, 'english': english_forms, 'zh_forms': [zh_forms[c] for c in vocab],
+                          'label': labels, 'kind': kind, 'en': counts.i, 'zh': counts.j, 'delta': lo.delta, 'z': lo.z})
     table = table.sort_values('z', ascending=False)
     table.to_csv(path(args, 'fightin.tsv'), sep='\t', index=False, float_format='%.4g')
     funnel_plot_tsv(path(args, 'fightin.tsv'), path(args, 'funnel.png'),
                     font_paths=sorted(FONTS_DIR.glob('*.[ot]tf')),
                     title=f"Fightin' Words: English vs Chinese AI ({args.experiment_name}, {args.unit_name})")
-    tail = table.tail(10)[::-1]
-    print(f'  {len(shared)} concepts used in both languages')
-    print('  most English:', ', '.join(table['concept'].head(10)))
-    chinese = [f'{c} {chinese_form(f)}'.strip() for c, f in zip(tail['concept'], tail['zh_forms'])]
-    print('  most Chinese:', ', '.join(chinese))
+    print(f'  {len(vocab)} concepts with {args.min_count}+ uses: ' +
+          ', '.join(f'{n} {k}' for k, n in pd.Series(kind).value_counts().items()))
+    print('  most English:', ', '.join(table['label'].head(10)))
+    print('  most Chinese:', ', '.join(table['label'].tail(10)[::-1]))
     print(f"  -> {path(args, 'fightin.tsv')}, {path(args, 'funnel.png')}")
 
 
@@ -269,11 +300,13 @@ def compare_step(args):
     print(f"{args.unit_name} of {(docs['lang'] == 'en').sum()} English and {(docs['lang'] == 'zh').sum()} Chinese "
           'documents', flush=True)
     docs['units'] = [doc_units(t, lang, args) for t, lang in zip(docs['text'], docs['lang'])]
-    mapping = pivot_concepts(index, sorted({w for d in docs.loc[docs['lang'] == 'zh', 'units'] for w in d}),
-                             args.threshold)
+    zh_units = sorted({w for d in docs.loc[docs['lang'] == 'zh', 'units'] for w in d})
+    nearest = nearest_pivots(index, zh_units)
+    mapping = pivot_concepts(index, zh_units, args.threshold, nearest=nearest)
     mapped = sum(1 for c, s in mapping.values() if s >= args.threshold)
     print(f'{len(mapping)} Chinese {args.unit_name}, {mapped} mapped to an English one (cosine >= {args.threshold})')
-    fight(args, docs, mapping)
+    en_units = sorted({w for d in docs.loc[docs['lang'] == 'en', 'units'] for w in d})
+    fight(args, docs, mapping, nearest, nearest_pivots(index, en_units, source='en', pivot='zh'))
     print(f'\nSpot checks:\n  head -30 {path(args, "fightin.tsv")} | column -t -s $\'\\t\'')
     print(f"  sort -t$'\\t' -k3 -g {path(args, 'concepts.tsv')} | tail -40      # the closest calls at the threshold")
 

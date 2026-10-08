@@ -1,5 +1,5 @@
 """Run from the repo root: python -m pytest test/"""
-from src.fightin.concepts import concept_counts, normalise, pivot_concepts, read_stopwords
+from src.fightin.concepts import concept_counts, nearest_pivots, normalise, pivot_concepts, read_stopwords
 from src.fightin.embeddings.backends import from_dict
 from src.fightin.embeddings.index import VectorIndex
 
@@ -34,3 +34,10 @@ def test_concept_counts():
 def test_read_stopwords(tmp_path):
     (tmp_path / 's.txt').write_text('# comment\nthe\n\nof\n', encoding='utf-8')
     assert read_stopwords(tmp_path / 's.txt') == {'the', 'of'}
+
+
+def test_nearest_pivots_even_below_the_threshold():
+    near = nearest_pivots(index(), ['治理', '了', 'ai'])
+    assert near['治理'][0] == 'governance' and near['了'][1] < 0.5 and 'ai' not in near
+    m = pivot_concepts(index(), ['了'], threshold=0.8, nearest=near)
+    assert m['了'][0] == '了'          # below the threshold: its own concept; the gloss comes from nearest

@@ -9,7 +9,10 @@ sample (results/fightin/<experiment>/docs.parquet) or window excerpts (w<N>/wind
     facets       the covariates modelled (-facets nvidia,outlet), each one sparse component per value
     interactions pairs of facets whose combination gets its own component (-interactions lang:nvidia)
 Output in results/sage_covariate/<experiment>/: components.tsv (facet, level, term, eta, count: one row per
-non-zero deviation, count = the term's uses in the level's documents), summary.txt.
+non-zero deviation, count = the term's uses in the level's documents), summary.txt, and for each two-level facet
+(nvidia = yes / no) contrast_<facet>.tsv: term, eta of each level, difference (eta_yes - eta_no: the log of how much
+more the term is used at the first level, like Fightin' Words' delta), counts; sorted by difference. The printed
+lists keep terms used -min-count+ times at the level they favour (rare exclusive terms otherwise top them).
 
 Run as a module from the repo root:
     python -m scripts.sage_covariate -docs /tmp/fightin/all_5k/docs.parquet -lang en \\
@@ -46,8 +49,28 @@ def parse_args():
     parser.add_argument('-max-vocab', type=int, default=30000)
     parser.add_argument('-prior', default='jeffreys', choices=('jeffreys', 'exponential'))
     parser.add_argument('-top', type=int, default=30, help='terms printed per component')
+    parser.add_argument('-min-count', type=int, default=20, help='printed terms: used this often at their level')
     parser.add_argument('-experiment-name', required=True)
     return parser.parse_args()
+
+
+def write_contrast(args, out, model, X, docs, vocab, f):
+    """A two-level facet's terms by eta_first - eta_second (levels sorted: 'yes' before 'no' when present)."""
+    levels = sorted(model.levels[f], key=lambda v: (v != 'yes', str(v)))
+    first, second = levels
+    counts = {v: np.asarray(X[(docs[f] == v).to_numpy()].sum(0)).ravel() for v in levels}
+    table = pd.DataFrame({'term': vocab, f'eta_{first}': model.component(f, first).numpy(),
+                          f'eta_{second}': model.component(f, second).numpy(),
+                          f'count_{first}': counts[first].astype(int), f'count_{second}': counts[second].astype(int)})
+    table['difference'] = table[f'eta_{first}'] - table[f'eta_{second}']
+    table = table[table['difference'].abs() >= ZERO].sort_values('difference', ascending=False)
+    table.round(4).to_csv(os.path.join(out, f'contrast_{f}.tsv'), sep='\t', index=False)
+    for name, side, count in ((first, table, f'count_{first}'), (second, table[::-1], f'count_{second}')):
+        top = side[side[count] >= args.min_count].head(args.top)
+        print(f'\n=== most {f} = {name}-like ({len(top)} with {args.min_count}+ uses at {name}): term (difference, '
+              f'uses at {first} / {second})')
+        print(', '.join(f"{r.term} ({r.difference:+.2f}, {getattr(r, 'count_' + str(first))}/"
+                        f"{getattr(r, 'count_' + str(second))})" for r in top.itertuples()))
 
 
 def main():
@@ -87,6 +110,9 @@ def main():
             for i in torch.nonzero(eta.abs() >= ZERO).ravel().tolist():
                 rows.append({'facet': f, 'level': level, 'term': vocab[i], 'eta': round(float(eta[i]), 4),
                              'count': int(level_counts[i])})
+    for f in facets:
+        if len(model.levels[f]) == 2:
+            write_contrast(args, out, model, X, docs, vocab, f)
     table = pd.DataFrame(rows).sort_values(['facet', 'level', 'eta'], ascending=[True, True, False])
     table.to_csv(os.path.join(out, 'components.tsv'), sep='\t', index=False)
     with open(os.path.join(out, 'summary.txt'), 'w') as fh:

@@ -1,23 +1,20 @@
 """Run from the repo root: python -m pytest test/"""
-import pandas as pd
-
-from src.fightin.select import doc_id, read_ids, select_ids, write_ids
-
-DOCS = pd.DataFrame({'url': ['u1', 'u2', 'u3', 'u4'], 'title': ['OpenAI news', '', '', ''],
-                     'text': ['...', 'openai said', 'Anthropic Claude', 'nothing'],
-                     'date': ['2025-01-05', '2025-03-01', '', '2025-02-01']})
+from src.fightin.select import Selection, read_selections
 
 
-def test_pattern_is_case_insensitive_on_title_and_text():
-    assert select_ids(DOCS, 'OpenAI') == [doc_id('u1'), doc_id('u2')]
-    assert select_ids(DOCS, 'Anthropic|Claude') == [doc_id('u3')]
+def test_pattern_case_insensitive_on_title_or_text():
+    s = Selection('openai', 'OpenAI|ChatGPT')
+    assert s.matches('OpenAI news', '', '') and s.matches('', 'chatgpt said', '') and not s.matches('x', 'y', '')
+    assert s.may_match(b'<p>OPENAI</p>') and not s.may_match(b'<p>nothing</p>') and s.may_match('<b>ChatGPT</b>')
 
 
-def test_date_span_leaves_out_undated():
-    assert select_ids(DOCS, start='2025-02-01') == [doc_id('u2'), doc_id('u4')]
-    assert select_ids(DOCS, 'openai', end='2025-01-31') == [doc_id('u1')]
+def test_dates():
+    s = Selection('h1', '', '2025-01-01', '2025-06-30')
+    assert s.matches('', '', '2025-03-01') and not s.matches('', '', '2025-07-01') and not s.matches('', '', '')
+    assert Selection('all').matches('', '', '') and Selection('all').may_match(b'')
 
 
-def test_ids_round_trip(tmp_path):
-    write_ids(['a', 'b'], tmp_path / 'ids.txt')
-    assert read_ids(tmp_path / 'ids.txt') == {'a', 'b'}
+def test_read_selections(tmp_path):
+    (tmp_path / 's.tsv').write_text('# c\nname\tpattern\tfrom\tto\nall\nopenai\tOpenAI\t\t\n', encoding='utf-8')
+    got = read_selections(tmp_path / 's.tsv')
+    assert set(got) == {'all', 'openai'} and got['openai'].pattern == 'OpenAI' and got['all'].pattern == ''

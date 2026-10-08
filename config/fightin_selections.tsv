@@ -1,8 +1,8 @@
-# Selections compared by scripts/fightin.py: one comparison (English vs Chinese documents of the sample) per row.
-# name: the outputs' suffix (all = the whole sample, no suffix). pattern: regex on title and text, case-insensitive.
-# from/to: dates (YYYY-MM-DD; English documents carry their CC-NEWS crawl date). ids: a file of document ids
-# (src/fightin/select.py doc_id of the URL), one per line. Empty cells: no condition.
-name	pattern	from	to	ids
+# Selections for scripts/fightin.py: each row is its own experiment, with its own sample of AI documents (English
+# and Chinese) that match it, its own embeddings and comparison: results/fightin/<name>_<N in thousands>k/.
+# scripts/go_fightin.sh submits one job per row. name: letters, digits, _. pattern: regex on title and text,
+# case-insensitive (empty: every AI document). from/to: dates, YYYY-MM-DD (English documents: CC-NEWS crawl date).
+name	pattern	from	to
 all
 openai	OpenAI|ChatGPT
 anthropic	Anthropic|Claude

@@ -41,9 +41,10 @@ from config.paths import (CC_LINKS_DIR, CC_NEWS_EMBEDDINGS_DIR, CC_NEWS_PUBDATES
                           MEDIA_STORMS_ZH_DIR, SITE_CRAWLS_DIR)
 from src.file_worker import process_files
 from src.external_links import external_links
-from src.media_storms import (MIN_DAYS, MIN_OUTLETS, MIN_PEAK_SHARE, STORM_SHARE,
+from src.media_storms import (MIN_DAYS, MIN_DAYS_ZH, MIN_OUTLETS, MIN_OUTLETS_ZH, MIN_PEAK_SHARE, STORM_SHARE,
                               STORM_WINDOW, THRESHOLD, THRESHOLD_ZH, WINDOW_DAYS, clusters, daily_totals, day_edges,
-                              profile, shift, split_by_day, split_site_crawl_by_day, storm_seeds, storms, write_edges)
+                              outlet_of, profile, shift, split_by_day, split_site_crawl_by_day, storm_seeds, storms,
+                              write_edges)
 from src.warc_worker_cli import optional_int, setup_worker_process
 
 
@@ -58,8 +59,10 @@ def parse_args():
     parser.add_argument('-links-dir', default=None, help="seeds: the articles' links (default: by corpus)")
     parser.add_argument('-threshold', type=float, default=None, help=f'default {THRESHOLD} (en), {THRESHOLD_ZH} (zh)')
     parser.add_argument('-redo-edges', action='store_true', help='edges: recompute days that already have edges')
-    parser.add_argument('-min-days', type=int, default=MIN_DAYS, help='storms')
-    parser.add_argument('-min-outlets', type=int, default=MIN_OUTLETS, help='storms')
+    parser.add_argument('-min-days', type=int, default=None,
+                        help=f'storms; default {MIN_DAYS} (en), {MIN_DAYS_ZH} (zh)')
+    parser.add_argument('-min-outlets', type=int, default=None,
+                        help=f'storms; default {MIN_OUTLETS} (en), {MIN_OUTLETS_ZH} (zh)')
     parser.add_argument('-storm-share', type=float, default=STORM_SHARE,
                         help="storms: the story's share of all AI articles over the window, for storm mode")
     parser.add_argument('-min-peak-share', type=float, default=MIN_PEAK_SHARE, help='storms')
@@ -67,6 +70,8 @@ def parse_args():
     args = parser.parse_args()
     zh = args.corpus == 'zh'
     args.threshold = args.threshold or (THRESHOLD_ZH if zh else THRESHOLD)
+    args.min_days = args.min_days or (MIN_DAYS_ZH if zh else MIN_DAYS)
+    args.min_outlets = args.min_outlets or (MIN_OUTLETS_ZH if zh else MIN_OUTLETS)
     args.out_dir = args.out_dir or str(MEDIA_STORMS_ZH_DIR if zh else MEDIA_STORMS_DIR)
     args.links_dir = args.links_dir or (os.path.join(args.out_dir, 'links') if zh else str(CC_LINKS_DIR))
     return args
@@ -172,7 +177,7 @@ def storm_step(args):
         for row in pq.read_table(path, columns=['url', 'outlet', 'title']).to_pylist():
             if row['url'] not in seen:
                 seen.add(row['url'])
-                articles.append({'url': row['url'], 'outlet': row['outlet'], 'date': date})
+                articles.append({'url': row['url'], 'outlet': outlet_of(row['outlet']), 'date': date})
                 if row['url'] in cluster_of:
                     titles.setdefault(cluster_of[row['url']], row['title'])
     funnel = Counter()

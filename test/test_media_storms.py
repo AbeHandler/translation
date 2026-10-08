@@ -155,3 +155,18 @@ def test_a_date_htmldate_chokes_on_falls_back_to_the_url(monkeypatch):
     monkeypatch.setattr(src.extract_pubdate, 'extract_pubdate', broken)
     assert page_date('<html></html>', 'https://www.huxiu.com/article/2025/01/20/x.html') == '2025-01-20'
     assert page_date('<html></html>', 'https://www.huxiu.com/article/4838327.html') is None
+
+
+def test_one_organisation_is_one_outlet(tmp_path):
+    """people.cn and people.com.cn are one outlet: their pages aren't linked as cross-outlet coverage."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from src.media_storms import DAY_SCHEMA, day_edges, outlet_of
+    assert outlet_of('people.cn') == 'people.com.cn' and outlet_of('huxiu.com') == 'huxiu.com'
+    rows = [{'url': u, 'outlet': '', 'title': '', 'vector': [1.0, 0.0]}
+            for u in ['https://www.people.cn/a', 'https://www.people.com.cn/b', 'https://huxiu.com/c']]
+    (tmp_path / '2025-01-20').mkdir()
+    pq.write_table(pa.Table.from_pylist(rows, DAY_SCHEMA), tmp_path / '2025-01-20' / 'x.parquet')
+    pairs = {(a, b) for a, b, _ in day_edges(str(tmp_path), '2025-01-20', cross_outlet=True)}
+    c = 'https://huxiu.com/c'
+    assert pairs == {('https://www.people.cn/a', c), ('https://www.people.com.cn/b', c)}

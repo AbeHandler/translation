@@ -48,6 +48,11 @@ THRESHOLD_ZH = 0.85     # bge-base-zh, cross-outlet pairs only: rewritten covera
 WINDOW_DAYS = 8
 BLOCK = 2048                 # rows of day d compared at a time
 MIN_DAYS, MIN_OUTLETS = 7, 5
+MIN_DAYS_ZH, MIN_OUTLETS_ZH = 2, 3   # the Chinese crawls: ~10 active outlets, and stories burst over 2-4 days
+# one organisation under several domains is one outlet (people.cn and people.com.cn: otherwise the cross-outlet
+# edges link its own near-identical template pages, chaining them into months-long "stories")
+OUTLET_ALIASES = {'people.cn': 'people.com.cn', 'xinhuanet.com': 'news.cn', 'chinanews.com': 'chinanews.com.cn',
+                  'cctv.cn': 'cctv.com', 'chinadaily.com': 'chinadaily.com.cn'}
 STORM_WINDOW, STORM_SHARE = 3, 0.01   # storm mode: >= 1% of all the corpus's AI articles over 3 days
 MIN_PEAK_SHARE, PEAK_HALF = 0.3, 3
 SEED_MAX_STORMS = 5          # a link cited in more storms than this is generic (a homepage, a profile), not a seed
@@ -196,6 +201,11 @@ def read_day(days_dir, date):
     return urls, np.asarray(vecs, dtype=np.float32).reshape(len(urls), -1)
 
 
+def outlet_of(domain):
+    """The outlet of a registered domain (OUTLET_ALIASES)."""
+    return OUTLET_ALIASES.get(domain, domain)
+
+
 # edges
 
 def shift(date, days):
@@ -220,7 +230,8 @@ def day_edges(days_dir, date, threshold=THRESHOLD, window=WINDOW_DAYS, cross_out
     others = np.vstack([vecs] + later_vecs)
     if cross_outlet:
         outlet_ids = {}
-        codes = np.array([outlet_ids.setdefault(registered_domain(u), len(outlet_ids)) for u in other_urls])
+        codes = np.array([outlet_ids.setdefault(outlet_of(registered_domain(u)), len(outlet_ids))
+                          for u in other_urls])
         day_codes = codes[:len(urls)]     # the rows are this day's articles only; the columns, the whole window
     edges = []
     for start in range(0, len(urls), BLOCK):
@@ -381,7 +392,8 @@ def storm_seeds(members, links_of, max_storms=SEED_MAX_STORMS, min_articles=SEED
         ranked = sorted(((doc, arts) for doc, arts in docs.items() if n_storms[doc] <= max_storms),
                         key=lambda kv: -len(kv[1]))[:top]
         seeds = [{'document': doc, 'href': href_of[doc], 'articles': len(arts),
-                  'outlets': len({registered_domain(u) for u in arts}), 'share': round(len(arts) / n, 3)}
+                  'outlets': len({outlet_of(registered_domain(u)) for u in arts}),
+                  'share': round(len(arts) / n, 3)}
                  for doc, arts in ranked]
         best = ranked[0][1] if ranked and len(ranked[0][1]) >= min_articles else set()
         template = bool(ranked) and ranked[0][0].split('/')[0].endswith(TEMPLATE_HOSTS)

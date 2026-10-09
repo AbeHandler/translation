@@ -155,3 +155,4 @@ echo "  wc -l data/processed/gazetteer_stories.jsonl  # stories naming a gazette
 echo "  wc -l data/processed/gazetteer_quotes.jsonl   # direct quotes in those stories"
 echo "  ls $TMP/extract_warc_html/*.lock data/interim/cc_links/*.lock   # in progress (stale if no job runs)"
 echo "  tail logs/scripts/slurm/cc_news_*_*.out"
+echo "LINK_JOBS=${LINK_JOBS#:}"   # for launchers that chain after the links (main/step0/go_step0.sh)

@@ -63,4 +63,5 @@ echo "  squeue -u \$USER --name=media_storms,export_storms"
 [[ -n $STORMS ]] && echo "  tail -25 logs/scripts/slurm/media_storms_$STORMS.out   # the storms, largest first"
 [[ -n $SEEDS ]] && echo "  tail -25 logs/scripts/slurm/media_storms_$SEEDS.out   # storms most focused on one document"
 echo "  cat logs/scripts/slurm/export_storms_$EXPORT.out"
-echo "Then on the laptop: bash ~/translation/tmp.sh"
+echo "Then on the laptop: bash /tmp/pullstorms.sh"
+echo "EXPORT_JOB=$EXPORT"   # for launchers that chain after the export (main/step1/go_step1.sh)

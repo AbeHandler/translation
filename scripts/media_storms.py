@@ -27,6 +27,7 @@ Run as a module from the repo root:
     python -m scripts.media_storms -corpus zh -step by_day
 """
 import argparse
+import contextlib
 import glob
 import json
 import os
@@ -58,7 +59,9 @@ def parse_args():
     parser.add_argument('-out-dir', default=None, help='default: by corpus')
     parser.add_argument('-links-dir', default=None, help="seeds: the articles' links (default: by corpus)")
     parser.add_argument('-threshold', type=float, default=None, help=f'default {THRESHOLD} (en), {THRESHOLD_ZH} (zh)')
-    parser.add_argument('-redo-edges', action='store_true', help='edges: recompute days that already have edges')
+    parser.add_argument('-redo-edges', action='store_true',
+                        help='edges: recompute days that already have edges (one process only; with many '
+                             'workers, REDO_EDGES=1 in go_media_storms.sh deletes them once first)')
     parser.add_argument('-min-days', type=int, default=None,
                         help=f'storms; default {MIN_DAYS} (en), {MIN_DAYS_ZH} (zh)')
     parser.add_argument('-min-outlets', type=int, default=None,
@@ -146,7 +149,8 @@ def edges(args):
     for d in days:   # a day whose edges' articles changed since (new WARCs or crawl files) is redone
         path = os.path.join(edges_dir, d + '.parquet')
         if os.path.exists(path) and (args.redo_edges or stale(days_dir, d, path)):
-            os.remove(path)
+            with contextlib.suppress(FileNotFoundError):    # another worker removed it first
+                os.remove(path)
 
     def compute(day_path, out):
         found = day_edges(days_dir, os.path.basename(day_path), args.threshold, cross_outlet=args.corpus == 'zh')

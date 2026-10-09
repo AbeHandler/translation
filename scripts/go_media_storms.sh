@@ -31,7 +31,7 @@ workers() {   # workers <step> <cpus> <mem> <dependency ids>: prints :id:id...
     local ids=""
     for ((i = 0; i < N_WORKERS; i++)); do
         ids+=":$(sbatch --parsable ${4:+--dependency=afterany$4} --cpus-per-task="$2" --mem="$3" \
-            --export="STEP=$1,CORPUS=$CORPUS,MAX_FILES=$MAX_FILES,REDO_EDGES=$REDO_EDGES" scripts/slurm/media_storms.slurm)"
+            --export="STEP=$1,CORPUS=$CORPUS,MAX_FILES=$MAX_FILES" scripts/slurm/media_storms.slurm)"
     done
     echo "$ids"
 }
@@ -41,6 +41,11 @@ one() {       # one <step> <time> <dependency ids> [afterany]: prints :id
 }
 
 dep=${AFTER:+:$AFTER}
+if [[ -n $REDO_EDGES && $FROM =~ ^(by_day|edges)$ ]]; then   # once, here: 100 workers each deleting collided
+    EDGES=data/interim/media_storms$([[ $CORPUS == zh ]] && echo _zh)/edges
+    echo "REDO_EDGES: deleting $(ls "$EDGES" 2>/dev/null | wc -l) edge files in $EDGES"
+    find "$EDGES" -type f -name '*.parquet' 2>/dev/null | shuf | xargs -r rm -f
+fi
 if [[ -n $FLUSH ]]; then   # first, before any step reads the folder
     dep=":$(sbatch --parsable --export="CORPUS=$CORPUS" scripts/slurm/flush_media_storms.slurm)$dep"
     echo "flush_media_storms ($CORPUS) ${dep#:}"

@@ -62,6 +62,18 @@ def test_seeds_are_the_documents_a_storm_cites_not_generic_links():
     assert document_key('https://twitter.com/') is None
     assert document_key('https://apnews.com/hub/hollywood-strikes/') is None
     assert document_key('https://www.facebook.com/sharer/sharer.php?u=x') is None
+    # page assets, index and account pages aren't documents
+    assert document_key('https://s2-www.huxiucdn.com/_nuxt/entry.DsZn3VD3mAWC.css') is None
+    assert document_key('http://www.xinhuanet.com/mrdx/index.htm') is None
+    assert document_key('https://weibo.com/tmtpost') is None and document_key('https://x.com/sama') is None
+    assert document_key('https://x.com/sama/status/1') == 'x.com/sama/status/1'
+    # WeChat articles are named by their query: two articles, two keys
+    a = document_key('https://mp.weixin.qq.com/s?__biz=MzA3&mid=2650&idx=1&sn=abc&chksm=zz#rd')
+    b = document_key('https://mp.weixin.qq.com/s?__biz=MzA3&mid=2651&idx=1&sn=def')
+    assert a == 'mp.weixin.qq.com/s?__biz=MzA3&mid=2650&idx=1&sn=abc' and a != b
+    assert document_key('https://mp.weixin.qq.com/s') is None
+    short = 'https://mp.weixin.qq.com/s/D70pEMU19Rb3HmObUwlxQQ'
+    assert document_key(short) == short.removeprefix('https://')
     blog = 'https://ai.meta.com/blog/large-language-model-llama-meta-ai/'
     members = {'llama': [f'https://n{i}.com/a' for i in range(10)]}
     links_of = {f'https://n{i}.com/a': ([blog] if i < 6 else []) + ['https://twitter.com/x'] for i in range(10)}

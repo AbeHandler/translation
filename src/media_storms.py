@@ -32,7 +32,7 @@ import json
 import os
 import re
 from collections import Counter, defaultdict
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 import pyarrow as pa
@@ -355,9 +355,19 @@ def profile(arts, per_day, window=STORM_WINDOW, share=STORM_SHARE, min_outlets=M
 
 # seeds
 
+ASSET = re.compile(r'\.(css|js|mjs|map|png|jpe?g|gif|svg|ico|webp|bmp|woff2?|ttf|otf|eot|mp3|mp4|m3u8|json|xml|rss'
+                   r'|zip)$', re.I)                    # page assets, not documents (a site's stylesheet)
+INDEX_PAGE = re.compile(r'(^|/)(index|default|home)\.(s?html?|php|aspx?)$', re.I)
+PROFILE_HOSTS = ('weibo.com', 'x.com', 'facebook.com', 'instagram.com', 'youtube.com', 'tiktok.com', 'linkedin.com',
+                 'threads.net', 'bsky.app')          # one path segment there is an account, not a post
+NOT_DOCUMENTS = ('r.xiumi.us',)                       # a WeChat page-editor's widgets
+WECHAT_ID = ('__biz', 'mid', 'idx', 'sn')             # what names a WeChat article (mp.weixin.qq.com/s?__biz=...)
+
+
 def document_key(href):
-    """A cited document's key: host without www., path without a trailing slash, no query or fragment; None for
-    links that can't be a document (a homepage, a share button, not http)."""
+    """A cited document's key: host without www., path without a trailing slash, no query or fragment (except a
+    WeChat article's identifying parameters); None for links that can't be a document: a homepage or index page, a
+    share button, an account page on a social site, a page asset (stylesheet, script, image), not http."""
     parts = urlparse(href.strip())
     host, path = (parts.hostname or '').removeprefix('www.').removeprefix('mobile.'), parts.path.rstrip('/')
     host = 'x.com' if host == 'twitter.com' else host   # one post, two hosts
@@ -365,6 +375,15 @@ def document_key(href):
         return None
     if any(t in href for t in ('sharer', 'intent/tweet', 'share?', 'shareArticle', '/share/', 'mailto:')):
         return None
+    if ASSET.search(path) or INDEX_PAGE.search(path) or host.endswith(NOT_DOCUMENTS):
+        return None
+    if host.endswith(PROFILE_HOSTS) and path.count('/') == 1:
+        return None
+    if host == 'mp.weixin.qq.com' and path == '/s':     # the article is named by the query
+        query = parse_qs(parts.query)
+        if not all(query.get(k) for k in ('__biz', 'mid')):
+            return None
+        return host + path + '?' + '&'.join(f'{k}={query[k][0]}' for k in WECHAT_ID if query.get(k))
     return host + path
 
 

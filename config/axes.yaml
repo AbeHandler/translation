@@ -1,0 +1,12 @@
+# Semantic axes for scoring concepts (scripts/sage_axis.py): each axis runs from a negative pole to a positive pole,
+# each pole given by seed words in English and Chinese. A concept's score is the cosine between its LaBSE vector
+# and the axis direction (positive centroid minus negative centroid): > 0 leans to the positive pole.
+# Drafts: edit the seeds, they define the axis.
+competition_cooperation:
+  negative:            # competition
+    en: [competition, rivalry, rivals, competitors, race, arms race, dominance, outcompete, beat rivals, lead the race]
+    zh: [竞争, 竞赛, 对手, 竞争对手, 博弈, 争夺, 主导地位, 领先, 赶超, 军备竞赛]
+  positive:            # cooperation
+    en: [cooperation, collaboration, partnership, alliance, joint venture, mutual benefit, win-win, working together,
+         shared development, open cooperation]
+    zh: [合作, 协作, 伙伴关系, 联盟, 合资, 互利, 共赢, 携手, 共同发展, 开放合作]

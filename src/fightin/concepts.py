@@ -22,7 +22,7 @@ import numpy as np
 # indexes embedded the old way are redone
 EXPANSIONS = {'ai': 'artificial intelligence', 'llm': 'large language model', 'llms': 'large language models',
               'agi': 'artificial general intelligence', 'genai': 'generative artificial intelligence'}
-EMBED_VERSION = 2
+EMBED_VERSION = 3     # 3: abbreviations spelled out inside Chinese units too
 LATIN = re.compile(r'^[A-Za-z0-9][A-Za-z0-9\-\'.]*$')
 WORDLIKE = re.compile(r'[A-Za-z一-鿿]')     # at least one letter or Chinese character: no bare numbers or
 CHUNK = 2048                                         # punctuation
@@ -35,9 +35,13 @@ def normalise(word):
     return word.lower() if LATIN.match(word) else word
 
 
+ABBREVIATION = re.compile(r'(?<![A-Za-z])(' + '|'.join(EXPANSIONS) + r')(?![A-Za-z])', re.I)
+
+
 def for_embedding(unit):
-    """The text embedded for a unit: English abbreviations spelled out (EXPANSIONS)."""
-    return ' '.join(EXPANSIONS.get(w, w) for w in unit.split(' '))
+    """The text embedded for a unit: English abbreviations spelled out (EXPANSIONS), also inside Chinese units
+    (ai泡沫 -> artificial intelligence泡沫, to meet "ai bubble" embedded as "artificial intelligence bubble")."""
+    return ABBREVIATION.sub(lambda m: EXPANSIONS[m.group(1).lower()], unit)
 
 
 def nearest_pivots(index, words, source='zh', pivot='en'):

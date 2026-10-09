@@ -11,7 +11,9 @@ sample (results/fightin/<experiment>/docs.parquet) or window excerpts (w<N>/wind
 Output in results/sage_covariate/<experiment>/: components.tsv (facet, level, term, eta, count: one row per
 non-zero deviation, count = the term's uses in the level's documents), summary.txt, and for each two-level facet
 (nvidia = yes / no) contrast_<facet>.tsv: term, eta of each level, difference (eta_yes - eta_no: the log of how much
-more the term is used at the first level, like Fightin' Words' delta), counts; sorted by difference. The printed
+more the term is used at the first level, like Fightin' Words' delta), counts; sorted by difference; and
+contrast_<facet>_shared.tsv, the readable part: terms used -min-count+ times at the first level and -min-other+ at the
+second, without the covariate's own words (nvidia, for -covariate nvidia='Nvidia'). The printed
 lists keep terms used -min-count+ times at the level they favour (rare exclusive terms otherwise top them).
 
 Run as a module from the repo root:
@@ -50,6 +52,10 @@ def parse_args():
     parser.add_argument('-prior', default='jeffreys', choices=('jeffreys', 'exponential'))
     parser.add_argument('-top', type=int, default=30, help='terms printed per component')
     parser.add_argument('-min-count', type=int, default=20, help='printed terms: used this often at their level')
+    parser.add_argument('-min-other', type=int, default=5,
+                        help='contrast_<facet>_shared.tsv: terms used this often at the other level too')
+    parser.add_argument('-exclude', default='', help="contrast_<facet>_shared.tsv: also leave out terms matching "
+                                                     "this regex (e.g. the subject's people: 'jensen|huang|黄仁勋')")
     parser.add_argument('-experiment-name', required=True)
     return parser.parse_args()
 
@@ -65,6 +71,13 @@ def write_contrast(args, out, model, X, docs, vocab, f):
     table['difference'] = table[f'eta_{first}'] - table[f'eta_{second}']
     table = table[table['difference'].abs() >= ZERO].sort_values('difference', ascending=False)
     table.round(4).to_csv(os.path.join(out, f'contrast_{f}.tsv'), sep='\t', index=False)
+    # the readable part: terms used on both sides (an exclusive term's difference is only "large"), without the
+    # covariate's own words (an article saying "Nvidia Corporation" mentions Nvidia by definition)
+    shared = table[(table[f'count_{first}'] >= args.min_count) & (table[f'count_{second}'] >= args.min_other)]
+    pattern = '|'.join(filter(None, [args.covariate_patterns.get(f), args.exclude]))
+    if pattern:
+        shared = shared[~shared['term'].str.contains(pattern, case=False, regex=True)]
+    shared.round(4).to_csv(os.path.join(out, f'contrast_{f}_shared.tsv'), sep='\t', index=False)
     for name, side, count in ((first, table, f'count_{first}'), (second, table[::-1], f'count_{second}')):
         top = side[side[count] >= args.min_count].head(args.top)
         print(f'\n=== most {f} = {name}-like ({len(top)} with {args.min_count}+ uses at {name}): term (difference, '
@@ -82,8 +95,10 @@ def main():
         docs = docs.rename(columns={'excerpt': 'text'})
     if args.lang:
         docs = docs[docs['lang'] == args.lang]
+    args.covariate_patterns = {}
     for spec in args.covariate:
         name, _, pattern = spec.partition('=')
+        args.covariate_patterns[name] = pattern
         regex = re.compile(pattern, re.I)
         docs[name] = (docs['title'].fillna('') + '\n' + docs['text'].fillna('')).map(
             lambda t: 'yes' if regex.search(t) else 'no')

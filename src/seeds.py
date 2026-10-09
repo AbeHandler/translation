@@ -11,7 +11,7 @@ from src.source_texts import as_url, source_key
 
 COLUMNS = ['seed_id', 'url', 'key', 'kind', 'organisation', 'first_seen', 'outlets', 'outlets_first', 'en_outlets',
            'en_outlets_first', 'en_first_seen', 'zh_outlets', 'zh_outlets_first', 'zh_first_seen', 'added_from',
-           'text_status', 'n_chars', 'title', 'example_en', 'example_zh']
+           'text_status', 'n_chars', 'title', 'example_en', 'example_zh', 'en_storms', 'zh_storms', 'linked_storms']
 MIN_TEXT_CHARS = 200   # a fetched seed with less text than this is a shell (a JavaScript-only page), not its text
 
 
@@ -77,4 +77,25 @@ def add_text_status(seeds, stored_by_key):
         stored = stored_by_key.get(seed['key'])
         seed.update(text_status=text_status(stored), n_chars=(stored or {}).get('n_chars') or 0,
                     title=((stored or {}).get('title') or '').replace('\t', ' ').replace('\n', ' ')[:200])
+    return seeds
+
+
+def add_storms(seeds, en_storm_seeds, zh_storm_seeds, storm_links):
+    """Set each seed's en_storms and zh_storms (how many media storms in each language list it among the documents
+    they cite: src/media_storms.py storm_seeds) and linked_storms (how many English-Chinese storm pairs share it:
+    scripts/link_storms.py). en_storm_seeds, zh_storm_seeds: storm_seeds.jsonl rows; storm_links: storm_links.tsv
+    rows (shared_seeds: space-separated document keys)."""
+    def counts(rows):
+        found = {}
+        for row in rows:
+            for seed in row.get('seeds', []):
+                found[seed['document']] = found.get(seed['document'], 0) + 1
+        return found
+    en, zh, linked = counts(en_storm_seeds), counts(zh_storm_seeds), {}
+    for link in storm_links:
+        for key in (link.get('shared_seeds') or '').split():
+            linked[key] = linked.get(key, 0) + 1
+    for seed in seeds:
+        seed.update(en_storms=en.get(seed['key'], 0), zh_storms=zh.get(seed['key'], 0),
+                    linked_storms=linked.get(seed['key'], 0))
     return seeds

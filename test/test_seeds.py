@@ -39,3 +39,14 @@ def test_text_status_from_the_store():
              'c': {'status': 404, 'n_chars': 0, 'title': ''}}
     assert [s['text_status'] for s in add_text_status(seeds, store)] == ['text', 'short', 'failed', 'not fetched']
     assert seeds[0]['title'] == 'A post'
+
+
+def test_add_storms():
+    from src.seeds import add_storms
+    seeds = [{'key': 'openai.com/index/gpt-4o-mini'}, {'key': 'example.com/a'}]
+    en = [{'seeds': [{'document': 'openai.com/index/gpt-4o-mini'}]}, {'seeds': [{'document': 'example.com/a'}]}]
+    zh = [{'seeds': [{'document': 'openai.com/index/gpt-4o-mini'}]}]
+    links = [{'shared_seeds': 'openai.com/index/gpt-4o-mini'}, {'shared_seeds': ''}]
+    add_storms(seeds, en, zh, links)
+    assert (seeds[0]['en_storms'], seeds[0]['zh_storms'], seeds[0]['linked_storms']) == (1, 1, 1)
+    assert (seeds[1]['en_storms'], seeds[1]['zh_storms'], seeds[1]['linked_storms']) == (1, 0, 0)

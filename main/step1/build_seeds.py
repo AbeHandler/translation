@@ -7,12 +7,16 @@ Step 1: the seeds and their raw text (model.md, Seeds; src/seeds.py).
   2. Their raw text: the seeds are added to the primary-source store's to-do list (data/interim/primary/todo.tsv),
      those without a stored text are fetched (-threads at once; src/source_texts.py), and the store is compiled
      into data/processed/primary.pq.
-  3. A report: seeds by kind, origin and organisation, and how many have their text.
+  3. The media storms (scripts/media_storms.py) citing each seed, English and Chinese, and how many English-Chinese
+     storm pairs (scripts/link_storms.py) share it: a seed that set off a storm in both languages, linked, is a
+     crossing at the level of events. Skipped (columns 0) where the storm files aren't there yet.
+  4. A report: seeds by kind, origin and organisation, how many have their text, and the storm crossings.
     data/interim/primary_sources{,_zh}/links/ (scripts/primary_sources.py -step links) + config/seeds_extra.tsv
         -> data/processed/seeds.tsv, data/interim/primary/, data/processed/primary.pq
 One row per seed: seed_id, url, key, kind, organisation, first_seen, outlets, outlets_first (both languages), per
 language en_/zh_ outlets, outlets_first (within 14 days of the first link), first_seen, an example article; and
-text_status (text, short, failed, not fetched), n_chars, title. -retry-failed fetches failed seeds again.
+text_status (text, short, failed, not fetched), n_chars, title; en_storms, zh_storms, linked_storms. -retry-failed
+fetches failed seeds again.
 
 All of step 1, with the link tables built first: bash main/step1/go_step1.sh.
 
@@ -28,9 +32,10 @@ import os
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
-from config.paths import PRIMARY_DB_PATH, PRIMARY_SOURCES_DIR, PRIMARY_TEXTS_DIR, SEEDS_EXTRA_PATH, SEEDS_PATH
+from config.paths import (MEDIA_STORMS_DIR, MEDIA_STORMS_ZH_DIR, NEWS_EN_ZH_LINKS_PATH, PRIMARY_DB_PATH,
+                          PRIMARY_SOURCES_DIR, PRIMARY_TEXTS_DIR, SEEDS_EXTRA_PATH, SEEDS_PATH)
 from src.primary_sources import MIN_NEWS_ARTICLES, MIN_OUTLETS, sources_from_link_tables
-from src.seeds import COLUMNS, add_text_status, merge_seeds
+from src.seeds import COLUMNS, add_storms, add_text_status, merge_seeds
 from src.source_texts import SourceFetcher, add_to_todo, compile_store, source_path, store_source
 
 
@@ -47,6 +52,10 @@ def parse_args():
     parser.add_argument('-threads', type=int, default=16, help='seeds fetched at once')
     parser.add_argument('-no-fetch', action='store_true', help="don't fetch: the table and report only")
     parser.add_argument('-retry-failed', action='store_true', help='fetch seeds whose fetch failed again')
+    parser.add_argument('-storms-en', default=os.path.join(str(MEDIA_STORMS_DIR), 'storm_seeds.jsonl'))
+    parser.add_argument('-storms-zh', default=os.path.join(str(MEDIA_STORMS_ZH_DIR), 'storm_seeds.jsonl'))
+    parser.add_argument('-storm-links', default=os.path.join(os.path.dirname(str(NEWS_EN_ZH_LINKS_PATH)),
+                                                             'storm_links.tsv'))
     return parser.parse_args()
 
 
@@ -95,10 +104,35 @@ def report(seeds):
         have = sum(1 for s in seeds if s['kind'] == kind and s['text_status'] == 'text')
         print(f'  {kind:16} {have:6d} of {n:6d} with text')
     print('top organisations:', Counter(s['organisation'] for s in seeds).most_common(15))
+    en_storm = sum(1 for s in seeds if s['en_storms'])
+    zh_storm = sum(1 for s in seeds if s['zh_storms'])
+    both = [s for s in seeds if s['en_storms'] and s['zh_storms']]
+    linked = [s for s in seeds if s['linked_storms']]
+    print(f'storms: {en_storm} seeds cited by an English storm, {zh_storm} by a Chinese storm, {len(both)} by both, '
+          f'{len(linked)} by a linked English-Chinese storm pair')
+    for s in sorted(linked or both, key=lambda s: -s['linked_storms'])[:15]:
+        print(f"  {s['linked_storms']} linked, {s['en_storms']} en / {s['zh_storms']} zh storms  {s['url'][:90]}")
     print('\nmost linked (outlets in the first 14 days, en + zh):')
     for s in seeds[:25]:
         print(f"  {s['outlets_first']:4d} ({s['en_outlets_first']} en, {s['zh_outlets_first']} zh)  {s['first_seen']}  "
               f"{s['text_status']:11} {s['url'][:80]}")
+
+
+def read_storms(args):
+    """(English storm seeds, Chinese storm seeds, storm links); a missing file is empty, with a note."""
+    def jsonl(path):
+        if not os.path.exists(path):
+            print(f'note: {path} missing: no storm counts from it', flush=True)
+            return []
+        with open(path, encoding='utf-8') as f:
+            return [json.loads(line) for line in f if line.strip()]
+    links = []
+    if os.path.exists(args.storm_links):
+        with open(args.storm_links, encoding='utf-8') as f:
+            links = list(csv.DictReader(f, delimiter='\t'))
+    else:
+        print(f'note: {args.storm_links} missing: no linked storms (python -m scripts.link_storms)', flush=True)
+    return jsonl(args.storms_en), jsonl(args.storms_zh), links
 
 
 def main():
@@ -113,6 +147,7 @@ def main():
     if not args.no_fetch:
         fetch_seed_texts(seeds, args)
     add_text_status(seeds, {s['key']: got for s in seeds if (got := stored(args.store_dir, s['url']))})
+    add_storms(seeds, *read_storms(args))
     with open(args.out + '.part', 'w', encoding='utf-8', newline='') as f:
         writer = csv.DictWriter(f, COLUMNS, delimiter='\t')
         writer.writeheader()

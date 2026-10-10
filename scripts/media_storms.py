@@ -106,9 +106,9 @@ def by_day_zh(args):
     stale = 0
     for p in paths:     # split before its pages were (all) embedded: its later-embedded pages never got in. Redo it
         marker = os.path.join(done_dir, key_of(p) + '.json')
-        if os.path.exists(marker) and max(os.path.getmtime(p), os.path.getmtime(embeddings_of(p))) > \
-                os.path.getmtime(marker):
-            with contextlib.suppress(FileNotFoundError):    # another worker removed it first
+        with contextlib.suppress(FileNotFoundError):    # many workers check at once: another may remove it first
+            if os.path.exists(marker) and max(os.path.getmtime(p), os.path.getmtime(embeddings_of(p))) > \
+                    os.path.getmtime(marker):
                 os.remove(marker)
                 stale += 1
     if stale:
@@ -161,8 +161,8 @@ def edges(args):
     days = sorted(d for d in os.listdir(days_dir) if os.path.isdir(os.path.join(days_dir, d)))
     for d in days:   # a day whose edges' articles changed since (new WARCs or crawl files) is redone
         path = os.path.join(edges_dir, d + '.parquet')
-        if os.path.exists(path) and (args.redo_edges or stale(days_dir, d, path)):
-            with contextlib.suppress(FileNotFoundError):    # another worker removed it first
+        with contextlib.suppress(FileNotFoundError):    # many workers check at once: another may remove it first
+            if os.path.exists(path) and (args.redo_edges or stale(days_dir, d, path)):
                 os.remove(path)
 
     def compute(day_path, out):

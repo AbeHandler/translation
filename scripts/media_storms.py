@@ -85,7 +85,10 @@ def by_day(args):
 
 
 def by_day_zh(args):
-    """Worker over the crawled HTML files that have embeddings; a marker file per HTML file says it's split."""
+    """Worker over the crawled HTML files that have embeddings; a marker file per HTML file says it's split. A file
+    whose HTML or embeddings changed since its marker is split again (pages embedded after the split were skipped as
+    "no embedding": the gold lists showed 78 of 82 crawled, embedded incident articles missing from the day files);
+    its day files are overwritten, so nothing is counted twice."""
     days_dir, done_dir = os.path.join(args.out_dir, 'days'), os.path.join(args.out_dir, 'by_day_done')
     os.makedirs(done_dir, exist_ok=True)
     os.makedirs(args.links_dir, exist_ok=True)
@@ -100,6 +103,16 @@ def by_day_zh(args):
 
     paths = [p for p in sorted(glob.glob(os.path.join(args.crawls_dir, '*', 'html', '*.parquet')))
              if os.path.exists(embeddings_of(p))]
+    stale = 0
+    for p in paths:     # split before its pages were (all) embedded: its later-embedded pages never got in. Redo it
+        marker = os.path.join(done_dir, key_of(p) + '.json')
+        if os.path.exists(marker) and max(os.path.getmtime(p), os.path.getmtime(embeddings_of(p))) > \
+                os.path.getmtime(marker):
+            with contextlib.suppress(FileNotFoundError):    # another worker removed it first
+                os.remove(marker)
+                stale += 1
+    if stale:
+        print(f'{stale} crawl files split before their HTML or embeddings last changed: split again', flush=True)
 
     def split(path, marker):
         key = key_of(path)

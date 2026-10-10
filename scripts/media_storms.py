@@ -268,8 +268,9 @@ def seed_step(args):
     focused = sorted(found.items(), key=lambda kv: -kv[1]['seed_share'])
     print(f'{len(found)} storms -> {out}; {sum(r["seed_share"] > 0 for r in found.values())} with a seed document')
     for cid, row in focused[:20]:
-        top = row['seeds'][0]
-        print(f"  {row['seed_share']:.2f} of {len(members[cid]):5d} articles cite {top['href'][:100]}")
+        if not row['seeds']:            # no cited document left once page assets and homepages are dropped
+            continue
+        print(f"  {row['seed_share']:.2f} of {len(members[cid]):5d} articles cite {row['seeds'][0]['href'][:100]}")
 
 
 def main():

@@ -8,7 +8,8 @@ It finds pages two ways: by following links from the homepage, and from the site
 in robots.txt, and /sitemap.xml and /sitemap_index.xml, which many sites have without listing them).
 Sitemaps matter: many news sites link only their newest articles from the homepage and load the rest with
 JavaScript (e.g. 21jingji), which link-following never reaches. Sitemap pages are crawled newest
-first (by lastmod), and the sitemaps are refetched every run, so each round picks up new articles.
+first (by lastmod), and the sitemaps, the homepage and the start URLs are refetched every run, so each round picks up
+the articles newly listed or linked there.
 
 PYTHONPATH=.. so `src` (at the repo root) imports:
     cd scrapy && PYTHONPATH=.. scrapy crawl site -a domain=denverpost.com -o pages.jsonl -s HTML_DIR=html \
@@ -55,9 +56,11 @@ class SiteSpider(scrapy.Spider):
             for path in USUAL_SITEMAPS:  # many sites have one without listing it in robots.txt (huxiu, xinhuanet)
                 for request in self.sitemap_request(url + path):
                     yield request
-        # Deduplicated (unlike the default start), so homepages aren't refetched via their own links or on resume.
+        # Refetched every run too (dont_filter), like the sitemaps: a resumed crawl's dupefilter had kept them from
+        # being fetched again, so articles linked from them after the first run were only found if a sitemap listed
+        # them (huxiu's newer posts never were). Their links are still deduplicated: only new pages get crawled.
         for url in self.extra_start_urls + self.start_urls:
-            yield scrapy.Request(url, self.parse)
+            yield scrapy.Request(url, self.parse, dont_filter=True, priority=SITEMAP_PRIORITY - 1)
 
     def parse_robots(self, response):
         for url in sitemap_urls_from_robots(response.body, base_url=response.url):

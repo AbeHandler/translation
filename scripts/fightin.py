@@ -68,6 +68,7 @@ from src.fightin.embeddings.index import VectorIndex
 from src.fightin.measures import dirichlet_prior, log_odds_dirichlet
 from src.fightin.plot import chinese_form, funnel_plot_tsv
 from src.fightin.renderings import KnownRenderings
+from src.fightin.sample_cache import SampleCache
 from src.fightin.select import read_selections
 from src.fightin.units import CJK, parse_ns, units, widespread
 from src.fightin.windows import windows
@@ -77,6 +78,7 @@ from src.source_texts import html_text
 NAME = 'fightin'
 STEPS = ('sample', 'windows', 'words', 'embed', 'compare')
 MIN_TEXT_CHARS = 300
+CHECKPOINT_FILES = 25     # sampling saves its progress every this many files
 # raise a language's number when its sampling changes: its sample is then drawn again (the other's is kept)
 SAMPLE_VERSION = {'en': 3, 'zh': 1}   # en 3: no templated stock notices, outlet cap
 GLOSS_MIN = 0.5      # a Chinese-only concept's nearest English unit is shown as its gloss from this cosine
@@ -181,20 +183,36 @@ def chinese_doc(row, sel):
         if len(text) >= MIN_TEXT_CHARS and sel.matches(title, text, page[1]) else None
 
 
-def sample_language(paths, read_doc, lang, args, rng, columns=('url', 'language', 'html'), per_outlet=None):
+def sample_language(paths, read_doc, lang, args, columns=('url', 'language', 'html'), per_outlet=None):
     """Up to args.n documents: files in random order, each file's row groups in random order, at most
     args.per_file documents from one file (so no outlet dominates). If that falls short (a narrow selection), a
     second pass takes every matching document left, so the sample is then all there is. Fewer than args.min_docs:
     an error. per_outlet: at most this many documents from one outlet (English: thousands of outlets, some of
-    them content farms)."""
-    docs, seen, outlets = [], set(), Counter()
-    rng.shuffle(paths)
-    for cap in (args.per_file, None):
+    them content farms). Checkpointed every CHECKPOINT_FILES files in sample_cache/<lang>/
+    (src/fightin/sample_cache.py), so a run stopped by its time limit resumes; the orders are seeded per language
+    and per file, so a resumed run reads the files in the same order."""
+    cache = SampleCache(os.path.join(args.out, 'sample_cache', lang),
+                        {'version': SAMPLE_VERSION[lang], 'n': args.n, 'selection': args.selection,
+                         'per_file': args.per_file, 'per_outlet': per_outlet, 'seed': args.seed})
+    docs, done, complete = cache.load()
+    if complete:
+        print(f'  {lang}: {len(docs)} documents from the checkpoint (complete)', flush=True)
+        return docs
+    if docs or done:
+        print(f'  {lang}: resuming from the checkpoint: {len(docs)} documents, {len(done)} files read', flush=True)
+    seen = {d['url'] for d in docs}
+    outlets = Counter(d['outlet'] for d in docs)
+    paths = sorted(paths)
+    random.Random(f'{args.seed}-{lang}').shuffle(paths)
+    pending = []
+    for pass_no, cap in enumerate((args.per_file, None)):
         for n, file in enumerate(paths, 1):
+            if f'{pass_no}:{file}' in done:
+                continue
             try:
                 reader = pq.ParquetFile(file)
                 groups = list(range(reader.num_row_groups))
-                rng.shuffle(groups)
+                random.Random(f'{args.seed}-{file}').shuffle(groups)
                 found = 0
                 for g in groups:
                     for row in reader.read_row_group(g, columns=list(columns)).to_pylist():
@@ -208,22 +226,30 @@ def sample_language(paths, read_doc, lang, args, rng, columns=('url', 'language'
                         if doc:
                             seen.add(row['url'])
                             outlets[outlet] += 1
-                            docs.append({'lang': lang, 'url': row['url'], 'outlet': outlet,
-                                         'date': doc.get('date', ''), 'title': doc['title'], 'text': doc['text']})
+                            pending.append({'lang': lang, 'url': row['url'], 'outlet': outlet,
+                                            'date': doc.get('date', ''), 'title': doc['title'], 'text': doc['text']})
                             found += 1
-                        if (cap and found >= cap) or len(docs) >= args.n:
+                        if (cap and found >= cap) or len(docs) + len(pending) >= args.n:
                             break
-                    if (cap and found >= cap) or len(docs) >= args.n:
+                    if (cap and found >= cap) or len(docs) + len(pending) >= args.n:
                         break
             except Exception as e:
                 print(f'  skipped {file}: {e}', flush=True)
-            if n % 50 == 0 or len(docs) >= args.n:
-                print(f'  {lang}: {n}/{len(paths)} files read, {len(docs)}/{args.n} documents', flush=True)
-            if len(docs) >= args.n:
-                return docs
+            done.add(f'{pass_no}:{file}')
+            if len(done) % CHECKPOINT_FILES == 0:
+                cache.save(pending, done)
+                docs, pending = docs + pending, []
+            if n % 50 == 0 or len(docs) + len(pending) >= args.n:
+                print(f'  {lang}: {n}/{len(paths)} files read, {len(docs) + len(pending)}/{args.n} documents',
+                      flush=True)
+            if len(docs) + len(pending) >= args.n:
+                cache.save(pending, done, complete=True)
+                return docs + pending
         if cap:
-            print(f'  {lang}: {len(docs)} documents at {cap} per file; a second pass takes every match left',
-                  flush=True)
+            print(f'  {lang}: {len(docs) + len(pending)} documents at {cap} per file; a second pass takes every '
+                  'match left', flush=True)
+    docs += pending
+    cache.save(pending, done, complete=True)
     print(f'  {lang}: all {len(docs)} matching documents taken (fewer than {args.n})', flush=True)
     if len(docs) < args.min_docs:
         raise SystemExit(f'only {len(docs)} {lang} documents match selection {args.selection}; '
@@ -234,16 +260,15 @@ def sample_language(paths, read_doc, lang, args, rng, columns=('url', 'language'
 def sample_step(args):
     """Each language's sample is reused if docs.parquet has it at the current SAMPLE_VERSION (docs.version), else
     drawn again; so a change to one language's sampling redoes only that language."""
-    rng = random.Random(args.seed)
     old = pd.read_parquet(path(args, 'docs.parquet')) if os.path.exists(path(args, 'docs.parquet')) else None
     version_file = os.path.join(args.out, 'docs.version')
     versions = json.load(open(version_file)) if os.path.exists(version_file) else {'en': 1, 'zh': 1}
     english_per_outlet = max(10, args.n // 100)
     draws = {   # Chinese first: the crawls are the smaller pool, so a selection too narrow fails sooner
         'zh': lambda: sample_language(glob.glob(os.path.join(args.crawls_dir, '*', 'html', '*.parquet')),
-                                      lambda row: chinese_doc(row, args.sel), 'zh', args, rng),
+                                      lambda row: chinese_doc(row, args.sel), 'zh', args),
         'en': lambda: sample_language(glob.glob(os.path.join(args.cc_html_dir, '*.parquet')),
-                                      lambda row: english_doc(row, args.sel), 'en', args, rng,
+                                      lambda row: english_doc(row, args.sel), 'en', args,
                                       columns=('url', 'language', 'warc_date', 'html'),
                                       per_outlet=english_per_outlet)}
     parts = []
@@ -258,6 +283,7 @@ def sample_step(args):
     docs.to_parquet(path(args, 'docs.parquet'))
     with open(version_file, 'w') as f:
         json.dump(SAMPLE_VERSION, f)
+    shutil.rmtree(os.path.join(args.out, 'sample_cache'), ignore_errors=True)    # the sample is saved
     print(docs.groupby('lang').agg(docs=('url', 'size'), outlets=('outlet', 'nunique'),
                                    median_chars=('text', lambda t: int(t.str.len().median()))))
 

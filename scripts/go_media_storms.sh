@@ -16,6 +16,7 @@
 # AFTER=<id>:<id>... makes the first step wait for those jobs to end (scripts/go_media_storms_zh.sh: the embedders).
 
 set -eo pipefail  # no -u: ~/.myrc references unset vars
+trap 'echo "ERROR: $0 line $LINENO exited with $?" >&2' ERR   # set -e alone stops without a word
 source ~/.myrc
 mkdir -p logs/scripts/slurm
 N_WORKERS=${N_WORKERS:-100}

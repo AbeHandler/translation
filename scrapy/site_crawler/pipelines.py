@@ -28,7 +28,8 @@ class HtmlParquetPipeline:
         self.html_dir = html_dir
         self.rows = []
         self.n_files = 0
-        self.run_id = time.strftime('%Y%m%dT%H%M%S')  # keeps a resumed crawl's files apart from earlier runs'
+        # keeps a run's files apart from earlier runs' and from a list fetch writing to the same folder at once
+        self.run_id = time.strftime('%Y%m%dT%H%M%S') + '-' + uuid.uuid4().hex[:6]
         self.language = NewsPleaseLanguage()
 
     @classmethod

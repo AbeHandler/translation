@@ -39,5 +39,6 @@ scrapy crawl site -a domain="$DOMAIN" -a urls_file="$URLS_FILE" \
     -s JOBDIR="$OUT_DIR/jobdir_urls_$NAME" \
     -s HTML_DIR="$OUT_DIR/html" \
     -s LOG_FILE="$PWD/../logs/scrapy/${DOMAIN}_urls_$NAME.log" \
-    -s CLOSESPIDER_TIMEOUT=84600
+    -s CLOSESPIDER_TIMEOUT=84600 \
+    -s CONCURRENT_REQUESTS_PER_DOMAIN=4     # half the crawl's 8: often beside the site's own crawl
 grep -o "'downloader/response_status_count/[0-9]*': [0-9]*" "$PWD/../logs/scrapy/${DOMAIN}_urls_$NAME.log" | tail -5

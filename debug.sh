@@ -17,15 +17,12 @@
 
 set -eo pipefail
 mkdir -p logs/scripts/slurm
-# traced into a log: the last run (and tmp.sh's) stopped inside go_media_storms.sh without printing anything
-TRACE=logs/scripts/slurm/go_media_storms_en_trace.log
-if ! REDO_EDGES=1 CORPUS=en bash -x scripts/go_media_storms.sh > "$TRACE" 2>&1; then
-    echo "ERROR: go_media_storms.sh failed; the last lines of its trace ($TRACE):"
-    tail -25 "$TRACE"
-    exit 1
+LOG=logs/scripts/slurm/go_media_storms_en.log    # no bash -x: it would print ~/.myrc's secrets
+if ! REDO_EDGES=1 CORPUS=en bash scripts/go_media_storms.sh > "$LOG" 2>&1; then
+    echo "ERROR: go_media_storms.sh failed:"; tail -15 "$LOG"; exit 1
 fi
-grep -v '^+' "$TRACE"
-EN=$(sed -n 's/^EXPORT_JOB=//p' "$TRACE")
+cat "$LOG"
+EN=$(sed -n 's/^EXPORT_JOB=//p' "$LOG")
 [ -n "$EN" ] || { echo "ERROR: go_media_storms.sh printed no EXPORT_JOB"; exit 1; }
 LINKS=$(sbatch --parsable --dependency=afterany:"$EN" scripts/slurm/link_storms.slurm)
 echo "link_storms $LINKS, after the English export $EN"

@@ -43,7 +43,8 @@ one() {       # one <step> <time> <dependency ids> [afterany]: prints :id
 
 dep=${AFTER:+:$AFTER}
 if [[ -n $REDO_EDGES && $FROM =~ ^(by_day|edges)$ ]]; then   # once, here: 100 workers each deleting collided
-    EDGES=data/interim/media_storms$([[ $CORPUS == zh ]] && echo _zh)/edges
+    EDGES=data/interim/media_storms/edges
+    [[ $CORPUS == zh ]] && EDGES=data/interim/media_storms_zh/edges   # (a failing $(...) here ended the script)
     echo "REDO_EDGES: deleting $(ls "$EDGES" 2>/dev/null | wc -l) edge files in $EDGES"
     find "$EDGES" -type f -name '*.parquet' 2>/dev/null | shuf | xargs -r rm -f
 fi

@@ -38,8 +38,9 @@ if [ -z "${DEPENDENCY:-}" ]; then
     DEPENDENCY=afterok:$ENV_JOB
 fi
 
-# sites with a crawl already queued or running (its domain is in the job's comment), so none is crawled twice
-RUNNING=$(squeue -u "$USER" -h -n crawl_site -o '%k')
+# sites with a crawl or a list fetch (scrapy/fetch_url_lists.sh) already queued or running (its domain is in the
+# job's comment), so no site has two scrapy processes at once
+RUNNING=$(squeue -u "$USER" -h -n crawl_site,fetch_urls -o '%k')
 JOB_IDS=""
 n_submitted=0
 n_done=0

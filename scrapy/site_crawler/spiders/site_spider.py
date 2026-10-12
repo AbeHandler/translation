@@ -11,6 +11,9 @@ JavaScript (e.g. 21jingji), which link-following never reaches. Sitemap pages ar
 first (by lastmod), and the sitemaps, the homepage and the start URLs are refetched every run, so each round picks up
 the articles newly listed or linked there.
 
+List mode (-a urls_file=urls.txt, one URL per line): only those pages, nothing followed (scrapy/slurm/fetch_urls.slurm,
+for articles the crawl can't find: scripts/make_crawl_urls.py).
+
 PYTHONPATH=.. so `src` (at the repo root) imports:
     cd scrapy && PYTHONPATH=.. scrapy crawl site -a domain=denverpost.com -o pages.jsonl -s HTML_DIR=html \
         -s CLOSESPIDER_PAGECOUNT=20
@@ -34,8 +37,14 @@ USUAL_SITEMAPS = ('sitemap.xml', 'sitemap_index.xml')  # tried on every site, as
 class SiteSpider(scrapy.Spider):
     name = 'site'
 
-    def __init__(self, domain, start_urls='', *args, **kwargs):
+    def __init__(self, domain, start_urls='', urls_file='', *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # list mode: fetch exactly these URLs (one per line) and nothing else: no homepage, sitemaps or links
+        # followed. For articles a crawl can't reach (sites without sitemaps: scripts/make_crawl_urls.py)
+        self.listed_urls = []
+        if urls_file:
+            with open(urls_file, encoding='utf-8') as f:
+                self.listed_urls = [line.strip() for line in f if line.strip().startswith('http')]
         if any(c in domain for c in '/: '):
             raise ValueError(f'domain must be bare, e.g. denverpost.com, not {domain!r}')
         self.allowed_domains = [domain]
@@ -49,6 +58,10 @@ class SiteSpider(scrapy.Spider):
         self.sitemaps_seen = set()  # a sitemap index can list a sitemap twice, or itself
 
     async def start(self):
+        if self.listed_urls:
+            for url in self.listed_urls:
+                yield scrapy.Request(url, self.parse, meta={'listed': True})
+            return
         # robots.txt and sitemaps first (SITEMAP_PRIORITY), and not deduplicated: refetched every run, so each
         # round sees the newest articles.
         for url in self.start_urls:
@@ -110,6 +123,8 @@ class SiteSpider(scrapy.Spider):
             'html': response.body,
             'is_html': isinstance(response, HtmlResponse),
         }
+        if response.meta.get('listed'):
+            return  # list mode: only the listed pages
         for link in links:  # links keeps the URLs as written; only what is followed is rewritten
             yield response.follow(self.on_home_host(link), self.parse)  # OffsiteMiddleware drops other domains
 

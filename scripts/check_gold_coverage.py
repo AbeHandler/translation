@@ -4,7 +4,7 @@ Where a hand-collected list of Chinese articles about one event gets lost on the
 (the gold list: config/gold/*.csv, columns url, alt_urls, domain, outlet, in_crawled_list, date, title, and
 event_leg or phase).
 For each listed article (by default those from crawled outlets), stage by stage:
-    crawled     in a crawl's pages.jsonl (data/interim/site_crawls/<domain>/)
+    crawled     in a crawl's pages.jsonl or a list fetch's pages_urls.jsonl (data/interim/site_crawls/<domain>/)
     html        its HTML saved (site_crawls/<domain>/html/*.parquet)
     outcome     what the storms' by_day filter makes of it (src/media_storms.py site_crawl_page: kept, not about ai,
                 no date, listing page, short, not chinese ...), rerun here on the saved HTML
@@ -79,7 +79,7 @@ def main():
     print(f'{len(gold)} listed articles ({len(keys)} URL forms) from {gold["domain"].nunique()} outlets', flush=True)
 
     crawled = set()
-    for path in glob.glob(os.path.join(args.crawls_dir, '*', 'pages.jsonl')):
+    for path in glob.glob(os.path.join(args.crawls_dir, '*', 'pages*.jsonl')):   # the crawl's and list-mode fetches'
         with open(path, encoding='utf-8', errors='replace') as f:
             for line in f:
                 start = line.find('"url": "') + 8

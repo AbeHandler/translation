@@ -1,40 +1,24 @@
 #!/bin/bash
-# Why the tmp.sh chain (English embed -> dates -> storms -> export -> link_storms) stopped. Read-only.
-#   bash debug.sh        (from the repo root, on Alpine)
-SINCE=${SINCE:-2026-10-11}
-NAMES=embed_cc_news,date_cc_news,embed_site_crawls,media_storms,export_storms,link_storms
+# The English storms (the tmp.sh chain stopped before them; embeddings and dates are all done), then link_storms.
+# REDO_EDGES=1: every day's edges again, with the new March-October articles. The export emails when done.
+# Rerun link_storms after tmp4's Chinese export: sbatch scripts/slurm/link_storms.slurm
+#   bash debug.sh   or   sbatch debug.sh        (from the repo root, on Alpine)
 
-echo "== jobs since $SINCE, every state (pending and cancelled too)"
-sacct -u "$USER" -S "$SINCE" --name=$NAMES -X -n -o JobName%18,State%25 | sort | uniq -c
-echo
-echo "== in the queue now"
-squeue -u "$USER" -n $NAMES -h -o '%j %T %r' | sort | uniq -c
+#SBATCH --partition=acpu
+#SBATCH --time=00:30:00
+#SBATCH --job-name=debug
+#SBATCH --output=logs/scripts/slurm/%x_%j.out
+#SBATCH --mem=2G
+#SBATCH --qos=cpu-normal
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mail-type=FAIL
+#SBATCH --mail-user=abha4861@colorado.edu
 
-for name in embed_cc_news date_cc_news media_storms export_storms; do
-    failed=$(sacct -u "$USER" -S "$SINCE" --name=$name -X -n -o JobID,State | awk '$2 ~ /FAILED|TIMEOUT|OUT_OF_ME/ {print $1}')
-    [ -z "$failed" ] && continue
-    echo
-    echo "== $name: $(wc -w <<< "$failed") failed; elapsed time of the failures (seconds: failed on start-up)"
-    sacct -j "$(paste -sd, <<< "$failed")" -X -n -o Elapsed | sort | uniq -c | sort -rn | head -5
-    first=$(head -1 <<< "$failed")
-    echo "-- the first failure's log (logs/scripts/slurm/${name}_$first.out), last 15 lines"
-    tail -15 "logs/scripts/slurm/${name}_$first.out" 2>/dev/null || echo "   (no log)"
-    echo "-- the most common last line among the failures"
-    for j in $failed; do tail -1 "logs/scripts/slurm/${name}_$j.out" 2>/dev/null; echo; done \
-        | grep -v '^$' | cut -c1-150 | sort | uniq -c | sort -rn | head -5
-done
-
-echo
-echo "== English progress (files)"
-echo "  WARCs:    $(ls data/interim/cc_html | grep -c 'parquet$')"
-echo "  embedded: $(ls data/interim/cc_news_embeddings | grep -c 'parquet$')"
-echo "  dated:    $(ls data/interim/cc_news_pubdates | grep -c 'parquet$')"
-echo "  embedded but not dated (by file name):"
-comm -23 <(ls data/interim/cc_news_embeddings | grep 'parquet$' | sort) \
-         <(ls data/interim/cc_news_pubdates | grep 'parquet$' | sort) | tee /tmp/undated_$USER.txt | wc -l
-head -3 /tmp/undated_$USER.txt
-
-echo
-echo "== the newest media_storms and export_storms logs"
-ls -t logs/scripts/slurm/media_storms_*.out logs/scripts/slurm/export_storms_*.out 2>/dev/null | head -4 \
-    | while read -r f; do echo "-- $f ($(date -r "$f" '+%m-%d %H:%M'))"; tail -4 "$f"; done
+set -eo pipefail
+mkdir -p logs/scripts/slurm
+EN=$(REDO_EDGES=1 CORPUS=en bash scripts/go_media_storms.sh | tee /dev/stderr | sed -n 's/^EXPORT_JOB=//p')
+[ -n "$EN" ] || { echo "ERROR: go_media_storms.sh printed no EXPORT_JOB"; exit 1; }
+LINKS=$(sbatch --parsable --dependency=afterany:"$EN" scripts/slurm/link_storms.slurm)
+echo "link_storms $LINKS, after the English export $EN"
+echo "When done: tail -30 logs/scripts/slurm/link_storms_$LINKS.out"

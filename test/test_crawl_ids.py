@@ -30,3 +30,19 @@ def test_binary_searches():
     first = prober.first_on_or_after('2026-07-11', 1000, 5000)      # day 10: IDs from 2000
     assert 2000 - prober.window <= first <= 2000 + 1
     assert len(prober.cache) < 200                                   # a few dozen probes, not a scan
+
+
+def test_sparse_ids():
+    """jiemian-like: 1 ID in 40 is an article; consecutive probes alone miss them."""
+    fetch, date_of = fake_site(first=100_000, last=500_000, per_day=4000, gap=10**9)
+    sparse = lambda url: fetch(url) if id_of('jiemian.com', url) % 40 == 0 else (404, '')   # noqa: E731
+    prober = IdProber('jiemian.com', sparse, date_of)
+    first = prober.first_on_or_after('2026-07-11', 100_000, 500_000)    # day 10: IDs from 140000
+    assert 140_000 - 400 <= first <= 140_000 + 40          # a little early is harmless: a few extra URLs
+
+
+def test_page_date():
+    from src.crawl_ids import page_date
+    assert page_date('', '2026-07-21T10:00') == '2026-07-21'
+    assert page_date('<div publish-time="1784601986">', None) == '2026-07-21'
+    assert page_date('发布于2026年7月3日', None) == '2026-07-03' and page_date('x', None) is None

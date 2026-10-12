@@ -22,7 +22,7 @@ import pandas as pd
 import requests
 
 from config.paths import SITE_CRAWLS_DIR
-from src.crawl_ids import SITES, IdProber, id_of, urls_for
+from src.crawl_ids import SITES, IdProber, id_of, page_date, urls_for
 from src.extract_pubdate import extract_pubdate
 
 HEADERS = {'User-Agent': 'Mozilla/5.0 (research crawler; abha4861@colorado.edu)'}
@@ -65,9 +65,10 @@ def main():
 
         def date_of(html, url):
             try:
-                return extract_pubdate(html, url, extensive=False)[0]
+                extracted = extract_pubdate(html, url, extensive=False)[0]
             except Exception:
-                return None
+                extracted = None
+            return page_date(html, extracted)
         for site in args.sites.split(','):
             if not known[site]:
                 print(f'{site}: no known article ID to start from (give a -gold list with one): skipped')

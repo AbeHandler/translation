@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 """
 A shareable English/Chinese dataset on one topic, from a fightin experiment's sample (scripts/fightin.py: documents
-matching a selection's pattern, English from CC-NEWS, Chinese from our site crawls): syndicated copies dropped
+matching a selection's pattern, English from CC-NEWS, Chinese from our site crawls; docs.parquet, or while the
+sample is still being drawn, its checkpoint sample_cache/<lang>/part-*.parquet): syndicated copies dropped
 (src/fightin/contexts.py dedupe), optionally a date window -> results/export_paired_dataset/<name>/
     articles.parquet, articles.csv (utf-8 with BOM: opens in Excel), README.md (sources, counts, columns)
 
@@ -11,6 +12,7 @@ Run as a module from the repo root:
 """
 import argparse
 import datetime
+import glob
 import os
 
 import pandas as pd
@@ -28,11 +30,27 @@ def parse_args():
     return parser.parse_args()
 
 
+def load_docs(folder):
+    """(documents, where from): the finished sample, else the parts its sampling checkpoint has so far."""
+    finished = os.path.join(folder, 'docs.parquet')
+    if os.path.exists(finished):
+        return pd.read_parquet(finished), finished
+    parts = []
+    for path in sorted(glob.glob(os.path.join(folder, 'sample_cache', '*', 'part-*.parquet'))):
+        part = pd.read_parquet(path)
+        if 'lang' not in part:
+            part['lang'] = os.path.basename(os.path.dirname(path))
+        parts.append(part)
+    if not parts:
+        raise FileNotFoundError(f'no docs.parquet or sample_cache parts in {folder}')
+    return pd.concat(parts, ignore_index=True), os.path.join(folder, 'sample_cache (sampling not finished)')
+
+
 def select(docs, start, end):
     """Deduplicated documents within [start, end] (either may be None), sorted by language and date."""
     docs, dropped = dedupe(docs)
     dates = docs['date'].astype(str).str[:10]
-    keep = (dates >= start if start else True) & (dates <= end if end else True)
+    keep = (dates >= (start or '')) & (dates <= (end or '9999'))
     return docs[keep].sort_values(['lang', 'date']).reset_index(drop=True), dropped
 
 
@@ -58,8 +76,9 @@ def readme(docs, args, source, dropped):
 
 def main():
     args = parse_args()
-    source = os.path.join('results', 'fightin', args.experiment, 'docs.parquet')
-    docs, dropped = select(pd.read_parquet(REPO_ROOT / source), args.start, args.end)
+    docs, source = load_docs(os.path.join(REPO_ROOT, 'results', 'fightin', args.experiment))
+    source = os.path.relpath(source, REPO_ROOT)
+    docs, dropped = select(docs[['lang', 'url', 'outlet', 'date', 'title', 'text']], args.start, args.end)
     out = REPO_ROOT / 'results' / 'export_paired_dataset' / (args.name or args.experiment)
     os.makedirs(out, exist_ok=True)
     docs.to_parquet(out / 'articles.parquet', index=False)

@@ -19,9 +19,17 @@ source ~/.myrc
 module load anaconda
 conda activate translation
 
-EXP=deepseek_20k
-[ -f results/fightin/$EXP/docs.parquet ] || EXP=deepseek_5k
-[ -f results/fightin/$EXP/docs.parquet ] || { echo "ERROR: no results/fightin/deepseek_{20k,5k}/docs.parquet"; exit 1; }
+echo "== the DeepSeek experiments: finished samples, and sampling checkpoints"
+ls -d results/fightin/deepseek_* 2>/dev/null || true
+ls results/fightin/deepseek_*/docs.parquet 2>/dev/null || true
+ls results/fightin/deepseek_*/sample_cache/*/ 2>/dev/null | head -20 || true
+EXP=""
+for e in deepseek_20k deepseek_5k deepseek_1k; do   # the biggest sample there is, finished or partly drawn
+    if [ -f results/fightin/$e/docs.parquet ] || ls results/fightin/$e/sample_cache/*/part-*.parquet >/dev/null 2>&1; then
+        EXP=$e; break
+    fi
+done
+[ -n "$EXP" ] || { echo "ERROR: no DeepSeek sample or checkpoint in results/fightin/deepseek_*"; exit 1; }
 echo "== from $EXP"
 python -m scripts.export_paired_dataset -experiment $EXP -name deepseek_r1 -from 2025-01-15 -to 2025-02-28
 python -m scripts.export_paired_dataset -experiment $EXP -name deepseek_all
